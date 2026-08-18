@@ -1,0 +1,1576 @@
+Title: High-Level Synthesis of Efficient Pipelines with Visibility Control
+
+URL Source: https://arxiv.org/pdf/2607.18765v1
+
+Published Time: Wed, 22 Jul 2026 00:34:38 GMT
+
+Number of Pages: 34
+
+Markdown Content:
+# High-Level Synthesis of Efficient Pipelines with Visibility Control 
+
+JUNGIN RHEE, KAIST, Korea 
+
+MINSEONG JANG, KAIST, Korea 
+
+JAEWOO KIM, Seoul National University, Korea 
+
+JEEHOON KANG, FuriosaAI, Korea High-level synthesis (HLS) raises the abstraction of hardware design from concurrent register-transfer level (RTL) programs to sequential programs. Among the forms of parallelism HLS exploits, pipelining demands fine-grained control over pipeline structure and hazard resolution to achieve competitive power, performance, and area (PPA). However, existing tools either lack such control or sacrifice sequential semantics to provide it. We present an HLS tool that embeds fine-grained pipeline control in a sequential programming model, enabling rapid design-space exploration. The tool builds on visibility control , a novel programming abstraction that unifies hazard resolution strategies including stalling, bypassing, speculation, deferred commit, and register renaming. We evaluate on in-order RISC-V cores, histograms, and an AES accelerator. On RISC-V cores, we implement stall, bypass, speculation, and register renaming; on histograms, we implement scheduling strategies that previously required RTL or concurrent programming models. Compiled pipelines outperform HLS tools with sequential semantics and achieve PPA comparable to hand-written RTL. 
+
+1 Introduction 
+
+High-level synthesis (HLS) makes hardware design productive by automatically pipelining sequen-tial programs, overlapping successive operations. The tool absorbs the concurrency this overlap introduces, so the designer writes and reasons about a program with purely sequential semantics. How a given program is pipelined, which we call the pipelining strategy , determines a design’s power, performance, and area (PPA) through two decisions, creating a tradeoff space where no single strategy dominates. (1) The pipeline structure , the number of stages and their boundaries, fixes how deeply operations overlap. Adding stages shortens the critical path and raises clock frequency, but costs pipeline registers, area, and power. (2) Dependency hazard resolution keeps the pipeline correct when overlapping execution breaks a sequential dependency on shared state. Hazard resolution strategies span stalling, bypassing, speculation, deferred commit, and register renaming. Choosing a more aggressive strategy removes stalls and raises throughput, but costs area and power and can lower frequency. The Pareto-optimal choice depends on the program’s characteristics, the target workload, and the PPA budget. The designer must navigate the PPA tradeoff by exploring strategies, yet no existing HLS tool provides the three properties this exploration requires (Table 1a): (1) fine-grained control over the pipelining strategy, to express diverse candidate strategies, (2) efficient implementation , so that each explored strategy attains the PPA of hand-written RTL, and (3) sequential semantics , so that switching strategies cannot introduce concurrency bugs. Traditional HLS tools [16, 22, 23] keep sequential semantics but give up fine-grained control over the pipelining strategy. The compiler places stage boundaries, steered at most by indirect hints such as initiation intervals [1], and decides how each hazard is resolved either statically [23] or dynamically [16, 22]. Kanagawa [30] delivers fine-grained control over hazard resolution and an efficient implementa-tion but gives up sequential semantics. Designers manually manage concurrent accesses to shared state, choosing hazard resolution along four dimensions (Table 1b): (1) per-state resolution , where  
+
+> Authors’ Contact Information: Jungin Rhee, KAIST, Daejeon, Korea, jungin.rhee@kaist.ac.kr; Minseong Jang, KAIST, Daejeon, Korea, minseong.jang@kaist.ac.kr; Jaewoo Kim, Seoul National University, Seoul, Korea, jaewoo.kim.2@sf.snu.ac.kr; Jeehoon Kang, FuriosaAI, Seoul, Korea, jeehoon.kang@furiosa.ai. arXiv:2607.18765v1 [cs.PL] 21 Jul 2026 2Trovato et al.
+
+Table 1. Comparison of HLS tools (a) and hazard-resolution expressiveness (b). (a) Comparison of HLS tools. G#§: Designer constraints ( e.g. , target initiation interval, per-region concurrency bound) indirectly guide the compiler, which places stage boundaries. G#‡: Limited expressiveness, detailed in Table 1b. G#†: Requires designers to satisfy static rules, including path-sensitive ones.                             
+
+> Tool Pipelining strategy control Efficient strategy impl. Seq. semantics Pipeline structure Hazard resolution
+> Vitis HLS [23] G#§✗✓✓
+> SpecHLS [16] ✗✗✓✓
+> Dynamatic [22] ✗✗✓✓
+> Kanagawa [30] G#§✓✓✗
+> PDL [42] ✓G#‡✗G#†
+> Ours ✓✓✓✓
+
+(b) Hazard-resolution expressiveness, along four dimensions. ✓𝑎 : Policy selectable on each access. G#𝑏 : Con-servative only. G#𝑐 : Speculative only.                     
+
+> Mechanism Per-state Resolution policy Per-address Selectable obs. stage
+> Kanagawa shared var. ✓✓𝑎 ✓✓
+> PDL hazard lock ✓G#𝑏 ✓✓
+> PDL speculation ✗G#𝑐 ✗✗
+> Var (Ours) ✓✓𝑎 ✓✓
+
+hazards on each variable can be resolved separately, (2) resolution policy , where each access can be configured to either stall until hazards clear or speculatively proceed and recover later, (3) per-ad-dress resolution , where hazards on indexed state can be precisely resolved at address granularity, and 
+
+(4) selectable observation stage , where designers choose the pipeline stage at which each variable is read. This expressiveness pairs with an efficient implementation, since resolution is ordinary user code compiled with the whole design. However, that same code runs under concurrent semantics, so every rewrite for strategy exploration risks introducing concurrency bugs. PDL [38, 42] aims for all three properties, but falls short of each because it fragments hazard resolution across disjoint subsystems (§2.3). (1) It cannot express strategies that compose the four dimensions of Table 1b, such as per-address speculation, in which an instruction rolls back when the address it speculatively read is later written. (2) It cannot implement even expressible strategies efficiently, since each subsystem lowers to a conservative, hand-written RTL module in isolation. (3) Its guarantee of sequential semantics is fragile , resting on 18 code rules, many of them path-sensitive, that govern each subsystem and their interactions. The rules are onerous , since the designer must satisfy them by hand to pass the compiler, and unsound , since rule-compliant programs can still produce incorrectly synchronized pipelines. As a result of the expressiveness and implementation shortfalls, PDL-generated CPUs run 1 .2–1 .5× slower and consume 1 .8–4 .1×
+
+more area than RTL designs (§7.1). 
+
+Our approach . We present an HLS tool that delivers all three properties at once, enabling rapid pipelining strategy exploration (Table 1a). The key enabler is visibility control , a unified program-ming abstraction for hazard resolution. We make the following contributions. In §3, we introduce visibility control, which distills each hazard resolution strategy into two choices: what an earlier instruction exposes of its pending reads and writes on shared state, and how a later instruction reacts. Under stalling, for example, the earlier instruction that writes to the shared state (the writer) exposes nothing, and the later instruction that reads it (the reader) waits. Under bypassing, the writer exposes its value early, and the reader forwards it. 3
+
+In §4, we instantiate visibility control in a sequential programming model that gives fine-grained control over the pipelining strategy. We base our model on speculative loop pipelining, where each iteration overlaps with subsequent iterations (§4.1). We resolve dependency hazards via Var , a unified primitive for visibility control (§4.2). We capture advisory state (e.g. , a branch predictor), which affects performance but not correctness, via SpecVar , a primitive that needs no hazard resolution (§4.3). In §5, we formalize the semantics of the target pipeline and sketch a proof of compiler correctness, stating that the pipeline refines the source program. In §6, we show how the compiler implements the chosen hazard resolution strategy efficiently. It factors the program-order comparison between in-flight instructions into one mechanism shared by every Var . It specializes each Var ’s hazard resolution to the pipelining strategy, generating only the necessary registers and combinational logic. In §7, we show across three case studies that the three properties let us explore pipelining strategies and thereby achieve competitive PPA. Our designs outperform those from sequential-semantics HLS tools (PDL, Vitis HLS, Dynamatic), and match or exceed hand-written RTL and Kanagawa designs, both built under concurrent semantics. On in-order RISC-V CPUs targeting a 7nm ASIC flow [37], our designs achieve 1 .2–1 .8× lower runtime and 1 .7–3 .9× smaller area than PDL’s. They match hand-written RTL in cycle count and maximum frequency, staying within 5% in area and 3% in power. On countif histograms, our designs match or exceed Kanagawa’s PPA across static, dynamic, and speculative hazard resolution strategies. On an AES accelerator, viewing the design as a sequential program surfaces two optimizations that reduce area over an RTL reference. In the supplementary material [2], we provide the appendix and artifact. The appendix contains (§A) the artifact description, (§B) PDL’s eighteen rules and the unsoundness evidence, (§C) the compiler implementation, and (§D) the extended RISC-V evaluation results. The artifact contains 
+
+(1) the compiler binary, (2) the source code of case studies, and (3) the evaluation scripts. 
+
+2 Background and Motivation 
+
+We review dependency hazards and their resolution strategies (§2.1) and examine how PDL [42], the closest existing approach to our goals, implements a 5-stage CPU (§2.2). We then identify three shortcomings that motivate our design: inexpressible resolution strategies, inefficient strategy implementation, and a fragile guarantee of sequential semantics (§2.3). 
+
+2.1 Dependency Hazards 
+
+Dependency hazards arise when pipelined execution reorders operations on shared state, e.g. , the register file, program counter (PC), or control and status registers (CSRs) of a CPU. They violate sequential semantics in three forms: Read-After-Write (RAW) reads state before an earlier write commits, Write-After-Write (WAW) commits a write before an earlier one, leaving a stale value, and Write-After-Read (WAR) commits a write before an earlier read finishes. The simplest resolution strategy is to stall the pipeline until the hazard clears. However, stalling reduces throughput, motivating more aggressive strategies. RAW hazards can be resolved by: (1) bypassing , where the writer forwards its result to the reader before committing, at the cost of additional multiplexers and wiring, and (2) speculation , where the reader proceeds with a predicted value and recovers if the prediction is wrong, at the cost of recovery logic. A representative application of speculation is resolving CPU control hazards (RAW on the PC) by predicting the next PC and flushing the pipeline on misprediction. WAW and WAR hazards can be resolved by: (1) deferred commit , where writes are delayed to a later stage, so writes commit in program order (WAW) and all prior reads complete (WAR), at 4 Trovato et al.                                       
+
+> 1pipe cpu(pc)[rf, imem, dmem, csrs, bht]{
+> 2spec_check();
+> 3acquire(imem[pc], R); insn <- imem[pc]; release(imem[pc]); ↩→
+> 4--- // Fetch -> Decode
+> 5spec_check();
+> 6s <- spec_call cpu(pc + (bht.req(pc) ? imm : 4));
+> 7acquire(rf[rs1], R); // rs2 omitted
+> 8alu_arg1= rf[rs1];
+> 9release(rf[rs1]);
+> 10 reserve(rf[rd], W);
+> 11 --- // Decode -> Execute
+> 12 spec_barrier();
+> 13 alu_out= alu(args*); // compute logic
+> 14 npc = calc_npc(args*); // branch target
+> 15 if (isIllegal(op)) { throw(ERR_INV); }
+> 16 if (npc== pc+1){verify(s, npc) { bht.upd(pc, brTaken) }}
+> 17 else {invalidate(s); call cpu(npc);}
+> 18 --- // Execute -> MemOps
+> 19 acquire(dmem[alu_out]);
+> 20 if (isStore(op)) {dmem[alu_out] <- data;}
+> 21 if (isLoad(op)) {dmem_out <- dmem[alu_out];}
+> 22 else {dmem_out = alu_out;}
+> 23 release(dmem[alu_out]);
+> 24 --- // MemOps -> Writeback
+> 25 block(rf[rd]); rf[rd] <- dmem_out;
+> 26 commit: release (rf[rd]);
+> 27 except(error_code):
+> 28 abort (rf[rd]); csrs[mepc] <- pc;
+> 29 csrs[mcause] <- error_code;
+> 30 call cpu(HANDLER_ADDR);
+> 31 }
+
+(a) Abbreviated 5-stage pipelined CPU in PDL. 
+
+(b) Datapath pipeline generated from (a), connected to the subsystems PDL pro-vides. Fig. 1. PDL’s programming model: the datapath program (a) and the resulting CPU structure (b). 
+
+the cost of pipeline registers, and (2) register renaming , where each logical write maps to a fresh physical location, removing the name dependency, at the cost of a rename table and free list. 
+
+2.2 PDL: Pipeline Structure and Hazard Resolution 
+
+In PDL [42], the designer writes the datapath pipeline and obtains every other feature, such as hazard resolution, as an external service. Each service runs as a separate subsystem, and the datapath pipeline uses it by sending requests to its interface. New concerns attach as additional subsystems. For example, XPDL [38], a follow-up work, adds exceptions. PDL realizes this model in the 5-stage pipelined CPU of Fig. 1. The program (Fig. 1a) describes the datapath pipeline, and the compiler connects it to the subsystems PDL provides (Fig. 1b). 
+
+Datapath pipeline . The datapath pipeline is the part the designer writes directly, by (1) designating the pipeline structure, (2) writing the combinational logic of each stage, and (3) sending requests to the subsystems. It is written as a recursive function cpu (Fig. 1a), parameterized by the program counter ( pc ) and the shared resources it accesses: the register file ( rf ), instruction/data memory (imem /dmem ), CSRs ( csrs ), and the branch history table ( bht ). The pipeline structure is designated by two constructs. The stage separators ( ---, L4, 11, 18, 24) mark the boundaries at which the compiler inserts pipeline registers. The recursive call cpu(npc) (L17) spawns a new instruction that runs concurrently from L2, overlapping the spawner’s remaining stages. Statements in a single stage are combinational, e.g. , computing the ALU result and the branch target (L13–14). The remaining statements are requests to the subsystems, such as the register file read request (L7). 5
+
+We describe the three subsystems in turn: hazard locks (guarding memories such as rf and dmem ), speculation (drawing predictions from bht ), and exceptions (manipulating csrs ). 
+
+Hazard locks . PDL resolves dependency hazards as resource contention using hazard locks . A lock tracks accesses at address granularity within its memory, e.g. , individual registers in the register file. Each access follows a three-operation protocol: (1) reserve records access intent in program order, 
+
+(2) block stalls until the access is granted, after which a read or write executes, and (3) release 
+
+commits the result to the shared state and frees the lock. For a given address, block grants access in 
+
+reserve order. PDL provides multiple lock libraries written in RTL for distinct resolution strategies: Queue Lock (stall), Bypass Queue (bypassing), and Renaming Register File (register renaming). The protocol resolves a RAW hazard by serializing the concurrent accesses. For example, consider two back-to-back instructions where the first writes r1 and the second reads r1 . The read lock is acquire d in Decode (L7), where acquire is a shorthand combining reserve and block in the same stage. The write lock access is split across stages: reserve (L10) records the write intent in 
+
+Decode , block (L25) defers the actual stall to Writeback , and release (L26) commits the write. Since the first instruction reserve s its write before the second acquire s its read, the acquire 
+
+stalls until the first instruction’s access to the address is finished. 
+
+Speculation . PDL provides a separate speculation API that coordinates instructions through a 
+
+speculation table , an automatically instantiated shared resource tracking in-flight instructions’ speculative status. An instruction can spawn a speculative successor with a predicted PC using 
+
+spec_call (L6), creating an entry in the speculation table. The prediction comes from an integrated RTL branch predictor, queried by bht.req (L6) for whether the branch is taken. In Execute , the branch is resolved and the spawner writes the result to the table. verify (L16) compares the predicted and the resolved value, marking the entry as killed on mismatch or committed otherwise, and bht.upd (L16) updates the predictor with the outcome. invalidate and call (L17) kill the entry and spawn the correct successor. The spawned instruction, in turn, reads the speculation table to learn whether it is killed. 
+
+spec_check (L2, 5) terminates the instruction without blocking if its entry is killed, gating lock reservation and further speculative calls. spec_barrier (L12) blocks until the entry resolves, then terminates the instruction if killed, gating write-lock release. Both gates prevent a killed instruction from corrupting locks and the speculation table. 
+
+Exceptions . Exceptions are handled in two final blocks that follow the pipeline body. The commit 
+
+block (L26) executes on the normal path, releasing the write lock. The except block (L27–30) handles the exceptional path, calling abort (L28) to release the lock without committing, saving exception state to CSRs (L28–29), and redirecting to the exception handler via call (L30). 
+
+2.3 Limitations of PDL 
+
+The interfaces that keep PDL’s subsystems modular also keep them fragmented. This fragmentation makes PDL fall short of all three properties of Table 1a. The expressiveness and implementation shortfalls make PDL-generated CPUs run 1 .2–1 .5× slower and consume 1 .8–4 .1× more area than RTL designs (§1). The fragile guarantee of sequential semantics shifts the correctness burden onto the designer. 
+
+Inexpressible resolution strategies . PDL cannot express strategies that compose the four dimen-sions of Table 1b, because it isolates speculation in a separate function-call subsystem: (1) per-state resolution : spec_call bundles all speculative arguments into an atomically verified entry, so a misprediction on one argument forces recovery on all others, (2) resolution policy : PDL cannot mix stall or bypass with speculation on one state, since hazard locks and the speculation API are 6 Trovato et al. 
+
+separate subsystems, (3) per-address resolution : PDL speculation cannot distinguish addresses, since 
+
+spec_call cannot express indexing, and (4) selectable observation stage : PDL pins the predicted value at spawn time, since spec_call(value) takes the prediction as a call argument. 
+
+Inefficient strategy implementation . Even expressible strategies compile inefficiently, since each subsystem becomes a hand-written RTL module unaware of the others and of the pipeline structure. Specifically, the following overheads occur in the CPU of Fig. 1a: (1) four redundant ordering systems (three locks and a speculation module), each tracking program order and adding per-instruction metadata as pipeline registers, and (2) unnecessary order comparison, since systems rely on runtime comparators even when the program order can be statically determined from pipeline structure, e.g. , an instruction in Decode necessarily precedes one in Writeback . These overheads preclude using locks even for simple stall-only state, forcing XPDL to implement CSRs via exceptions. 1
+
+Fragile guarantee of sequential semantics . PDL’s guarantee of sequential semantics is fragile, because each subsystem is correct only under static rules its interface assumes, 2 and the rules are both onerous and unsound: (1) The rules are onerous, both numerous and manual (§B.1). Eighteen rules, counted across PDL and XPDL, span per-subsystem constraints ( e.g. , reserve of a memory may occur inside at most one branch) and cross-subsystem interactions ( e.g. , speculative instructions must never release write locks). Many of the rules are path-sensitive ones that PDL’s compiler checks with an SMT solver, so a violated rule rarely admits a local fix. Each rejection therefore returns to the designer, who must restructure the pipeline’s control flow by hand. Moreover, the rule count compounds with every subsystem added. XPDL’s exceptions arrive as a third subsystem, and integrating them contributed more rules, such as the except block releasing all acquired locks. 
+
+(2) The rule set is unsound (§B.2). For instance, two conditional release operations placed in different pipeline stages can commit out of order, producing a WAW hazard that the rules fail to reject. 
+
+3 Hazard Resolution as Visibility Control 
+
+We distill the hazard resolution strategies of §2.1 into a unified programming abstraction we call 
+
+visibility control . We proceed in three steps: (§3.1) building intuition on three example pipelines, whose instructions resolve hazards by controlling when their pending effects become visible to later instructions, (§3.2) defining the abstraction, and (§3.3) implementing each strategy as code against that abstraction. Visibility control targets dependency hazards within a single pipeline, whatever shared state they arise on. 3 Stalling, bypassing, speculation, and deferred commit each arise from visibility control on a single shared state, and renaming arises from composing it on several states (§4.2). 
+
+3.1 Motivating Examples 
+
+The three example pipelines of Fig. 2 resolve hazards in terms of two decisions: (1) what the earlier instruction exposes of its pending read and write operations on shared state, and (2) how the later instruction reacts. In every panel, the writer reveals its pending effect step by step, and the reader acts on what is visible so far. The first two pipelines resolve the same RAW hazard on the register file, by bypassing (Fig. 2a) and by stalling (Fig. 2c). In both, LD stores to r1 and the immediately following ADD loads it. In  
+
+> 1XPDL mentions this overhead as “using locks to guard CSRs would be expensive” [38, §4.1].
+> 2PDL itself frames the rules as assumptions, e.g. , “lock implementations need to assume that” reservations are made in the intended program order [42, §3.2].
+> 3Dependencies that come from outside the pipeline, such as memory consistency across cores, remain future work.
+
+7
+
+(a) Conservative hazard resolution on the register file (bypass).                
+
+> 1// Decode
+> 2rs = load rf[rs_addr]
+> 3declare rf[rd_addr]
+> 4// Execute
+> 5if exe_wb then
+> 6store wb_data to rf[rd_addr]
+> 7seal rf[rd_addr]
+> 8// Memory
+> 9if mem_wb then
+> 10 store wb_data to rf[rd_addr]
+> 11 seal rf[rd_addr]
+> 12 // Writeback
+> 13 commit rf[rd_addr]
+
+(b) Implementation of (a). 
+
+(c) Conservative hazard resolution on the register file (stall).              
+
+> 1// Decode
+> 2rs = load rf[rs_addr]
+> 3declare rf[rd_addr]
+> 4// Execute
+> 5if exe_wb then
+> 6store wb_data to rf[rd_addr]
+> 7// Memory
+> 8if mem_wb then
+> 9store wb_data to rf[rd_addr]
+> 10 // Writeback
+> 11 commit rf[rd_addr]
+
+(d) Implementation of (c). 
+
+(e) Speculative hazard resolution on the program counter.          
+
+> 1// Fetch
+> 2curr_pc = spec load pc
+> 3declare pc
+> 4// Decode
+> 5store (curr_pc + 4) to pc
+> 6// Execute
+> 7if br_taken then
+> 8store next_pc to pc
+
+(f) Implementation of (e). Fig. 2. Dependency hazard resolution in pipelined CPUs, viewed through the lens of visibility control. 
+
+the bypass pipeline, LD reveals its store incrementally: (1) at Decode it announces that it will write r1 , (2) at Memory it makes the value visible, (3) and at Writeback it commits the value to the register file. ADD reacts to each step. It stalls while only the target address is known, and forwards the value the moment it becomes visible. In the stall pipeline, LD never makes its value visible early, so ADD waits until the register file is written. Waiting costs cycles but eliminates the bypass network (the multiplexers and wiring that forwarding requires). The third pipeline resolves the control hazard on the program counter by speculation (Fig. 2e). The reader proceeds with whatever pc is visible, even though the value may still change. XOR is therefore fetched with BEQ ’s predicted pc and is flushed when BEQ replaces the prediction. 8 Trovato et al. 
+
+𝑆 decl :: = MayDeclare | NoDeclare 
+
+𝑆 store :: = ⊥ | Declared (𝑎 ) | Tentative (𝑎, 𝑣 ) | Sealed (𝑎, 𝑣 )
+
+𝑆 load :: = MayLoad | NoLoad (a) State definitions of 𝑆 decl , 𝑆 store , and 𝑆 load . (b) State machines 𝑆 decl , 𝑆 store , and 𝑆 load .                      
+
+> (𝑆 decl , 𝑆 store )
+> Conservative load Speculative load Commit
+> (MayDeclare ,_)×⊕×
+> (NoDeclare ,Declared )△⊕△
+> (NoDeclare ,Tentative )△→△
+> (NoDeclare ,Sealed )→→△
+> (NoDeclare ,⊥) ⊕⊕⊕
+
+(c) Action given (𝑆 decl , 𝑆 store ).   
+
+> 𝑆 load Commit
+> MayLoad ×
+> NoLoad ⊕
+
+(d) Action given 𝑆 load .Fig. 3. An instruction’s action for each operation, given an earlier instruction’s published state. Symbols: ×
+
+(stall unconditionally), △ (stall if address conflicts), → (use value if address conflicts), ⊕ (read from or write to the base state), and _ (any state). 
+
+3.2 Visibility Control as a Programming Abstraction 
+
+Visibility control models the shared state that in-flight instructions load and store, together with the operations by which each instruction publishes its pending effects and observes those of earlier instructions. The shared state splits into a base state and per-instruction published states. The base state is the underlying storage that instructions ultimately commit to, e.g. , the register file and the program counter. 4 The published states expose each instruction’s pending stores and loads to later instructions, as LD did step by step in Fig. 2a. 
+
+Published states . On each shared state, an instruction’s published states consist of three state machines (Fig. 3b): two for stores ( 𝑆 decl and 𝑆 store ) and one for loads ( 𝑆 load ). An instruction advances 
+
+𝑆 store through three publish operations , declare , store , and seal .For stores, each instruction resolves its store incrementally, first determining whether it stores (𝑆 decl ), then where , then what (both 𝑆 store ): (1) 𝑆 decl indicates whether the instruction may initiate a new store lifecycle ( MayDeclare ), transitioning to NoDeclare once the instruction is known not to do so. (2) 𝑆 store tracks a declared store through four states, advanced by the three publish operations :
+
+⊥ (no store declared), Declared (𝑎 ) (address resolved by declare ), Tentative (𝑎, 𝑣 ) (value exposed by store but subject to change), and Sealed (𝑎, 𝑣 ) (value finalized by seal ). Each transition exposes more information to later instructions, until the store is written to the base state and 𝑆 store returns to ⊥. These states name what LD revealed in Fig. 2a. LD declared r1 at Decode and sealed the value at Memory , whereas the stall and speculation panels leave values Tentative .For loads, 𝑆 load records whether the instruction may perform a load ( MayLoad ), transitioning to 
+
+NoLoad once the instruction is known not to load. 
+
+Visibility-driven operations . An instruction acts on the published states of earlier instructions through three operations, and Fig. 3 specifies the action each operation takes given those states. A conservative load (load ) reads only a finalized value, resolving RAW hazards through its column of Fig. 3c. As long as an earlier instruction may still declare a store ( MayDeclare ), any address could be written, so the load stalls unconditionally ( ×). Once the address is known but the value is not final ( Declared or Tentative ), the load stalls only on an address conflict ( △). Once the 
+
+> 4A base state can be any stateful element, such as registers or SRAMs. 9
+
+value is Sealed , it can no longer change, so the load forwards it instead of stalling ( →), the bypass of Fig. 2a. With no store pending ( ⊥), the load reads the base state ( ⊕). A speculative load (spec load ) reads eagerly instead, so its column contains no stall. As long as no value is visible ( MayDeclare , Declared , or ⊥), it reads the base state ( ⊕), and once a value is visible ( Tentative or Sealed ), it forwards the value ( →). For correctness, any instruction that consumed a speculative value must be flushed when a preceding instruction’s 𝑆 store reaches or updates Tentative at a conflicting address. XOR in Fig. 2e was flushed exactly this way. The same mechanism can express exceptions, where the faulting instruction overwrites its Tentative pc with the exception handler’s address. A commit writes a finalized value to the base state, resolving WAW and WAR hazards through its columns in both tables. For WAW, the commit stalls while an earlier instruction may still declare a store ( ×) or already exposes one at a conflicting address ( △). Stores to the same address therefore reach the base state in program order (Fig. 3c). For WAR, the commit stalls while an earlier instruction may load ( MayLoad ), so the earlier load still reads the old value (Fig. 3d). Once every earlier instruction reaches (NoDeclare , ⊥, NoLoad ), the write proceeds ( ⊕). 
+
+3.3 Programming Visibility Control 
+
+The code in Fig. 2 expresses each pipeline through publish and visibility-driven operations. Each snippet lists the operations every instruction executes as it traverses the pipeline. In the bypass pipeline (Fig. 2b), LD advances its store in four steps: declare (L3) the target address at Decode ,
+
+store and seal the finalized value in whichever stage produces it ( Execute , L6–7, or Memory ,L10–11 for LD ), and commit (L13) at Writeback . ADD reacts through the load (L2), stalling and forwarding as Fig. 3c directs. In the speculative pipeline (Fig. 2f), BEQ advances its pc store in three steps: declare (L3) at Fetch , store (L5) the predicted pc at Decode , and store (L8) the corrected target at Execute . XOR reacts through the spec load (L2), so it consumes the predicted pc and is flushed when the corrected target replaces it. In code, a designer can turn one strategy into another by adding, moving, or deleting these operations. For example, deleting the seal operations (Fig. 2b, L7 and L11) removes the Sealed 
+
+transition, and this two-line edit alone turns the bypass pipeline into the stall pipeline of Fig. 2d. With no store ever Sealed , the load no longer forwards. 
+
+4 Programming Dataflow Pipelines with Visibility Control 
+
+We instantiate visibility control (§3) in a sequential programming model for dataflow pipelines. The model gives the designer control over both axes of the pipelining strategy (Table 1a), pipeline structure and hazard resolution. Whichever strategy is selected, the compiled pipeline refines the source program, preserving its sequential behavior (§5). The model comprises three abstractions: (§4.1) speculative loop pipelining controls the pipeline structure, mapping each loop to a pipeline whose internal stages are set by PDL [42]’s separators, (§4.2) the wrapper type Var controls hazard resolution per variable by instantiating visibility control, and (§4.3) the wrapper type SpecVar complements speculative loop pipelining and Var for advisory state, such as a branch history table (BHT) accessed freely from multiple stages. 
+
+Source program . We realize the programming model in Rust, taking a program as specification and compiling it into a pipeline. Although the proposed abstractions are language-agnostic, Rust offers two advantages: an advanced type system that enforces state-transition rules (Fig. 3b), and rich testing frameworks that verify the source program. We support a Rust subset defined by four constraints: safe Rust, single-threaded code over an acyclic call graph, no heap allocation, and every 10 Trovato et al.                                  
+
+> 1// A no-op primitive that
+> 2// marks stage boundaries.
+> 3fn sep() {}
+> 4// Loop to compile
+> 5loop { // Loop head
+> 6let (op, a, b) = ..;
+> 7sep();
+> 8let res =
+> 9if op.is_add() { // Demux
+> 10 let low = a[0..9] + b[0..9];
+> 11 let (low, carry) =
+> 12 (low[0..9], low[9]);
+> 13 sep();
+> 14 let high =
+> 15 a[9..] + b[9..] + carry;
+> 16 sep();
+> 17 Some(high.append(low))
+> 18 }else { None }; // Mux
+> 19 sep();
+> 20 if res > THRESHOLD { break ; }
+> 21 }
+
+(a) Loop with sep and branch. (b) Compiled pipeline from Fig. 4a. Fig. 4. Compilation of a loop with a conditional two-stage adder. 
+
+loop-carried variable wrapped in Var or SpecVar . Within these constraints, arbitrary control flow, arbitrary bitwidth integer arithmetic, arrays, and stack access remain available. 
+
+Target pipeline . We target a dynamically scheduled dataflow pipeline whose stage executions are governed by a latency-insensitive protocol [6]. The pipeline consists of stages, each a set of combinational operations, separated by pipeline registers. To model the flow of work through the stages, we use the standard token abstraction of dataflow circuits [22]. A token represents one dynamic instance of an execution and carries its in-flight values, advancing through pipeline registers in order. 
+
+4.1 Speculative Loop Pipelining 
+
+We compile each source loop into a pipeline that issues up to one token per cycle, each token executing one iteration. Figure 4b illustrates the token flow of the pipeline compiled from Fig. 4a. When token P reaches the loop head (step 1), it remains there as the parent token and issues one 
+
+subtoken per iteration (step 2). Subtokens inherit the program order of their iterations: token 𝑖 
+
+precedes token 𝑗 iff 𝑖 < 𝑗 . (We generalize program order to nested loops in §5.) We adopt PDL’s structural mapping to compile the loop body, making pipeline structure directly controllable through source changes. The pipeline separators sep() (Fig. 4a, L7, L13, L16, and L19) map to pipeline registers (step 3), and the if branch (L9–18) maps to a demultiplexer at the branch entry and a multiplexer at the join. The branch join enforces in-order exit : tokens leave the join in program order, so 4 stalls until the earlier 2 and 3 exit (step 4). The loop pipelining is speculative because token 𝑖 can start before the pipeline knows that source iteration 𝑖 exists. If an earlier token terminates the loop, the pipeline flushes all later tokens (step 5) because their iterations do not occur in the source execution. The compiler makes this flush safe by forcing each flushable token to stall before any irreversible action. After the flush, parent token P
+
+leaves the loop head (step 6). 
+
+Comparison with explicit recursive calls . PDL spawns each successor token through an explicit recursive call (§2.2), a design that differs from ours in two respects. First, whereas our loop head 11                                                                                                  
+
+> 1/// Mutable array across loop iterations.
+> 2struct Var <T, const N: usize >([T; N]);
+> 3struct StoreBatch <T, const N: usize ,const S: usize > {
+> 4slots: [( usize , Option<T>); S],
+> 5var_ref: &mut Var<T, N>,
+> 6};
+> 7struct Slot <const I: usize >;
+> 8enum Timing { Sync, Async };
+> 910 impl Var<T, N> {
+> 11 fn load<Ti: Timing >(&self, addr: U<clog2(N)>) -> T{ self.0[addr] }
+> 12 fn spec_load<Ti: Timing >(&self, addr: U<clog2(N)>) -> T{
+> 13 self.0[addr]
+> 14 }
+> 15 fn try_load(&self, addr: U<clog2(N)>) -> Option<T> {
+> 16 if random() { Some(self.0[addr]) } else { None }
+> 17 }
+> 18 fn prepare_batch(& mut self) -> StoreBatch <T, N, 0> {
+> 19 StoreBatch { slots: [], var_ref: self }
+> 20 }
+> 21 }
+> 22 impl StoreBatch<T, N, S> {
+> 23 fn decl(self, addr: usize ) -> (StoreBatch<T, N, S+1>, Slot<S>) {
+> 24 (StoreBatch {
+> 25 slots: self .slots.append((addr, None)), var_ref: self .var_ref
+> 26 }, Slot::<S>)
+> 27 }
+> 28 fn store< const I: usize >(& mut self, slot: &Slot <I>, v: T) {
+> 29 self.slots[I] = Some(v);
+> 30 }
+> 31 }
+> 32 impl Slot<I> {
+> 33 fn seal(self) {}
+> 34 }
+> 35 impl Drop for StoreBatch<T, N, S> {
+> 36 fn drop(& mut self) {
+> 37 for (addr, data) in self.slots {
+> 38 if let Some(v) = data { self.var_ref.0[addr] = v; }
+> 39 }
+> 40 }
+> 41 }
+
+Fig. 5. Source-level API of Var .
+
+issues every subtoken speculatively, PDL’s call issues the successor token only after its arguments are resolved. Speculative issue instead requires spec_call , which bundles it with value speculation on the arguments. Second, whereas the loop structure guarantees that each iteration issues exactly one successor through its single continue or break , a PDL path may contain multiple call sand issue several. Because program order is well-defined only when each token issues a unique successor, PDL enforces exactly one call on every path. Both differences shift work onto the designer, one more API to adopt and one more static rule to satisfy (§2.3). 
+
+4.2 Programming Visibility Control with Var 
+
+Var abstracts data with loop-carried dependencies, and its API instantiates visibility control (§3). The position of Var ’s operations in the pipeline determines its hazard-resolution strategy. 
+
+Source behavior . At the source level, Var<T, N> behaves as an array [T; N] (Fig. 5). load and 
+
+spec_load read an element, and try_load nondeterministically returns the element or None .Writes follow a staged write protocol through StoreBatch : decl (the declare of §3) allocates a slot, 
+
+store fills the slot, seal is a source-level no-op, and Rust’s Drop commits the stored slots in order. We enforce the protocol statically through ownership types, typestates, and the RAII pattern, so a 12 Trovato et al. 
+
+𝑆 batch :: = [𝑆 1
+
+> store
+
+, . . . , 𝑆 𝑛 
+
+> store
+
+]
+
+𝑆 spec :: = Determined | Speculative (𝑎 )
+
+(a) State definitions of 𝑆 batch and 𝑆 spec . (b) State transitions of 𝑆 batch and 𝑆 spec .Fig. 6. States and transitions for 𝑆 batch (a list of slots, each an independent 𝑆 store ) and 𝑆 spec (addresses read by 
+
+spec_load ). 
+
+deviating program does not compile: (1) a StoreBatch mutably borrows its Var (Fig. 5, L5), so at most one batch is live per Var in a single loop iteration, (2) seal consumes the slot, so no later 
+
+store can change a sealed value, and (3) every batch commits exactly once. 
+
+Instantiation of visibility control . In pipelined loop execution (§4.1), Var instantiates visibility control (§3) with extended published state: (1) Each source iteration becomes an in-flight token that plays the role of an instruction in §3. (2) The base state is the committed array contents that tokens ultimately write to, realizing the source-level [T; N] after every token commits. 
+
+(3) The published state (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec ) is exposed to later tokens in program order. The published state differs from §3 in two components, leaving 𝑆 decl and 𝑆 load unchanged. First, 𝑆 batch 
+
+generalizes the single pending 𝑆 store to a list of slots, because one source iteration may declare multiple writes through StoreBatch .5 Each slot runs the 𝑆 store machine independently: decl(addr) 
+
+appends a Declared (𝑎𝑑𝑑𝑟 ) slot, store advances it to Tentative (𝑎𝑑𝑑𝑟, 𝑣 ), and seal advances it to 
+
+Sealed (𝑎𝑑𝑑𝑟, 𝑣 ). Second, 𝑆 spec records the addresses read by spec_load , exposing which speculative values the token depends on. Tokens observe the published states of preceding tokens in program order to resolve hazards. 
+
+load (and try_load ), spec_load , and drop instantiate the conservative load, speculative load, and commit columns of Fig. 3. load 6 reads an element, stalling on a RAW hazard. try_load 
+
+instead immediately returns None on RAW. spec_load returns the most recent visible value, even if tentative, or the base-state value ( ⊕) when none is visible. The speculative-load flush of §3 carries over to Var , now tracked per address through 𝑆 spec and across the multiple slots of a 𝑆 batch . Once a preceding token’s slot reaches or updates Tentative at an address in a token’s 𝑆 spec , that token and all later tokens are flushed. 7 drop(batch) waits until no preceding token may still load or declare a store, and until no pending slot of a preceding token conflicts with the batch’s addresses, then atomically commits every stored slot of the batch in declared order. 
+
+Example 1: 5-stage pipelined CPU . Figure 7 realizes the example pipelines of §3 as Var code inside a speculative loop pipeline, combining two of the three strategies: bypass on rf and speculation on 
+
+pc . For rf , the pipeline realizes the bypass example of Fig. 2a and Fig. 2b. decl(rd_addr) (Fig. 7, L17) opens a Declared (rd_addr ) slot at Decode . The store and seal calls then advance it through 
+
+Tentative to Sealed in whichever stage produces the result, Execute for ALU results (L21–22) or 
+
+Memory for loads (L32–33). A later token’s load then bypasses the sealed value in the same cycle (Fig. 9a). For pc , the pipeline realizes the speculation example of Fig. 2e and Fig. 2f. spec_load (Fig. 7, L9) reads the most recent Tentative pc and records the address in 𝑆 spec , and store (L12) publishes the prediction curr_pc +4 as Tentative , which the next token’s spec_load observes to fetch ahead. A      
+
+> 5The staged write protocol ensures that the only 𝑆 batch histories a source program can express are the transitions of Fig. 6.
+> 6Timing::Async directs the compiler to generate a bypass network that reads the sealed value combinationally within the same cycle (Fig. 9a). Timing::Sync reads it on the next cycle.
+> 7The flush shares the loop-termination mechanism of §4.1.
+
+13  
+
+> 1
+
+fn core(  
+
+> 2
+
+init_pc: u32 , 
+
+> 3
+
+imem: Fn( u32 ) -> MemResp , 
+
+> 4
+
+dmem: FnMut(MemReq) -> MemResp  
+
+> 5
+
+) {  
+
+> 6
+
+let mut pc = Var::new([init_pc]);  
+
+> 7
+
+let mut rf = Var::new([0; 32]);  
+
+> 8
+
+loop { // Fetch stage  
+
+> 9
+
+let curr_pc = pc.spec_load::<Sync>(0);  
+
+> 10
+
+let inst = imem(curr_pc);  
+
+> 11
+
+let (mut npc_b, npc_slot) = pc.prepare_batch().decl(0);  
+
+> 12
+
+npc_b.store(&npc_slot, curr_pc + 4); // Default next PC as PC+4.  
+
+> 13
+
+sep(); // Decode stage  
+
+> 14
+
+let Decoded { rs1_addr, rs2_addr, rd_addr, exe_wb, .. }  
+
+> 15
+
+@ dec = decode(inst);  
+
+> 16
+
+let rs1 = rf.load::<Async>(rs1_addr); // rs2 omitted.  
+
+> 17
+
+let (rf_b, rf_slot) = rf.prepare_batch().decl(rd_addr);  
+
+> 18
+
+sep(); // Execute stage  
+
+> 19
+
+let (executed, next_pc, br_taken) = execute(dec, rs1, rs2);  
+
+> 20
+
+let memsel = if exe_wb {  
+
+> 21
+
+rf_b.store(&rf_slot, executed.wb_data);  
+
+> 22
+
+rf_slot.seal();  
+
+> 23
+
+MemSel::Exe  
+
+> 24
+
+} else { MemSel::Mem(rf_slot) };  
+
+> 25
+
+if br_taken { npc_b.store(&npc_slot, next_pc); }  
+
+> 26
+
+sep(); // Memory stage  
+
+> 27
+
+match memsel {  
+
+> 28
+
+MemSel::Exe => {},  
+
+> 29
+
+MemSel::Mem(rf_slot) => {  
+
+> 30
+
+let mem_res = memory(executed, &dmem);  
+
+> 31
+
+if let Some(wb_data) = mem_res.wb_data() {  
+
+> 32
+
+rf_b.store(&rf_slot, wb_data);  
+
+> 33
+
+rf_slot.seal();  
+
+> 34
+
+} 
+
+> 35
+
+} 
+
+> 36
+
+};  
+
+> 37
+
+sep(); // Writeback stage  
+
+> 38
+
+drop((rf_b, npc_b));  
+
+> 39
+
+} 
+
+> 40
+
+}
+
+Fig. 7. 5-stage pipelined CPU code with bypass and static prediction. 
+
+Fig. 8. Compiled pipeline from Fig. 7. Var operations are compiled into modules that coordinate access to shared state. 
+
+taken branch’s store (L25) instead overwrites the Tentative value with next_pc, invalidating the speculation and flushing every token that observed it (Fig. 9b). 
+
+Design-space exploration . The edits that turn one strategy into another (§3) carry over to the real code. Each hazard-resolution choice in Fig. 7 is again a small change to where Var operations appear. Deleting the seal calls (L22, L33) is the two-line edit of Fig. 2d replayed on real code, eliminating the bypass network and forcing every load to stall until conflicting stores commit. Replacing spec_load with load for the program counter (L9) switches pc from the speculative to the conservative column of Fig. 3, eliminating misprediction recovery logic but stalling fetch until the branch target resolves. Moving drop (L38) earlier in the pipeline, e.g. , immediately after the 14 Trovato et al.               
+
+> (a) SUB ’s store /seal modules land in the execute stage, so ADD ’s load rs1 bypasses the sealed value in the same cycle.
+> (b) BEQ ’s store on pc overwrites the Tentative value, expressing speculation invalidation. Fig. 9. Hardware-module instantiation of Fig. 2 for Fig. 7.
+
+store calls in the Execute and Memory stages, reduces the pipeline registers that carry 𝑆 batch but requires more hazard detection logic, since writes may now conflict with in-flight tokens. 
+
+Hazard resolution expressiveness . Var spans all four dimensions of Table 1b because it treats value speculation as a data read through spec_load , separate from the speculative issue of tokens. The separation yields each dimension in Fig. 7: (1) additional Var s can coexist with pc in one pipeline, each speculated independently (per-state), (2) the policy is chosen at each access, as swapping between spec_load and load showed (resolution policy), (3) 𝑆 spec tracks speculation per address, so a token rolls back only when an address it depends on is overwritten (per-address), and (4) each read may sit at any pipeline stage (selectable observation stage). 
+
+Example 2: renaming register file . Beyond the four dimensions within a single Var , composing multiple Var s expresses more sophisticated hazard resolution such as register renaming. Figure 10 reimplements Fig. 7’s register file as a renaming one, eliminating WAR and WAW stalls by giving every write a fresh physical register. Three Var s replace the single rf (L1–3): a free list of per-physical-register free bits ( free ), a rename table mapping architectural to physical registers ( names ), and the physical register file ( phys ). Reading an operand chains two loads (L8–9): a rename table lookup that bypasses the sealed mapping of an in-flight rename (L26), followed by a phys read. The allocator scans the free list by calling try_load(i) on each entry (L11). Entries with in-flight writes 15                                                         
+
+> 1let mut free: Var <bool , PHYS_REGS> = ..; // Free list
+> 2let mut names: Var <PhysId, ARCH_REGS> = ..; // Rename table
+> 3let mut phys: Var <Word, PHYS_REGS> = ..; // Physical register file
+> 4loop {
+> 5.. // Fetch (same as before)
+> 6sep(); // Decode / Rename stage
+> 7..
+> 8let rs1_phys = names.load::<Sync>(rs1_addr);
+> 9let rs1 = phys.load::<Async>(rs1_phys); // rs2 omitted.
+> 10 let rd_phys_id = loop {
+> 11 if let Some(i) = (0..PHYS_REGS).map(|i| { free.try_load(i) })
+> 12 .find_idx(|f| f == Some( true )) { break i; }
+> 13 };
+> 14 let free_b = free.prepare_batch();
+> 15 // Free old physical register mapped to rd.
+> 16 let old_rd_phys = names.load::<Sync>(rd_addr);
+> 17 let (mut free_b, free_s1) = free_b.decl(old_rd_phys);
+> 18 free_b.store(&free_s1, true );
+> 19 // Allocate new physical register.
+> 20 let (mut free_b, free_s2) = free_b.decl(rd_phys_id);
+> 21 free_b.store(&free_s2, false );
+> 22 // Update rename table.
+> 23 let (mut names_b, names_slot) =
+> 24 names.prepare_batch().decl(rd_addr);
+> 25 names_b.store(&names_slot, rd_phys_id);
+> 26 names_slot.seal();
+> 27 // Prepare write to physical register.
+> 28 let (phys_b, phys_slot) = phys.prepare_batch().decl(rd_phys_id);
+> 29 ..
+> 30 }
+
+Fig. 10. Register renaming with try_load .
+
+return None and are skipped instead of stalling the scan, while a free register returns Some(true) 
+
+and is selected (L10–13). Once a physical register is allocated, the free list (L14–21) and the rename table (L23–26) are updated, and a slot for the pending write to phys is declared (L28). 
+
+4.3 Programming Advisory State with SpecVar 
+
+We introduce SpecVar<T> for advisory state. Its load returns an arbitrary value and its store is a no-op. This deliberately weak contract lets us compile SpecVar to a shared storage that tokens access without hazard resolution. Figure 11 illustrates dynamic branch prediction with a BHT using SpecVar . Each token predicts whether the next branch will be taken based on the BHT state in SpecVar (L7) and updates it with the actual outcome (L16). Correctness is independent of the arbitrary value returned by bht.load() .If the prediction matches the outcome ( br_taken == pred_taken ), the PC assigned at L9 is already correct. Otherwise, the token overwrites it with correct_pc (L12–14). 
+
+5 Formal Pipeline Behavior 
+
+We formalize the per-cycle behavior of the pipelines our compiler produces in the token abstraction of §4. We first capture pipeline state as the tokens held in each stage, where every token carries its local variables and the published state of Var s (§5.1). We then define the cycle-level transition relation that advances this state by one clock cycle and emits an output token (§5.2). Finally, we provide an informal proof that the behavior of the compiled pipeline follows its Rust source (§5.3). 
+
+Notations . For a set 𝐴 , we write 𝐴 ⊥ for its extension with a distinguished bottom value ⊥, and 𝑎 ?
+
+for a member of 𝐴 ⊥. We use 𝐴 ∗ to denote the set of lists of elements from 𝐴 , and 𝑎 for a member of this set. For a list 𝑎 ∈ 𝐴 ∗, 𝑎 [𝑖 ] is its 𝑖 -th element, with index starting from 0. For sets 𝐴 and 𝐵 ,16 Trovato et al.                                       
+
+> 1let mut bht = SpecVar::new(Bht::new());
+> 2loop {
+> 3let curr_pc = pc.spec_load();
+> 4let inst = imem(curr_pc);
+> 5let br_tgt = branch_target(inst, curr_pc);
+> 6let (mut npc_b, npc_slot) = pc.prepare_batch().decl(0);
+> 7let pred_taken = predict_branch(bht.load(), curr_pc, inst);
+> 8let pred_pc = if pred_taken { br_tgt } else { curr_pc + 4 };
+> 9npc_b.store(&npc_slot, pred_pc);
+> 10 ..
+> 11 let (executed, br_taken) = execute(decoded, rs1, rs2);
+> 12 if br_taken != pred_taken {
+> 13 let correct_pc = if br_taken { br_tgt } else { curr_pc + 4 };
+> 14 npc_b.store(&npc_slot, correct_pc);
+> 15 }
+> 16 bht.store(bht.load().update(curr_pc, pred_taken, br_taken));
+> 17 ..
+> 18 }
+
+Fig. 11. Dynamic prediction with SpecVar .
+
+𝑥, 𝑦 ∈ 𝐿𝑜𝑐𝑎𝑙𝑉 𝑎𝑟 𝑋, 𝑌 ∈ 𝑉 𝑎𝑟 𝑎 ∈ 𝐴𝑑𝑑𝑟 𝑣 ∈ 𝑉 𝑎𝑙𝑢𝑒 𝑛 ∈ N 𝑒 ∈ Combinational 
+
+𝑟 ∈ 𝑆𝑙𝑜𝑡𝑆𝑡𝑎𝑡𝑒 :: = Declared (𝑎 ) | Tentative (𝑎, 𝑣 ) | Sealed (𝑎, 𝑣 ?)
+
+𝑆 pub ∈ 𝑃𝑢𝑏𝑙𝑖𝑠ℎ𝑒𝑑𝑆𝑡𝑎𝑡𝑒 :: = (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec )
+
+𝑃𝑉 ∈ 𝑃𝑢𝑏𝑙𝑖𝑠ℎ𝑒𝑑𝑉 𝑖𝑒𝑤 :: = 𝑉 𝑎𝑟 ⇀ 𝑆 pub 
+
+𝐿 ∈ LoopIndex :: = [𝑛 1, . . . , 𝑛 𝑘 ]
+
+𝐿𝑀 ∈ LocalMemory :: = 𝐿𝑜𝑐𝑎𝑙𝑉 𝑎𝑟 ⇀ 𝑉 𝑎𝑙𝑢𝑒 𝑇 ∈ 𝑇𝑜𝑘𝑒𝑛 :: = (𝐿, 𝐿𝑀, 𝑃𝑉 )
+
+𝑃 ∈ PipelineSegment :: = comb (𝑒 ) | sep (𝑇 ?) | 𝑃 1; 𝑃 2
+
+| if (𝑥, 𝑃 t, 𝑃 f ) | loop (𝑇 ?, 𝑛, 𝑃 ) | break 
+
+| x = load 𝑋 (𝑎 ) | x = try_load 𝑋 (𝑎 ) | x = spec_load 𝑋 (𝑎 )| decl 𝑋 (𝑎, 𝑦 ) | store 𝑋 (𝑦, 𝑥 ) | seal 𝑋 (𝑦 ) | drop 𝑋 
+
+Σ ∈ BaseStorage :: = 𝑉 𝑎𝑟 → 𝐴𝑑𝑑𝑟 ⇀ 𝑉 𝑎𝑙𝑢𝑒 𝑢 ∈ Commit :: = (𝑋, 𝑎, 𝑣 )
+
+Π ∈ PipelineState :: = (𝑃, Σ)
+
+Fig. 12. Type definitions for pipeline states. 
+
+𝐴 → 𝐵 denotes a total function, and 𝐴 ⇀ 𝐵 denotes a partial function. Given a partial function 𝑓 ,
+
+𝑓 [𝑎 ↦ → 𝑏 ] denotes the function that maps 𝑎 to 𝑏 and behaves as 𝑓 elsewhere. 
+
+5.1 Pipeline State in Tokens 
+
+Figure 12 defines a pipeline state Π = (𝑃, Σ) as a pair comprising a pipeline segment 𝑃 , which holds each token at its position in the pipeline, and a base storage Σ, which records the base state of each Var . The pipeline segment is defined inductively, with each node a contiguous pipeline region containing its subsegments and any resident token. The combinational code comb (𝑒 ), break , and the Var visibility operations enclose no state. The separator sep (𝑇 ?) buffers at most one token. The composite forms 𝑃 1; 𝑃 2, if (𝑥, 𝑃 t, 𝑃 f ), and loop (𝑇 ?, 𝑛, 𝑃 ) nest subsegments; loop additionally stores the parent token and the next loop-iteration counter 𝑛 . We write T ( 𝑃 ) for the set of all tokens stored in segment 𝑃 and flush (𝑃 ) for the segment obtained by removing every token from 𝑃 .A token data 𝑇 is defined as the combination of three data: (1) a loop index 𝐿 = [𝑛 1, . . . , 𝑛 𝑘 ],representing the token is executing the 𝑛 𝑖 ’th iteration of depth-𝑖 enclosing loop for each 𝑖 ; (2) the local variables state 𝐿𝑀 ; and (3) the published view 𝑃𝑉 holding the token’s published state for each 
+
+Var . We define program order over tokens ( 𝑇 1 ≺𝑃 𝑇 2) as the lexicographic order on the loop indices. 17 
+
+Πc ⊢ ⟨ 𝑃 c, 𝑇 ? 
+
+> i
+
+, 𝑏 succ ⟩ → step ⟨𝑃 c+1, 𝑇 ? 
+
+> o
+
+, 𝑏 pred , 𝑏 break , 𝑢 ⟩
+
+𝑇 = (𝐿, 𝐿𝑀, 𝑃𝑉 ) 𝐿𝑀 ′ = [[ 𝑒 ]] Comb (𝐿𝑀 )
+
+Πc ⊢ ⟨ comb (𝑒 ), 𝑇 , 𝑏 ⟩ → step ⟨comb (𝑒 ), (𝐿, 𝐿𝑀 ′, 𝑃𝑉 ), 𝑏, false , [ ] ⟩ (Comb) 
+
+𝑇 ? 
+
+> o
+
+= 𝑇 ? 
+
+> c
+
+𝑏 pred = (𝑇 ? 
+
+> c
+
+= ⊥ ∨ 𝑏 succ )
+
+𝑇 ? 
+
+> c+1
+
+=
+
+𝑇 ?  
+
+> iif
+
+𝑏 pred = true ,𝑇 ? 
+
+> cotherwise
+
+Πc ⊢ ⟨ sep (𝑇 ? 
+
+> c
+
+), 𝑇 ? 
+
+> i
+
+, 𝑏 succ ⟩ → step ⟨sep (𝑇 ? 
+
+> c+1
+
+), 𝑇 ? 
+
+> o
+
+, 𝑏 pred , false , [ ] ⟩ (Sep) 
+
+Πc ⊢ ⟨ 𝑃 1, 𝑇 ? 
+
+> i
+
+, 𝑏 m ⟩ → step ⟨𝑃 ′
+
+> 1
+
+, 𝑇 ?
+
+> m
+
+, 𝑏 pred , 𝑏 break ,1, 𝑢 1 ⟩ Πc ⊢ ⟨ 𝑃 2, 𝑇 ?
+
+> m
+
+, 𝑏 succ ⟩ → step ⟨𝑃 ′
+
+> 2
+
+, 𝑇 ? 
+
+> o
+
+, 𝑏 m, 𝑏 break ,2, 𝑢 2 ⟩
+
+Πc ⊢ ⟨ 𝑃 1; 𝑃 2, 𝑇 ? 
+
+> i
+
+, 𝑏 succ ⟩ → step ⟨𝑃 ′
+
+> 1
+
+; 𝑃 ′
+
+> 2
+
+, 𝑇 ? 
+
+> o
+
+, 𝑏 pred , 𝑏 break ,1 ∨ 𝑏 break ,2, 𝑢 1 ++ 𝑢 2 ⟩ (Seq) 
+
+𝑗 i =
+
+t if 𝑇 ? 
+
+> i
+
+= (_, 𝐿𝑀, _) ∧ 𝐿𝑀 𝑥 = true ,
+
+f otherwise, 𝑇 ? 
+
+> i,𝑗
+
+=
+
+𝑇 ?  
+
+> iif
+
+𝑗 = 𝑗 i,
+
+⊥ otherwise, ( 𝑗 ∈ { t, f } ) 
+
+𝑆 𝑗 = T ( 𝑃 𝑗 ) ∪ Tok (𝑇 ? 
+
+> i,𝑗
+
+) ( 𝑗 ∈ { t, f } ) 
+
+𝑗 o =
+
+t if 𝑆 t ≠ ∅ ∧ min ≺𝑃 (𝑆 t ∪ 𝑆 f ) ∈ 𝑆 t,
+
+f otherwise, 𝑏 𝑗 =
+
+𝑏 succ if 𝑗 o = 𝑗, 
+
+false otherwise ( 𝑗 ∈ { t, f } ) 
+
+Π𝑐 ⊢ ⟨ 𝑃 𝑗 , 𝑇 ? 
+
+> i,𝑗
+
+, 𝑏 𝑗 ⟩ → step ⟨𝑃 ′ 
+
+> 𝑗
+
+, 𝑇 ? 
+
+> o,𝑗
+
+, 𝑏 pred ,𝑗 , 𝑏 break ,𝑗 , 𝑢 𝑗 ⟩ ( 𝑗 ∈ { t, f } ) 
+
+𝑇 ? 
+
+> o
+
+= 𝑇 ? 
+
+> o,𝑗 o
+
+𝑏 pred = 𝑏 pred ,𝑗 i
+
+Π𝑐 ⊢ ⟨ if (𝑥, 𝑃 t, 𝑃 f ), 𝑇 ? 
+
+> i
+
+, 𝑏 succ ⟩ → step ⟨if (𝑥, 𝑃 ′ 
+
+> t
+
+, 𝑃 ′ 
+
+> f
+
+), 𝑇 ? 
+
+> o
+
+, 𝑏 pred , 𝑏 break ,t ∨ 𝑏 break ,f, 𝑢 t ++ 𝑢 f ⟩ (If) 
+
+Fig. 13. Core rules for the cycle-level transition relation. 
+
+5.2 Cycle-Level Transition Relation 
+
+For a pipeline segment state 𝑃 c, we write the cycle-level transition relation as 
+
+Πc ⊢ ⟨ 𝑃 c, 𝑇 ?
+
+i , 𝑏 succ ⟩ → step ⟨𝑃 c+1, 𝑇 ?
+
+o , 𝑏 pred , 𝑏 break , 𝑢 ⟩
+
+which models the standard valid-ready handshake [6] between adjacent segments in two steps. 
+
+(1) Segment 𝑃 c, within the whole-pipeline context Πc, receives input token 𝑇 ?
+
+i from its predecessor and ready signal 𝑏 succ from its successor. (2) The segment updates to 𝑃 c+1, emits output token 𝑇 ?
+
+o to its successor, ready signal 𝑏 pred to its predecessor, loop-control bit 𝑏 break to its enclosing loop, and commits 𝑢 to the base states. The ready signal indicates whether the segment consumes the input token. A token transfers to the next segment only when it is valid (not ⊥) and its receiver is ready 
+
+(𝑏 succ = true ). The root instance of the cycle-level transition relation advances the whole pipeline. Writing 
+
+Πc = (𝑃 root ,c, Σc), the cycle-level transition relation is instantiated with 𝑃 root ,c and 𝑏 succ = true :
+
+Πc ⊢ ⟨ 𝑃 root ,c, 𝑇 ?
+
+i , true ⟩ → step ⟨𝑃 root ,c+1, 𝑇 ?
+
+o , 𝑏 pred , 𝑏 break , 𝑢 ⟩ .
+
+The next whole-pipeline state is Πc+1 = (𝑃 root ,c+1, Σc+1), where Σc+1 is obtained by applying the commits 𝑢 to Σc.
+
+Basic segment rules . Figure 13 presents the cycle-level transition relation for the basic seg-ment forms. (Comb) comb (𝑒 ) applies the combinational computation 𝑒 to local memory, yielding 
+
+𝐿𝑀 ′ = [[ 𝑒 ]] Comb (𝐿𝑀 ). (Sep) sep (𝑇 ?
+
+c ) is a pipeline register: it outputs 𝑇 ?
+
+c , accepts a new token when empty or when its successor consumes 𝑇 ?
+
+c , and otherwise retains 𝑇 ?
+
+c . (Seq) 𝑃 1; 𝑃 2 composes the two subsegments by forwarding the token output of 𝑃 1 to 𝑃 2 and forwarding the ready bit of 𝑃 2 to 
+
+𝑃 1; although these two middle values are existentially quantified, they are uniquely determined in a whole-pipeline context because the dependency graph among intermediate values is acyclic. (If) if (𝑥, 𝑃 t, 𝑃 f ) demultiplexes an input token according to the condition 𝐿𝑀 𝑥 and routes output from the branch containing the earliest token to preserve in-order execution. Sequencing and conditionals propagate a break bit when either subsegment reports one. 18 Trovato et al.                                                                                                              
+
+> Πc⊢ ⟨ 𝑃 c, 𝑇 ?
+> i, 𝑏 succ ⟩ → step ⟨𝑃 c+1, 𝑇 ?
+> o, 𝑏 pred , 𝑏 break , 𝑢 ⟩
+> 𝑇 ?
+> h+1=𝑇 ?
+> i
+> Πc⊢ ⟨ loop (⊥ , 𝑛, 𝑃 ), 𝑇 ?
+> i, 𝑏 succ ⟩ → step ⟨loop (𝑇 ?
+> h+1,0, 𝑃 ),⊥,true ,false ,[ ] ⟩ (Loop-Empty)
+> 𝑇 h=(𝐿, 𝐿𝑀, 𝑃𝑉 )𝑇 b=(𝐿 ++[ 𝑛 ], 𝐿𝑀, 𝑃𝑉 )
+> Πc⊢ ⟨ 𝑃, 𝑇 b,true ⟩ → step ⟨𝑃 ′, 𝑇 ?
+> r, 𝑏 body , 𝑏 break , 𝑢 ⟩𝑛 ′=
+> 𝑛 +1if 𝑏 body =true ,𝑛 otherwise
+> (𝑇 ?
+> o, 𝑇 ?
+> h+1, 𝑃 ′′ )=
+> (𝑇 h,⊥,flush (𝑃 ′) ) if 𝑏 break =true ∧𝑏 succ =true ,
+> (⊥ ,𝑇 h, 𝑃 ′)otherwise
+> Πc⊢ ⟨ loop (𝑇 h, 𝑛, 𝑃 ), 𝑇 ?
+> i, 𝑏 succ ⟩ → step ⟨loop (𝑇 ?
+> h+1, 𝑛 ′, 𝑃 ′′ ), 𝑇 ?
+> o,false ,false , 𝑢 ⟩(Loop-Occupied)
+> 𝑇 =(𝐿 p++[ 𝑖 ], 𝐿𝑀, 𝑃𝑉 )loop ( ( 𝐿 p,_,_),_, 𝑃 loop ) ∈ Πc
+> 𝑏 pred =¬∃ 𝑇 ′∈ T ( 𝑃 loop ). 𝑇 ′≺𝑃 𝑇
+> Πc⊢ ⟨ break , 𝑇 , 𝑏 succ ⟩ → step ⟨break ,⊥, 𝑏 pred , 𝑏 pred ,[ ] ⟩ (Break)
+
+Fig. 14. Loop-control rules for the cycle-level transition relation. 
+
+Loop-control rules . Figure 14 defines the cycle-level rules for speculative loop pipelining (§4.1). An empty loop unconditionally accepts the input token and stores the token while setting the loop iteration counter to zero (Loop-Empty). An occupied loop (𝑇 ?
+
+> h+1
+
+, 0, 𝑃 ) invokes the body with subtoken (𝐿 ++[ 𝑛 ], 𝐿𝑀, 𝑃𝑉 ) and successor ready true , discards the body output, advances the counter when the body reports ready (Loop-Occupied). A break inside the loop releases the parent token and flushes the remaining tokens from the body. break ignores the given 𝑏 succ and reports ready only when its input token is the earliest token remaining inside the enclosing loop to block speculative tokens from exiting the loop (Break). 
+
+Visibility-operation rules . Figure 15 formalizes the Var ’s visibility control operations using the state machines of Fig. 3a. The slot-list transitions use Fig. 6a. We write unresolved (𝑇 , 𝑋, 𝑎 ) when 
+
+𝑇 may still publish an unsealed write to 𝑋 [𝑎 ], and sealed (𝑇 , 𝑋, 𝑎, 𝑣 ) when 𝑇 has a sealed slot for 
+
+𝑋 [𝑎 ] with value 𝑣 .The decl operation appends a new Declared (𝑎 ) slot to the token’s 𝑆 batch list for X and writes the new slot index into local variable y (Decl). The store operation uses that slot index to update a matching Declared (𝑎 ) or Tentative (𝑎, _) slot to Tentative (𝑎, 𝑣 ), where 𝑣 = 𝐿𝑀 𝑥 (Store). The seal 
+
+operation finalizes the indexed slot by transitioning it to Sealed (𝑎, 𝑣 ?), preserving the tentative value when one has been published and otherwise sealing an empty value (Seal). The load operation implements conservative RAW resolution. If a preceding token in T ( Πc) may still publish an unsealed write to X[a] , the input token stalls and is not consumed (Load-Stall). Otherwise, the load either bypasses the value from the latest preceding token, in ≺𝑃 order, with a sealed slot at X[a] (Load-Bypass), or reads the base storage Σ(Πc)( 𝑋, 𝑎 ) when no such token exists (Load-Direct). The try_load operation is the non-blocking variant of load : under the Load-Stall condition it writes None to local memory and propagates the successor ready signal, while the bypass and direct cases return the same value as load (wrapped as Some when the local result type is optional). The drop operation commits the token’s pending sealed writes for X. It stalls when committing could violate WAW or WAR order: a preceding token may still load X, may still declare a write to X, or already holds a slot for one of the addresses being committed (Drop-Stall). If no such hazard remains, drop emits one commit (𝑋, 𝑎 𝑗 , 𝑣 𝑗 ) for each Sealed (𝑎 𝑗 , 𝑣 𝑗 ) slot in 𝑆 batch 
+
+and clears 𝑆 batch in the token’s published view (Drop-Ok). The spec_load operation implements speculative RAW resolution: it bypasses from the latest preceding tentative or sealed slot at X[a] 
+
+when one exists, otherwise reads Σ(Πc)( 𝑋, 𝑎 ), and records 𝑎 in the token’s 𝑆 spec component. A later 19 
+
+Π𝑐 ⊢ ⟨ 𝑃 𝑐 , 𝑇 ? 
+
+> i
+
+, 𝑏 succ ⟩ → step ⟨𝑃 𝑐 +1, 𝑇 ? 
+
+> o
+
+, 𝑏 pred , 𝑏 break , 𝑢 ⟩
+
+𝑃𝑉 𝑋 = (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec ) 𝑃𝑉 ′ = 𝑃𝑉 [𝑋 ↦ → ( 𝑆 decl , 𝑆 batch ++ [ Declared (𝑎 ) ] , 𝑆 load , 𝑆 spec ) ] 
+
+Π𝑐 ⊢ ⟨ decl 𝑋 (𝑎, 𝑦 ), (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑏 ⟩ → step ⟨decl 𝑋 (𝑎, 𝑦 ), (𝐿, 𝐿𝑀 [𝑦 ↦ → | 𝑆 batch | ] , 𝑃𝑉 ′ ), 𝑏, false , [ ] ⟩ (Decl) 
+
+𝑃𝑉 𝑋 = (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec ) 𝑆 batch [𝑦 ] ∈ { Declared (𝑎 ), Tentative (𝑎, _) } 
+
+𝐿𝑀 𝑥 = 𝑣 𝑆 ′ 
+
+> batch
+
+= 𝑆 batch [𝑦 ↦ → Tentative (𝑎, 𝑣 ) ] 𝑃𝑉 ′ = 𝑃𝑉 [𝑋 ↦ → ( 𝑆 decl , 𝑆 ′
+
+> batch
+
+, 𝑆 load , 𝑆 spec ) ] 
+
+Π𝑐 ⊢ ⟨ store 𝑋 (𝑦, 𝑥 ), (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑏 ⟩ → step ⟨store 𝑋 (𝑦, 𝑥 ), (𝐿, 𝐿𝑀, 𝑃𝑉 ′ ), 𝑏, false , [ ] ⟩ (Store) 
+
+𝑃𝑉 𝑋 = (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec ) 𝑆 batch [𝑦 ] ∈ { Declared (𝑎 ), Tentative (𝑎, 𝑣 ) } 
+
+𝑆 ′ 
+
+> batch
+
+= 𝑆 batch [𝑦 ↦ → Sealed (𝑎, 𝑣 ) ] 𝑃𝑉 ′ = 𝑃𝑉 [𝑋 ↦ → ( 𝑆 decl , 𝑆 ′
+
+> batch
+
+, 𝑆 load , 𝑆 spec ) ] 
+
+Π𝑐 ⊢ ⟨ seal 𝑋 (𝑦 ), (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑏 ⟩ → step ⟨seal 𝑋 (𝑦 ), (𝐿, 𝐿𝑀, 𝑃𝑉 ′ ), 𝑏, false , [ ] ⟩ (Seal) 
+
+𝑇 ′ ∈ T ( Π𝑐 ) 𝑇 ′ ≺𝑃 𝑇 unresolved (𝑇 ′, 𝑋 , 𝑎 )
+
+Π𝑐 ⊢ ⟨ x = load 𝑋 (𝑎 ), 𝑇 , 𝑏 ⟩ → step ⟨x = load 𝑋 (𝑎 ), ⊥, false , false , [ ] ⟩ (Load-Stall) 
+
+¬loadStall (Π𝑐 ,𝑇 , 𝑋 , 𝑎 ) 𝑇 last = max ≺𝑃 {𝑇 ′ ∈ T ( Π𝑐 ) | 𝑇 ′ ≺𝑃 𝑇 ∧ ∃ 𝑣. sealed (𝑇 ′, 𝑋 , 𝑎, 𝑣 ) } 
+
+𝑣 last = latestSlot (𝑇 last , 𝑋 , 𝑎 )
+
+Π𝑐 ⊢ ⟨ x = load 𝑋 (𝑎 ), (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑏 ⟩ → step ⟨x = load 𝑋 (𝑎 ), (𝐿, 𝐿𝑀 [𝑥 ↦ → 𝑣 last ], 𝑃𝑉 ), 𝑏, false , [ ] ⟩ (Load-Bypass) 
+
+¬loadStall (Π𝑐 ,𝑇 , 𝑋 , 𝑎 ) ¬∃ 𝑇 ′ ∈ T ( Π𝑐 ). 𝑇 ′ ≺𝑃 𝑇 ∧ ∃ 𝑣. sealed (𝑇 ′, 𝑋 , 𝑎, 𝑣 )
+
+𝑣 = Σ(Π𝑐 ) ( 𝑋 , 𝑎 )
+
+Π𝑐 ⊢ ⟨ x = load 𝑋 (𝑎 ), (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑏 ⟩ → step ⟨x = load 𝑋 (𝑎 ), (𝐿, 𝐿𝑀 [𝑥 ↦ → 𝑣 ], 𝑃𝑉 ), 𝑏, false , [ ] ⟩ (Load-Direct) 
+
+𝑃𝑉 𝑋 = (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec ) ∃𝑟 ∈ 𝑆 batch . 𝑟 = Sealed (𝑎, 𝑣 )
+
+𝑇 ′ ∈ T ( Π𝑐 ) 𝑇 ′ ≺𝑃 (𝐿, 𝐿𝑀, 𝑃𝑉 ) (𝑇 ′ .𝑃𝑉 ) 𝑋 = (𝑆 ′
+
+> decl
+
+, 𝑆 ′
+
+> batch
+
+, 𝑆 ′
+
+> load
+
+, _)
+
+𝑆 ′ 
+
+> load
+
+= MayLoad ∨ 𝑆 ′ 
+
+> decl
+
+= MayDeclare ∨ ∃ 𝑟 ′ ∈ 𝑆 ′ 
+
+> batch
+
+. 𝑟 ′ .𝑎𝑑𝑑𝑟 = 𝑎 
+
+Π𝑐 ⊢ ⟨ drop 𝑋 , (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑏 ⟩ → step ⟨drop 𝑋 , ⊥, false , false , [ ] ⟩ (Drop-Stall) 
+
+¬dropStall (Π𝑐 , (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑋 ) 𝑃𝑉 𝑋 = (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec )
+
+𝑢 = (𝑋 , 𝑎 𝑗 , 𝑣 𝑗 ) for each Sealed (𝑎 𝑗 , 𝑣 𝑗 ) ∈ 𝑆 batch 𝑃𝑉 ′ = 𝑃𝑉 [𝑋 ↦ → ( 𝑆 decl , [ ] , 𝑆 load , 𝑆 spec ) ] 
+
+Π𝑐 ⊢ ⟨ drop 𝑋 , (𝐿, 𝐿𝑀, 𝑃𝑉 ), 𝑏 ⟩ → step ⟨drop 𝑋 , (𝐿, 𝐿𝑀, 𝑃𝑉 ′ ), 𝑏, false , 𝑢 ⟩ (Drop-Ok) 
+
+Fig. 15. Visibility-operation rules for Var .
+
+conflicting store to an address recorded in 𝑆 spec makes the speculative token non-live through 
+
+live Πc (𝑇 ), preventing it from reaching an irreversible drop .
+
+5.3 Correctness Proof Sketch 
+
+We provide an informal correctness proof sketch that the formalized pipeline behavior refines the source semantics up to base-state commits. For a source program 𝑆 , let [[ 𝑆 ]] Rust be the source Rust semantics, Π the compiled pipeline from 𝑆 , and [[ Π]] Pipe be the semantics defined by the transitive closure of Π’s cycle-level transitions. The compiler maps 𝑆 to Π structurally; ordinary computations map to comb segments, visibility operations map to the corresponding segments, and source sequencing, conditionals, and loops map to 𝑃 1; 𝑃 2, if (𝑥, 𝑃 t, 𝑃 f ), and loop (𝑇 ?, 𝑛, 𝑃 ). The correctness condition is the refinement [[ Π]] Pipe ⊑ [[ 𝑆 ]] Rust : every sequence of committed Var 
+
+base-state updates produced by [[ Π]] Pipe is permitted by [[ 𝑆 ]] Rust .The proof establishes the refinement by simultaneous induction over loop iterations. The in-duction maintains three properties. First, each load and a value-producing try_load in a live token with loop index 𝐿 returns the same value as iteration 𝐿 of [[ 𝑆 ]] Rust . Second, each live token with loop index 𝐿 stores and seals the same slot contents as iteration 𝐿 of [[ 𝑆 ]] Rust . Third, each base-storage location has a time 𝑡 , itself a loop index, such that the stored value equals the value after iteration 𝑡 of [[ 𝑆 ]] Rust . If a live token with loop index 𝐿 may later commit a slot to that location, 20 Trovato et al. 
+
+> (a) Pipelined execution of tokens in nested loops.
+> (b) Tree structure formed by the tokens of Fig. 16a. Each edge connects a parent token to its subtokens. Fig. 16. Tokens and the program order encoded by their loop indices.
+
+then 𝑡 ≺𝑃 𝐿 . If a token with loop index 𝐿 has already committed a slot to that location, then 𝑡 is no earlier than 𝐿 in program order. The load rules prove the first property from the other two properties. The Load-Stall rule blocks a token while an earlier token may still publish an unsealed write to the loaded address. The Load-Bypass rule therefore returns the latest preceding sealed slot at the address, which the second property identifies with the latest visible write in [[ 𝑆 ]] Rust . The Load-Direct rule applies when no preceding token can provide such a sealed slot, and the third property then identifies the base-storage value with the latest committed write before loop index 𝐿 . The try_load operation follows the same argument when it returns a value, and its empty result is permitted by the source semantics. The ordinary computation rules prove the second property from the first property. Apart from shared-variable operations, [[ Π]] Pipe and [[ 𝑆 ]] Rust use the same expression semantics. Equal loaded values therefore produce equal local computations, and equal local computations produce the same 
+
+store and seal slot contents. The drop rules prove the third property. The Drop-Stall rule delays a token while an earlier token may still load, declare, or write a location whose commit could change the required base-storage time. The Drop-Ok rule commits sealed slots only after those earlier hazards are resolved, so assigning the current token’s loop index as the new time preserves the ordering conditions for every remaining live token. The composite segment rules preserve the control-flow order used by the three properties. Conditionals route each token through the branch selected by its token-local guard and join branch outputs in program order. Loops may issue subtokens before the corresponding source iterations are known to execute, but a break flushes the excluded subtokens before they can commit a Var update. Speculative loads fit the same induction because 𝑆 spec records every address read speculatively, and a later conflicting store prevents the affected token from reaching drop .
+
+6 Efficient Compilation of Hazard Resolution Strategies 
+
+The compiler maps each Var ’s visibility operations (§5) to an efficient hazard-resolution network (e.g. ,
+
+rf ’s bypass network in Fig. 9a). Two static analyses generate only the registers and logic the design needs under the selected pipelining strategy of §4: (§6.1) the program-order analysis eliminates comparators and loop indices wherever the program order of tokens is statically decidable, and (§6.2) the state-reachability analysis specializes each network to the published states reachable under the strategy. 21 
+
+6.1 Program-Order Analysis 
+
+The program-order analysis tracks program order with one runtime mechanism shared by every site that queries it, and decides the order at compile time wherever possible. In a naive implementation, every token would carry its loop index through the pipeline registers, and every query site would instantiate a dynamic comparator. The query sites comprise the Var accesses, the branch joins enforcing in-order exit, and the break s (§5.2). Since all these sites query one relation, the program order of tokens, one loop index per token serves them all. The tree structure of the loop indices then settles most of these queries at compile time. Figure 16b visualizes the tokens of Fig. 16a as a tree, whose edges connect each parent token to its subtokens. On this tree, deciding the lexicographic program order ≺𝑃 (§5.1) reduces to two local checks: for loop indices 𝐿 1 and 𝐿 2, 𝐿 1 ≺𝑃 𝐿 2 holds exactly when (1) 𝐿 1 is a proper prefix of 𝐿 2 (an ancestor, e.g. , [2] ≺𝑃 [2,1] ), or (2) the indices first diverge at some depth with 𝐿 1’s entry smaller ( e.g. , [2,2] ≺𝑃 [3] ). Two structural rules statically decide ≺𝑃 for most pairs of positions , the sep() s and loop heads where a token can reside across cycles: (1) a token in a loop head precedes any token within that loop’s body, by the ancestor relationship ( e.g. , [2] in the loop head ℎ2 of Fig. 16a precedes [2,_] ), and (2) a token 𝑇 1 precedes 𝑇 2 if 𝑇 1’s position is reachable from 𝑇 2’s and outside the body of the loop whose head 𝑇 2 occupies, since in-order exit (§4.1) preserves entry order across branches ( e.g. , [2,1] 
+
+precedes [2,2] in Fig. 16a). For the remaining pairs, the compiler synthesizes a comparator only for the closest common loop , the innermost loop enclosing both positions. Since the pair’s indices agree above the closest common loop and first diverge at its depth, the comparator examines only the entries at that depth ( e.g. , comparing [2,2] and [3] reduces to 2 < 3 at depth 1). Statically decided comparisons allow the compiler to eliminate the unused loop indices from the pipeline registers. For the 5-stage pipelined CPU of Fig. 7, the two rules decide ≺𝑃 for every pair of positions, so the analysis eliminates all comparators and loop indices (Fig. 17). 
+
+6.2 State-Reachability Analysis 
+
+The state-reachability analysis specializes each hazard-resolution network to the published states reachable under the pipelining strategy. In a naive implementation, every token would carry the full published state 𝑆 pub of every Var through the pipeline registers, and every network would branch on all published states. Since every visibility operation executes at a fixed stage, most components of 𝑆 pub are statically known at each position. The compiler prunes each token’s 𝑆 pub to the components whose value at its position is not statically known, shrinking the pipeline registers that carry them. Specialized against the statically known components, each network collapses from the case analysis of Fig. 15 into fixed wires and bypass multiplexers. The compiler emits flush logic only for Var s whose 𝑆 spec can reach Speculative .For the 5-stage pipelined CPU, the only published-state component left at run time is rf ’s 𝑆 batch ,and its network collapses to bypass multiplexers (Fig. 17). pc ’s 𝑆 spec is statically Speculative (0),since every read observes the tentative value at address 0, pc ’s only element. No register carries 
+
+𝑆 spec , and only the flush logic remains. The predicted value itself is written to pc ’s storage register by an eager tentative commit (§C.2). 
+
+7 Evaluation 
+
+We implement our compiler as a 38K LOC Rust compiler plugin that translates Rust’s MIR [26] to synthesizable Verilog (§C). We evaluate our tool on three case studies: RISC-V CPUs (§7.1), comparing diverse hazard resolution strategies against PDL and hand-written RTL [4], countif histograms 
+
+(§7.2), Kanagawa’s running example, across static, dynamic, and speculative scheduling, and an AES 22 Trovato et al. 
+
+Fig. 17. Compile-time specialization of Fig. 7. The program-order analysis removes the highlighted loop indices and comparators, and the state-reachability analysis removes the highlighted published-state components. Table 2. RISC-V CPU evaluation. The baseline designs are highlighted in bold. 
+
+ISA Regfile resolution PC resolution LOC Max Freq. (MHz) CPI (Geomean) Norm. Runtime Area (𝜇 m2)Power (mW) 
+
+Ours Sim - 1094 - - -
+
+PDL 
+
+RV32I Stall static prediction 250 1111 2.380 1.00 1896 (1.00x) 4.33 (1.00x) Sodor 1773 1250 2.190 0.82 969 (0.51x) 2.58 (0.60x) Ours 1090 1250 2.190 0.82 993 (0.52x) 2.51 (0.58x) 
+
+PDL 
+
+RV32I Bypass static prediction 262 833 1.395 1.00 1754 (1.00x) 2.90 (1.00x) Sodor 1778 1250 1.392 0.66 996 (0.57x) 2.51 (0.86x) Ours 1101 1250 1.392 0.66 1038 (0.59x) 2.53 (0.87x) 
+
+PDL RV32I Bypass BHT (16 entries) 273 714 1.287 1.00 1964 (1.00x) 2.74 (1.00x) Ours 1249 1250 1.280 0.57 1086 (0.55x) 2.61 (0.95x) 
+
+PDL RV32I RenameRF static prediction 272 1111 1.617 1.00 3335 (1.00x) 7.45 (1.00x) Ours 1162 1250 1.392 0.77 1833 (0.55x) 4.64 (0.62x) 
+
+PDL 
+
+RV32IM Stall static prediction 319 667 1.334 1.00 4724 (1.00x) 6.45 (1.00x) Sodor 1985 1250 2.086 0.83 1148 (0.24x) 2.70 (0.42x) Ours 1222 1250 2.086 0.83 1205 (0.26x) 2.69 (0.42x)  
+
+> *
+
+PDL’s LOC are shorter than ours; however, this is due to heavy inlining, no type definitions, and no Zicsr support.  
+
+> **
+
+Per-benchmark CPI and same-frequency synthesis results appear in §D 
+
+cipher accelerator (§7.3), a non-pipelined control-heavy design that validates applicability beyond pipelined datapaths. For each case study, we report: (1) productivity : sequential semantics and flexible hazard resolution reduce development effort, and (2) PPA : compiled pipelines outperform sequential-semantics HLS tools (PDL, Vitis HLS, Dynamatic) and achieve PPA comparable to or exceeding hand-written RTL and Kanagawa, which operate under concurrent semantics. 
+
+7.1 RISC-V CPUs 
+
+We implement a family of 5-stage RISC-V CPUs, varying hazard resolution strategies (stalling, bypassing, dynamic prediction, and renaming) and ISA support (RV32I, RV32IM, with Zicsr), comparing against PDL’s public artifact [42] 8 and Sodor [4], a hand-written Chisel implementation. We synthesize all designs using Synopsys Design Compiler 2023.12 [35] with the ASAP7 7nm 
+
+> 8
+
+XPDL [38], PDL’s successor, could not be included as its results are not reproducible from the public artifact. 23 
+
+Table 3. A comparison of Countif histogram modules.                                                                  
+
+> Vitis Dynamatic Static Sched Dynamic Sched Speculative Exec Kanagawa Ours Kanagawa Ours Kanagawa Ours LUT 361 9147 (25.34x) 534 (1.48x) 493 (1.37x) 682 (1.89x) 475 (1.32x) 893 (2.47x) 803 (2.22x) FF 314 2345 (7.47x) 593 (1.89x) 297 (0.95x) 962 (3.06x) 419 (1.33x) 1398 (4.45x) 766 (2.44x) BRAM 13 (3.00x) 1 (1.00x) 1 (1.00x) 1 (1.00x) 1 (1.00x) 1.5 (1.50x) 1 (1.00x) DSP 22 (1.00x) 2 (1.00x) 2 (1.00x) 2 (1.00x) 2 (1.00x) 2 (1.00x) 2 (1.00x) Best-case Lat. 4135 1603 (0.39x) 4106 (0.99x) 3073 (0.74x) 529 (0.13x) 516 (0.12x) 1267 (0.31x) 516 (0.12x) Worst-case Lat. 4135 5706 (1.38x) 4106 (0.99x) 3073 (0.74x) 3595 (0.87x) 2564 (0.62x) 6895 (1.67x) 2564 (0.62x) Lines of Code 24 28 (1.17x) 37 (1.54x) 22 (0.92x) 46 (1.92x) 23 (0.96x) 104 (4.33x) 39 (1.63x)
+
+PDK [37], and measure performance using CoreMark [12] and MachSuite [31] integer kernels. We derive CPI by simulating the generated RTL with Verilator [34]. 
+
+Productivity . Productivity manifests in two forms: stepwise development and source-level debug-gability. First, we develop the CPU family stepwise, each feature requiring only small code changes: 
+
+(1) starting from a 1,094 LOC Rust program that simulates an RV32I+Zicsr CPU, debuggable with Rust toolchains, (2) 5-stage pipelining with static “branch not taken” prediction and data hazard stalls ( ±33 LOC), (3) data bypassing ( ±33 LOC), (4) dynamic branch prediction with a 16-entry BHT and 2-bit saturating counters ( ±155 LOC, of which 113 are the BHT itself), (5) register renaming (±69 LOC, of which 55 are the RenameRF itself), (6) a multiply-divide unit ( ±144 LOC). Second, we debug functionality at every step by executing the source as a Rust program, never the compiled pipeline. Source-level debugging has no counterpart in RTL development, where operation order is implicit in concurrent module connections. Every change to Sodor, for example, requires reasoning about those connections. 
+
+PPA . Our designs outperform PDL across all configurations and match Sodor, the hand-written RTL (Table 2). Against PDL, they achieve 1 .2–1 .8× lower runtime and 1 .7–3 .9× smaller area. Even with register renaming, which substantially increases design complexity, the core remains 1 .8× smaller and 1 .3× faster than PDL’s. Against Sodor at the same 1250 MHz clock frequency, our designs stay within +2 to +5% area and −3 to +1% power. The parity stems from our unified compilation, which enables cross-module optimization across the main pipeline and Var s (§6). 
+
+7.2 Countif Histograms 
+
+To test whether our tool matches Kanagawa’s hazard-resolution expressiveness, we evaluate on countif histograms, Kanagawa’s running example, which exercises static, dynamic, and speculative strategies with address-precise resolution over control- and data-dependent memory accesses. We compare against Kanagawa [30], Vitis HLS [23], and Dynamatic [22] on an Alveo U250 FPGA with a 200 MHz clock target, synthesized with Vivado 2025.1.1. All baseline results are reproduced using each tool’s public artifact. 
+
+Productivity . We implement all three hazard resolution strategies through minimal code changes to the sequential source program, a flexibility neither Vitis HLS nor Dynamatic offers. 
+
+PPA . Our designs match or exceed Kanagawa’s PPA across all three strategies while outperforming Vitis HLS and Dynamatic (Table 3). The advantage over Kanagawa reflects a language-design tradeoff. Our tool exposes stage boundaries directly, whereas Kanagawa exposes only a per-region concurrent-token count and delegates boundary placement to its scheduler, favoring automation over precision. Direct boundary control lets us tighten latency and resources wherever an automated scheduler would conservatively retain slack. 24 Trovato et al.                       
+
+> Table 4. A comparison of AES cipher accelerators.
+> LUT FF Clock Freq. (MHz) Norm. Runtime Lines of Code RTL 3218 ( ×1.00) 2989 ( ×1.00) 128 ( ×1.00) 1.00 1844 ( ×1.00) Ours 3175 ( ×0.99) 3002 ( ×1.00) 128 ( ×1.00) 0.99 549 ( ×0.30) 3246 ( ×1.01) 3002 ( ×1.00) 196 ( ×1.53) 0.65 Ours Opt 2272 ( ×0.71) 673 ( ×0.23) 128 ( ×1.00) 1.00 528 ( ×0.29) 2390 ( ×0.74) 673 ( ×0.23) 179 ( ×1.40) 0.72
+
+7.3 AES Cipher Accelerator 
+
+To evaluate our tool on non-pipelined designs, we implement an AES cipher accelerator supporting both 128- and 256-bit keys. We compare against the SecWorks AES core [32], a widely used 1,844-LOC open-source Verilog implementation. Both designs target an Artix 7 FPGA, synthesized with AMD Vivado 2025.1.1. 
+
+Productivity . Productivity manifests in two forms: less code and surfaced optimizations. First, our implementation requires only 0 .30 × the LOC of the reference while preserving the sequential algorithmic flow (key expansion to encryption and decryption), whereas the reference defines operation order implicitly through concurrent module connections. Second, viewing the design as sequential code surfaces optimization opportunities. We identify and apply two such optimizations: 
+
+(1) the encryption and decryption paths are mutually exclusive (an if /else branch in the source), enabling deduplication of shared states, (2) the program always initializes key memory before use (via an element-wise store loop), allowing us to eliminate redundant initialization logic. 
+
+PPA . A direct port of the reference design, compiled to the same 128 MHz target frequency, matches its LUT and FF counts while reaching a higher maximum frequency (196 MHz vs. 128 MHz, a 1 .53 ×
+
+improvement) (Table 4). Applying the two optimizations above reduces LUT usage by 1 .35 × and FF usage by 4 .4× at a maximum frequency of 179 MHz. 
+
+8 Related and Future Work 
+
+Table 5 compares our work against prior hardware design languages on their support for task-level (TLP), data-level (DLP), and instruction-level (ILP) parallelism, with the support classified into the following levels, ordered from the strongest to the weakest: ( ✓) declarative , where the designer specifies a high-level policy and the tool implements the underlying mechanism efficiently, (G#) partial , where the declarative interface cannot express every policy, ( Ó) automated , where the compiler infers both policy and mechanism, ( ✍) manual , where the designer implements the low-level mechanism directly, and ( ✗) no support .The declarative level separates the policy from the mechanism. The designer navigates the PPA tradeoffs by adjusting the policy, while the tool keeps the mechanism correct and efficient. Automated inference is most valuable on top of that separation ( ✓, Ó), exploring the policy space for the designer. The three intermediate levels each break the separation. A partial interface covers only some policies and reverts to manual implementation for the rest. Automated inference alone becomes a leaky abstraction, because the designer has no policy to adjust when the generated RTL is suboptimal. Manual implementation shifts the whole mechanism onto the designer. Our work provides declarative ILP support under sequential semantics, with sep placing stage boundaries and Var selecting the resolution strategy per access. For the closest tools, Table 1a 25 
+
+Table 5. A comparison of hardware design languages. The languages show a tradeoff between the programming model and control over the microarchitecture. Legend: ✓ declarative, G# partial, Ó automated, 
+
+✍ manual, ✗ no support.                                                                                                                                                                                                                
+
+> Tool Input TLP DLP ILP Misc. Compute Mem. Structure Hazard resolution Stall Bypass Ctrl. spec. Data spec. Vitis HLS [23] Sequential ✓,Ó✓✓Ó✗✗✗✗-Catapult [33] Sequential ✓✓✓Ó✗✗✗✗-SpecHLS [16] Sequential Ó✗✗Ó✗✗ÓÓ-Dynamatic [22] Sequential Ó✗✗ÓÓÓÓ✗-ScaleHLS [39] Sequential ÓÓÓÓ✗✗✗✗-HIDA [40] Sequential ÓÓÓÓ✗✗✗✗-Dahlia [27] Sequential ✗✓✓✓✗✗✗✗Affine memory type Allo [8] Sequential + Schedule ✓✓✓✓✗✗✗✗Type-safe composition of kernels PDL [42], XPDL [38] Sequential + Rules ✗✍✍✓✓✓G#G#-Kanagawa [30] Shared memory concurrency ✓✓✍✓✍✍✍✍-XLS [15] Message passing concurrency ✓✓✍✍✍✍✍✍-Anvil [41] Message passing concurrency ✓✍✍✓✍✍✍✍Type system for timing hazard Aetherling [11] Map-reduce stream Ó✓,ÓÓ✓Stateless, no dependency -Spatial [24] Map-reduce stream ✓,Ó✓,Ó✓,ÓÓ✗✗✗✗-ShakeFlow [17], Jang et al. [19] Map-reduce stream ✓✓✍✍✍✍✍✍-BlueSpec [29], Kôika [5] Guarded atomic actions ✍✍✍✍✍✍✍✍One-rule-at-a-time se-mantics Kami [9] Guarded atomic actions ✍✍✍✍✍✍✍✍Formal verification Filament [28] FSM ✍✓✍✍✗✗✗✗Type system for timing hazard Chisel [3], HardCaml [18], PyRTL [10] FSM ✍✍✍✍✍✍✍✍-
+> Ours Sequential
+
+✗ ✍ ✍ ✓ ✓ ✓ ✓ ✓ -
+
+refines the comparison into the three properties of §1. We leave TLP unsupported and DLP manual, and defer their integration to future work. 
+
+Task-level parallelism (TLP) . TLP concerns the concurrent execution of independent tasks. Prior HLS research supports it along a spectrum, from declarative constructs ( ✓) such as map-reduce streaming, communicating sequential processes, and async functions [8, 15, 17, 19, 23, 24, 30, 33, 41], down to automatic extraction or tuning of the parallelism ( Ó) [11, 16, 22–24, 39, 40]. 
+
+Data-level parallelism (DLP) . DLP requires expressing parallel computation and defining a memory architecture that supplies data to the functional units. For the computation, HLS tools provide unrolling directives ( ✓) [8, 23, 27, 30, 33], map-reduce streaming ( ✓) [11, 17, 19, 24], and explicitly parallel constructs ( ✓) [15, 28], with automated design space exploration on top ( Ó) [11, 24, 39, 40]. For the memory architecture, they provide banking directives ( ✓) [8, 23, 24, 27, 33] and automated design space exploration ( Ó) [11, 24, 39, 40]. 
+
+Instruction-level parallelism (ILP) . HLS tools with sequential semantics offer at most automated dependency hazard resolution. The majority provide no support at all ( ✗) [8, 23, 27, 33, 39, 40]. Dynamic HLS tools [16, 22] resolve hazards at runtime ( Ó), but they fix the pipeline structure and choose the resolution strategy, leaving the designer no control. SpecHLS [16] supports neither dynamic bypassing nor per-address stalling and cannot integrate branch predictors. Dynamatic [22] implements a load-store queue (LSQ) [20] and control speculation [21] as isolated subsystems. The isolation blocks store-to-load forwarding through the LSQ under speculation. Manual approaches ( ✍) give the designer full control over the pipelining strategy, at the cost of hand-implemented hazard resolution. At the base, HDLs [3, 10, 18] expose the cycle-level FSM directly. Several abstractions reduce the burden. Streaming and message-passing HDLs [15, 17, 19] simplify dataflow composition with latency-insensitive interfaces. Guarded-atomic-action languages [5, 9, 29] discharge rule-level conflicts through one-rule-at-a-time semantics. Timing-aware HDLs [28, 41] rule out structural and timing hazards through a type system. Kanagawa [30] 26 Trovato et al. 
+
+programs each resolution strategy as ordinary user code in a shared-memory concurrent model. None of these abstractions automatically addresses dependency hazards on mutable shared state. PDL [38, 42] uniquely aims at declarative hazard resolution from a sequential program, but achieves it only partially ( G#). Fragmented into disjoint subsystems for hazard locks and speculation, it leaves composed strategies inexpressible, expressible strategies inefficiently implemented, and the guarantee of sequential semantics fragile (§2.3). 
+
+Future work . We are mechanizing the proof sketch of §5. We are also developing advanced CPUs [7, 43], AI accelerators [14], and network accelerators [13, 25] as further case studies. These workloads demand TLP and DLP, and several [7, 13, 14, 25] further demand reordered execution of tokens. We are extending the model accordingly, integrating TLP and DLP from the prior literature and designing a disciplined concurrency that relaxes the in-order execution while preserving sequential reasoning. 
+
+References 
+
+[1] AMD. [n. d.]. Vitis High-Level Synthesis User Guide (UG1399): Pipeline. https://docs.amd.com/r/en-US/ug1399-vitis-hls/Pipeline [2] Anonymous Author(s). 2026. Supplemental Materials for This Submission. [3] Jonathan Bachrach, Huy Vo, Brian Richards, Yunsup Lee, Andrew Waterman, Rimas Avižienis, John Wawrzynek, and Krste Asanović. 2012. Chisel: constructing hardware in a Scala embedded language. In Proceedings of the 49th Annual Design Automation Conference (San Francisco, California) (DAC ’12) . Association for Computing Machinery, New York, NY, USA, 1216–1225. doi:10.1145/2228360.2228584 [4] Berkeley Architecture Research. 2021. Sodor Core. https://github.com/ucb-bar/riscv-sodor/tree/sodor-old [5] Thomas Bourgeat, Clément Pit-Claudel, Adam Chlipala, and Arvind. 2020. The essence of Bluespec: a core language for rule-based hardware design. In Proceedings of the 41st ACM SIGPLAN Conference on Programming Language Design and Implementation (London, UK) (PLDI 2020) . Association for Computing Machinery, New York, NY, USA, 243–257. doi:10.1145/3385412.3385965 [6] L.P. Carloni, K.L. McMillan, and A.L. Sangiovanni-Vincentelli. 2001. Theory of latency-insensitive design. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 20, 9 (2001), 1059–1076. doi:10.1109/43.945302 [7] Christopher Celio. 2018. A Highly Productive Implementation of an Out-of-Order Processor Generator . Ph. D. Dissertation. EECS Department, University of California, Berkeley. http://www2.eecs.berkeley.edu/Pubs/TechRpts/2018/EECS-2018-151.html [8] Hongzheng Chen, Niansong Zhang, Shaojie Xiang, Zhichen Zeng, Mengjia Dai, and Zhiru Zhang. 2024. Allo: A Programming Model for Composable Accelerator Design. Proc. ACM Program. Lang. 8, PLDI, Article 171 (June 2024), 28 pages. doi:10.1145/3656401 [9] Joonwon Choi, Muralidaran Vijayaraghavan, Benjamin Sherman, Adam Chlipala, and Arvind. 2017. Kami: a platform for high-level parametric hardware specification and its modular verification. Proc. ACM Program. Lang. 1, ICFP, Article 24 (aug 2017), 30 pages. doi:10.1145/3110268 [10] John Clow, Georgios Tzimpragos, Deeksha Dangwal, Sammy Guo, Joseph McMahan, and Timothy Sherwood. 2017. A pythonic approach for rapid hardware prototyping and instrumentation. In 2017 27th International Conference on Field Programmable Logic and Applications (FPL) . 1–7. doi:10.23919/FPL.2017.8056860 [11] David Durst, Matthew Feldman, Dillon Huff, David Akeley, Ross Daly, Gilbert Louis Bernstein, Marco Patrignani, Kayvon Fatahalian, and Pat Hanrahan. 2020. Type-directed scheduling of streaming accelerators. In Proceedings of the 41st ACM SIGPLAN Conference on Programming Language Design and Implementation (London, UK) (PLDI 2020) .Association for Computing Machinery, New York, NY, USA, 408–422. doi:10.1145/3385412.3385983 [12] Embedded Microprocessor Benchmark Consortium. 2023. EEMBC. https://www.eembc.org/ [13] Alex Forencich, Alex C. Snoeren, George Porter, and George Papen. 2020. Corundum: An Open-Source 100-Gbps Nic. In 2020 IEEE 28th Annual International Symposium on Field-Programmable Custom Computing Machines (FCCM) . 38–46. doi:10.1109/FCCM48280.2020.00015 [14] Hasan Genc, Seah Kim, Alon Amid, Ameer Haj-Ali, Vighnesh Iyer, Pranav Prakash, Jerry Zhao, Daniel Grubb, Harrison Liew, Howard Mao, Albert Ou, Colin Schmidt, Samuel Steffl, John Wright, Ion Stoica, Jonathan Ragan-Kelley, Krste Asanovic, Borivoje Nikolic, and Yakun Sophia Shao. 2021. Gemmini: Enabling Systematic Deep-Learning Architecture Evaluation via Full-Stack Integration. arXiv:1911.09925 [cs.DC] https://arxiv.org/abs/1911.09925 [15] Google. 2025. XLS: Accelerated HW Synthesis. https://github.com/google/xls/blob/main/docs_src/scheduling.md# minimizing-pipeline-registers-via-sdc-scheduling-sdc. 27 
+
+[16] Jean-Michel Gorius, Simon Rokicki, and Steven Derrien. 2022. SpecHLS: Speculative Accelerator Design Using High-Level Synthesis. IEEE Micro 42, 5 (2022), 99–107. doi:10.1109/MM.2022.3188136 [17] Sungsoo Han, Minseong Jang, and Jeehoon Kang. 2023. ShakeFlow: Functional Hardware Description with Latency-Insensitive Interface Combinators. In Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 (Vancouver, BC, Canada) (ASPLOS 2023) . Association for Computing Machinery, New York, NY, USA, 702–717. doi:10.1145/3575693.3575701 [18] Janestreet. 2025. hardcaml. https://github.com/janestreet/hardcaml Accessed: 2025-07-05. [19] Minseong Jang, Jungin Rhee, Woojin Lee, Shuangshuang Zhao, and Jeehoon Kang. 2024. Modular Hardware Design of Pipelined Circuits with Hazards. Proc. ACM Program. Lang. 8, PLDI, Article 148 (June 2024), 24 pages. doi:10.1145/ 3656378 [20] Lana Josipovic, Philip Brisk, and Paolo Ienne. 2017. An Out-of-Order Load-Store Queue for Spatial Computing. ACM Trans. Embed. Comput. Syst. 16, 5s, Article 125 (Sept. 2017), 19 pages. doi:10.1145/3126525 [21] Lana Josipovic, Andrea Guerrieri, and Paolo Ienne. 2019. Speculative Dataflow Circuits. In Proceedings of the 2019 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (Seaside, CA, USA) (FPGA ’19) . Association for Computing Machinery, New York, NY, USA, 162–171. doi:10.1145/3289602.3293914 [22] Lana Josipović, Andrea Guerrieri, and Paolo Ienne. 2022. From C/C++ Code to High-Performance Dataflow Circuits. 
+
+IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 41, 7 (2022), 2142–2155. doi:10.1109/ TCAD.2021.3105574 [23] Vinod Kathail. 2020. Xilinx Vitis Unified Software Platform. In Proceedings of the 2020 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (Seaside, CA, USA) (FPGA ’20) . Association for Computing Machinery, New York, NY, USA, 173–174. doi:10.1145/3373087.3375887 [24] David Koeplinger, Matthew Feldman, Raghu Prabhakar, Yaqi Zhang, Stefan Hadjis, Ruben Fiszel, Tian Zhao, Luigi Nardi, Ardavan Pedram, Christos Kozyrakis, and Kunle Olukotun. 2018. Spatial: a language and compiler for application accelerators. In Proceedings of the 39th ACM SIGPLAN Conference on Programming Language Design and Implementation 
+
+(Philadelphia, PA, USA) (PLDI 2018) . Association for Computing Machinery, New York, NY, USA, 296–311. doi:10. 1145/3192366.3192379 [25] Dario Korolija, Timothy Roscoe, and Gustavo Alonso. 2020. Do OS abstractions make sense on FPGAs?. In 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20) . USENIX Association, 991–1010. https://www.usenix.org/conference/osdi20/presentation/roscoe [26] Nicholas Matsakis. 2015. RFC 1211: Mid-level IR (MIR). Rust RFC Repository. https://rust-lang.github.io/rfcs/1211-mir.html Accessed: 2026-04-13. [27] Rachit Nigam, Sachille Atapattu, Samuel Thomas, Zhijing Li, Theodore Bauer, Yuwei Ye, Apurva Koti, Adrian Sampson, and Zhiru Zhang. 2020. Predictable accelerator design with time-sensitive affine types. In Proceedings of the 41st ACM SIGPLAN Conference on Programming Language Design and Implementation (London, UK) (PLDI 2020) . Association for Computing Machinery, New York, NY, USA, 393–407. doi:10.1145/3385412.3385974 [28] Rachit Nigam, Pedro Henrique Azevedo de Amorim, and Adrian Sampson. 2023. Modular Hardware Design with Timeline Types. Proc. ACM Program. Lang. 7, PLDI, Article 120 (June 2023), 25 pages. doi:10.1145/3591234 [29] R. Nikhil. 2004. Bluespec System Verilog: efficient, correct RTL from high level specifications. In Proceedings. Second ACM and IEEE International Conference on Formal Methods and Models for Co-Design, 2004. MEMOCODE ’04. 69–70. doi:10.1109/MEMCOD.2004.1459818 [30] Blake Pelton, Adam Sapek, Ken Eguro, Daniel Lo, Alessandro Forin, Matt Humphrey, Jinwen Xi, David Cox, Rajas Karandikar, Johannes de Fine Licht, Evgeny Babin, Adrian Caulfield, and Doug Burger. 2024. Wavefront Threading Enables Effective High-Level Synthesis. Proc. ACM Program. Lang. 8, PLDI, Article 190 (June 2024), 25 pages. doi:10. 1145/3656420 [31] Brandon Reagen, Robert Adolf, Yakun Sophia Shao, Gu-Yeon Wei, and David Brooks. 2014. MachSuite: Benchmarks for accelerator design and customized architectures. In 2014 IEEE International Symposium on Workload Characterization (IISWC) . 110–119. doi:10.1109/IISWC.2014.6983050 [32] SecWorks. 2025. AES (Advanced Encryption Standard) Library. https://github.com/secworks/aes. Accessed: 2025-07-08. [33] Siemens EDA. 2025. Catapult High-Level Synthesis and Verification. https://eda.sw.siemens.com/en-US/ic/catapult-high-level-synthesis/. Accessed: 2025-07-05. [34] Wilson Snyder. 2024. Verilator. https://www.veripool.org/verilator/ [35] Synopsys, Inc. [n. d.]. Design Compiler RTL Synthesis Solution . https://www.synopsys.com/implementation-and-signoff/rtl-synthesis-test/dc-ultra.html Accessed: 2025-07-08. [36] The MLIR Authors. 2026. MLIR: ’scf’ Dialect (Structured Control Flow). https://mlir.llvm.org/docs/Dialects/SCFDialect/. Accessed: 2026-04-13. [37] Vinay Vashishtha, Manoj Vangala, and Lawrence T. Clark. 2017. ASAP7 predictive design kit development and cell design technology co-optimization: Invited paper. In 2017 IEEE/ACM International Conference on Computer-Aided 28 Trovato et al. 
+
+Design (ICCAD) . 992–998. doi:10.1109/ICCAD.2017.8203889 [38] Yulun Yao, Drew Zagieboylo, Andrew C. Myers, and G. Edward Suh. 2025. Sequential Specifications for Precise Hardware Exceptions. In Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 (USA) (ASPLOS ’26) . Association for Computing Machinery, New York, NY, USA, 234–248. doi:10.1145/3760250.3762233 [39] Hanchen Ye, Cong Hao, Jianyi Cheng, Hyunmin Jeong, Jack Huang, Stephen Neuendorffer, and Deming Chen. 2022. ScaleHLS: A New Scalable High-Level Synthesis Framework on Multi-Level Intermediate Representation. In 2022 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . 741–755. doi:10.1109/HPCA53966.2022. 00060 [40] Hanchen Ye, Hyegang Jun, and Deming Chen. 2024. HIDA: A Hierarchical Dataflow Compiler for High-Level Synthesis. In Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 (La Jolla, CA, USA) (ASPLOS ’24) . Association for Computing Machinery, New York, NY, USA, 215–230. doi:10.1145/3617232.3624850 [41] Jason Zhijingcheng Yu, Aditya Ranjan Jha, Umang Mathur, Trevor E. Carlson, and Prateek Saxena. 2026. Anvil: A General-Purpose Timing-Safe Hardware Description Language. In Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 (USA) (ASPLOS ’26) . Association for Computing Machinery, New York, NY, USA, 110–136. doi:10.1145/3779212.3790125 [42] Drew Zagieboylo, Charles Sherk, Gookwon Edward Suh, and Andrew C. Myers. 2022. PDL: A High-Level Hardware Design Language for Pipelined Processors. In Proceedings of the 43rd ACM SIGPLAN International Conference on Programming Language Design and Implementation (San Diego, CA, USA) (PLDI 2022) . Association for Computing Machinery, New York, NY, USA, 719–732. doi:10.1145/3519939.3523455 [43] F. Zaruba and L. Benini. 2019. The Cost of Application-Class Processing: Energy and Performance Analysis of a Linux-Ready 1.7-GHz 64-Bit RISC-V Core in 22-nm FDSOI Technology. IEEE Transactions on Very Large Scale Integration (VLSI) Systems 27, 11 (Nov 2019), 2629–2640. doi:10.1109/TVLSI.2019.2926114 29 
+
+A Artifact Appendix A.1 Abstract 
+
+This artifact contains the case study designs (RISC-V CPUs, countif histograms, and an AES cipher accelerator) evaluated in the paper, along with pre-built binaries of our HLS compiler and scripts to reproduce the results. The artifact reproduces the tables in the paper without the RISC-V CPU synthesis results. Reproducing the full experimental results requires access to Synopsys front-end tools ( lc_shell and dc_shell ). For the full details, refer to the README.md at the root of the artifact repository. 
+
+A.2 Artifact Check-List (Meta-information) 
+
+• Compilation: Rust nightly-2025-08-20 
+
+• Run-time environment: Our evaluation scripts assume the following dependencies are installed on the evaluation machine: 
+
+– Ubuntu 24.04 
+
+– Docker 
+
+– Vivado Design Suite 2025.1 
+
+– Vitis HLS 2025.1 
+
+– iverilog 12.0 
+
+– verilator 4.226 
+
+– cloc 1.98 
+
+• Metrics: CPI (cycles per instruction) for the RISC-V CPU designs; latency and FPGA resource utilization for countif and AES designs; and LOC for all designs. 
+
+• Output: The raw data of the tables in the paper. 
+
+• Experiments: We provide scripts for running the experiments. 
+
+• How much disk space required (approximately)?: 140 GB. 
+
+• How much time is needed to prepare workflow (approximately)?: 1-2 hours. 
+
+• How much time is needed to complete experiments (approximately)?: 3-4 hours. 
+
+• Publicly available? : DOI: 10.5281/zenodo.21285985 
+
+A.3 Description 
+
+A.3.1 How to Access. The artifacts are available through Zenodo archival repository. You can access by using its DOI. To install the required dependencies and run the scripts, please follow the instructions in the 
+
+README.md file at the root of the code repository. 
+
+A.3.2 Hardware Dependencies. The evaluation runs entirely in software; no FPGA board or other accelerator is required. We recommend a machine comparable to an AWS EC2 c7i.2xlarge 
+
+instance (8 vCPUs, 16 GB RAM), on which the time estimates reported in this appendix were measured. Approximately 140 GB of free disk space is needed (Vivado ∼65 GB, evaluation output ∼40 GB, dependencies and Docker images ∼30 GB). 
+
+A.3.3 Software Dependencies. See the run-time environment above. 
+
+A.4 Installation 
+
+Instructions on how to install the evaluation environment are given in the Setup section of the 
+
+README.md file at the root of the code repository. 30 Trovato et al. 
+
+A.5 Evaluation and Expected Results 
+
+The evaluation process aims to reproduce the tables in §7. Instructions on how to run the evaluation are given in the Evaluation section in the README.md file at the root of the code repository. 
+
+A.6 Notes 
+
+The HLS compiler implementation itself is not included in this artifact, only pre-built binaries are provided under ./bin .
+
+B PDL’s Sequential Semantics 
+
+This section provides detailed evidence for the fragility of PDL’s sequential semantics guarantee. We first enumerate the 18 rules that PDL and XPDL together impose on the programmer to preserve refinement between the pipeline and its sequential specification (§B.1), then demonstrate that this rule set is unsound (§B.2). 
+
+B.1 Rules 
+
+The sequential semantics guarantee of PDL and XPDL rests on 18 rules: 8 per-subsystem rules and 10 cross-subsystem interaction rules, of which the 8 rules governing the except and commit blocks arrive with XPDL’s exceptions. We enumerate these rules below, then show that they are unsound. The rules keep PDL’s own terminology, in which an in-flight instruction (§2.2) is called a thread. 
+
+Per-subsystem rules . PDL defines the following rules for using each subsystem independently: 
+
+(1) On every program path, each thread either spawns a single child thread (via a recursive call 
+
+or verify statement) or terminates by output ting a value. 
+
+(2) On every program path, every speculative call is eventually resolved via a verify statement. 
+
+(3) On every program path, hazard locks must be used in the correct state-transition sequence of 
+
+reserve , block , read/write, and release .
+
+(4) All reserve operations must occur in “in-order stages”, which are the stages where threads are guaranteed to pass in their program order. 
+
+(5) All release operations for write locks must occur in “in-order stages”. 
+
+(6) All reserve operations for a hazard lock must execute atomically. That is, succeeding instruc-tions’ reserve operations should stall until the preceding instruction’s reserve operation completes. PDL provides lock region construct to group multiple reserve operations into a critical section that executes atomically. 
+
+(7) A verify can only be called after spec_barrier() .
+
+(8) A speccall requires prior execution of either spec_check() in the current pipeline stage or a 
+
+spec_barrier() .
+
+Cross-subsystem interaction rules . Because hazard locks, speculation, and exceptions are inde-pendent subsystems, their joint use requires 10 additional rules: 
+
+(1) A reserve requires the prior execution of either spec_check() in the current pipeline stage or a spec_barrier() .
+
+(2) release on write locks can be called after spec_barrier() .
+
+(3) An instruction must release the lock before exiting the except block. 
+
+(4) Reads are forbidden from asynchronous memory or other pipelines at the end of the except 
+
+block. 
+
+(5) A recursive call statement can only be in the last stage of the except block. 31 
+
+(6) spec_check , spec_barrier , and spec_call statements are not allowed within the except or 
+
+commit blocks. 
+
+(7) Users must call spec_barrier before except or commit blocks. 
+
+(8) Users can not call speccall within the except or commit blocks. 
+
+(9) Write locks acquired in the pipeline body must be release d within the commit block and not before. 
+
+(10) No stateful operations are allowed in the commit block, with the exception of calling release to a lock. Stateful operations include spawning new instructions, acquiring locks, and speculation-related operations. 
+
+B.2 Unsoundness 
+
+PDL’s refinement guarantee between the pipeline and its sequential specification is unsound, in that a rule-compliant program accepted by the compiler can still produce a pipeline with incorrect hazard resolution. Fig. 18a illustrates a PDL program exhibiting a WAW hazard that originates from two conditional 
+
+release operations. Specifically, a thread with pc = 1 executes its release at L29, while the preceding thread with pc = 0 executes its release at L37. The multiple pipeline stages separating these two release operations cause the thread with pc = 0 to release the lock and commit its pc 
+
+after the thread with pc = 1, violating program order. Because the PDL rules only verify whether each release statement is placed within in-order stages, this problematic code is not rejected. The execution trace in Fig. 18b confirms the violation. The “Release Start” for pc = 1 (line 1) executes before the “Release Start” for pc = 0 (line 3). Consequently, “Result is: 0000000” shows that the final result is 0, whereas the result from the sequential specification should be 1. 
+
+C Compiler Implementation 
+
+Our compiler translates Rust’s Mid-level Intermediate Representation (MIR) to synthesizable Verilog, targeting the Rust subset of §4. 
+
+C.1 Overview 
+
+A Rust function annotated with #[synthesize] is compiled into RTL in two phases. 
+
+Phase 1: MIR to Structured IR . The compiler lifts the function’s MIR control-flow graph into a 
+
+structured IR (SIR), a DAG in which control-flow constructs (loops and branches) are first-class nodes, analogous to the MLIR scf dialect [36]. SIR makes the nesting structure of loops and branches explicit, which the second phase exploits for pipeline generation and the program-order analysis of §6.1. 
+
+Phase 2: SIR to Verilog . The compiler lowers SIR into two kinds of Verilog modules. The main pipeline module contains pipeline registers, branch demux/mux logic, and subpipelines generated from loops. Each instantiated Var is emitted as a dedicated module that encapsulates internal state registers and its hazard-resolution network (§6). The network authorizes or stalls load /drop 
+
+requests and flushes speculative tokens when necessary, following the visibility-control policy of Fig. 3. 
+
+Token layout . After Phase 2 (before the analyses of §6), each token carried through pipeline regis-ters comprises the following fields: (1) Valid bit: 1 bit. (2) Loop index: ⌈log 2 (max in-flight tokens )⌉ 
+
+bits per enclosing loop; e.g. , 3 sep() calls in a loop body yield a 2-bit index. (3) Local memory ( 𝐿𝑀 ): 
+
+sum of live-variable bitwidths; e.g. , {𝑥 : u32 , 𝑦 : bool } ⇒ 33 bits. (4) Published state ( 𝑆 pub ): per Var ,32 Trovato et al.  
+
+> 1
+
+pipe cpu(pc: uint <32>)[  
+
+> 2
+
+rf: uint <32>[5]<c2,s>(BypassQueue),  
+
+> 3
+
+imem: int <32>[32]<a,a>  
+
+> 4
+
+]: bool { 
+
+> 5
+
+int<32> insn <- imem[pc];  
+
+> 6
+
+--- 
+
+> 7
+
+if (pc != u10<32>) {  
+
+> 8
+
+call cpu(pc + u1<32>);  
+
+> 9
+
+} 
+
+> 10
+
+--- 
+
+> 11
+
+uint<5> rd = u0<5>;  
+
+> 12
+
+--- 
+
+> 13
+
+uint<32> value = rf<a>[rd];  
+
+> 14
+
+if (pc == u10<32>) {  
+
+> 15
+
+print("Result is: %x", value);  
+
+> 16
+
+output( true );  
+
+> 17
+
+} 
+
+> 18
+
+--- 
+
+> 19
+
+if ((pc == 0) || (pc == 1)) {  
+
+> 20
+
+reserve(rf[rd], W);  
+
+> 21
+
+--- 
+
+> 22
+
+block(rf[rd]);  
+
+> 23
+
+--- 
+
+> 24
+
+rf[rd] <- pc;  
+
+> 25
+
+} 
+
+> 26
+
+--- 
+
+> 27
+
+if (pc == 1) {  
+
+> 28
+
+print("Release Start: %x", pc);  
+
+> 29
+
+release(rf[rd]);  
+
+> 30
+
+print("Release End: %x", pc);  
+
+> 31
+
+} 
+
+> 32
+
+--- 
+
+> 33
+
+... // Pipeline stages  
+
+> 34
+
+--- 
+
+> 35
+
+if (pc == 0) {  
+
+> 36
+
+print("Release Start: %x", pc);  
+
+> 37
+
+release(rf[rd]);  
+
+> 38
+
+print("Release End: %x", pc);  
+
+> 39
+
+} 
+
+> 40
+
+}
+
+(a) Rule-compliant PDL code with a WAW hazard. 
+
+Release Start: 00000001 Release End: 00000001 Release Start: 00000000 Release End: 00000000 Result is: 00000000 TIME 435 
+
+(b) Execution trace of Fig. 18a Fig. 18. PDL code with a WAW hazard and its execution trace, with the unsound rule set fails to reject. 
+
+the four components (𝑆 decl , 𝑆 batch , 𝑆 load , 𝑆 spec ). For a Var of type 𝑇 with 𝑁 entries, 𝑆 decl and 𝑆 load 
+
+are 1 bit each, 𝑆 spec is 𝑁 bits recording the set of speculatively read addresses, and each slot of 𝑆 batch 
+
+is a 4-bit one-hot 𝑆 store kind plus ⌈log 2 𝑁 ⌉ address bits, bitwidth (𝑇 ) value bits, and 1 data-valid bit. 
+
+C.2 Optimizations 
+
+Beyond the two analyses of §6, the compiler applies the following additional optimizations: (1) Lo-cal-memory minimization. Only live variables are stored as token-local memory, reducing the register footprint at sep() and loop boundaries. (2) Loop-index minimization. The compiler com-putes the maximum number of concurrent tokens per loop and sizes loop-index fields to the 33 
+
+minimum required bitwidth. (3) Logic minimization. Standard hardware optimizations (common– subexpression elimination, copy propagation, constant folding, and mux/boolean simplification) are applied to the generated Verilog. 
+
+Eager tentative commit . When a Var satisfies four conditions, the compiler can write tentative values directly to base state on store instead of carrying them in the token’s 𝑆 batch , and subsequent reads become plain base-state accesses rather than bypass scans: (1) Speculative reads only. Every inter-token read is a spec_load ; no conservative load accesses the Var . (2) Read-before-write ordering. The spec_load point precedes or equals the store point in the pipeline structure, so a preceding token always completes its read before any succeeding token writes. (3) Single address. All reads and writes target the same element. A flush triggered by a store corrects exactly the address that was speculatively read; with multiple addresses, a store at one address would leave other addresses contaminated. (4) Sole eager-commit Var . No other Var in the same loop pipeline uses this optimization. A flush corrects only the triggering Var ’s shared state; a second eager-commit 
+
+Var would retain stale values from flushed tokens, and re-issued tokens reading those stale values would propagate the corruption through their own computations. The flush mechanism recovers from misspeculation because the very store that triggers the flush also writes the correct value to the sole shared-storage location, so re-issued tokens observe the corrected state. For pc in the 5-stage CPU (Fig. 7), all four conditions hold: every read is spec_load , the 
+
+spec_load in Fetch precedes or shares a stage with every store (the prediction in Fetch, and corrections at the same or later stages such as Execute), pc is Var<T, 1> with a single element, and pc is the only speculative Var . The optimization eliminates pipeline registers for pc ’s 𝑆 batch ,the bypass multiplexer, and the rest of the hazard-resolution network. store writes the predicted next PC directly to a shared register and spec_load reads it, matching the standard RTL practice where each instruction updates the PC register in place. The optimization does not apply to rf ,whose later instructions use conservative load and therefore require Sealed -state bypass with stall-on-Tentative semantics. 
+
+D Extended RISC-V Evaluation 
+
+This section supplements §7.1 with per-benchmark CPI breakdowns (Table 6a) and same-frequency synthesis comparisons (Table 6b), followed by an analysis of the sources of PDL’s overhead. 
+
+Sources of PDL overhead . Table 6b provides a same-frequency comparison between PDL’s 5-stage RISC-V CPU and ours under various configurations. This comparison is unfavorable to our design, as ours additionally supports exceptions and the Zicsr ISA extension, which PDL’s design lacks. When targeting PDL’s clock speeds, our processor uses 42–48% less area and 44–50% less power across the rv32i configurations. The gap instantiates the two implementation overheads of §2.3. First, PDL’s subsystems are four redundant ordering systems, each adding per-instruction metadata as pipeline registers. The speculation subsystem additionally maintains its speculation table because a speculative instruction keeps executing until it voluntarily checks its status at spec_check or 
+
+spec_barrier (§2.2). Second, PDL performs unnecessary order comparison. Each lock compiles to a hand-written RTL module unaware of the pipeline structure, so it tracks the program order of all in-flight instructions with runtime comparators for priority calculation and arbitration. Our program-order analysis (§6.1) instead decides program order statically wherever possible. In our RISC-V case studies, it decides every pair, so the compiler generates direct bypass wires and no comparators. 34 Trovato et al. 
+
+Table 6. Extended RISC-V CPU evaluation. (a) CPI for benchmark programs (lower is better). 
+
+ISA Regfile resolution PC resolution coremark aes gemm gemm-block ellpack kmp nw queue radix GeoMean 
+
+PDL RV32I Stall static prediction 2.456 1.903 2.579 2.584 2.430 2.264 1.877 2.569 2.965 2.380 Sodor 2.177 1.851 2.386 2.402 2.177 2.018 1.672 2.334 2.932 2.190 Ours 2.177 1.850 2.386 2.402 2.177 2.018 1.672 2.334 2.932 2.190 PDL RV32I Bypass static prediction 1.436 1.230 1.529 1.525 1.380 1.496 1.376 1.332 1.282 1.395 Sodor 1.441 1.201 1.530 1.525 1.381 1.497 1.377 1.332 1.283 1.392 Ours 1.441 1.200 1.530 1.525 1.381 1.497 1.377 1.332 1.283 1.392 PDL RV32I Bypass BHT (32 entries) 1.367 1.154 1.413 1.414 1.269 1.255 1.306 1.231 1.202 1.287 Ours 1.362 1.155 1.408 1.406 1.254 1.255 1.271 1.234 1.202 1.280 PDL RV32I Rename RF static prediction 1.611 1.418 1.701 1.705 1.548 1.630 1.460 1.644 1.883 1.617 Ours 1.441 1.200 1.530 1.525 1.381 1.497 1.377 1.332 1.283 1.392 PDL RV32IM Stall static prediction 1.384 1.230 1.421 1.226 1.280 1.496 1.376 1.332 1.282 1.334 Sodor 1.579 1.201 5.852 4.503 4.249 1.497 1.377 1.332 1.283 2.086 Ours 1.579 1.200 5.852 4.503 4.249 1.497 1.377 1.332 1.283 2.086 
+
+(b) Synthesis results. We report synthesis result of same frequency with the baseline and maximum frequency 
+
+ISA Regfile resolution PC resolution Target Clock Freq. (MHz) Area ( 𝜇 m2) Power (mW) 
+
+PDL RV32I Stall static prediction - 1111 (0.9ns) 1896 ( ×1.00 ) 4.33 ( ×1.00 )Sodor PDL 1111 (0.9ns) 960 ( ×0.51 ) 2.22 ( ×0.51 )Max 1250 (0.8ns) 969 ( ×0.51 ) 2.58 ( ×0.60 )Ours PDL 1111 (0.9ns) 995 ( ×0.53 ) 2.16 ( ×0.50 )Max 1250 (0.8ns) 993 ( ×0.52 ) 2.51 ( ×0.58 )PDL RV32I Bypass static prediction - 833 (1.2ns) 1754 ( ×1.00 ) 2.90 ( ×1.00 )Sodor PDL 833 (1.2ns) 976 ( ×0.56 ) 1.63 ( ×0.56 )Max 1250 (0.8ns) 996 ( ×0.57 ) 2.51 ( ×0.86 )Ours PDL 833 (1.2ns) 1024 ( ×0.58 ) 1.64 ( ×0.56 )Max 1250 (0.8ns) 1038 ( ×0.59 ) 2.53 ( ×0.87 )PDL RV32I Bypass BHT (32 entries) - 714 (1.4ns) 1964 ( ×1.00 ) 2.74 ( ×1.00 )Ours PDL 714 (1.4ns) 1063 ( ×0.54 ) 1.43 ( ×0.52 )Max 1250 (0.8ns) 1086 ( ×0.55 ) 2.61 ( ×0.95 )PDL RV32I Rename RF static prediction - 1111 (0.9ns) 3335 ( ×1.00 ) 7.45 ( ×1.00 )Ours PDL 1111 (0.9ns) 1855 ( ×0.56 ) 4.08 ( ×0.55 )Max 1250 (0.8ns) 1833 ( ×0.55 ) 4.64 ( ×0.62 )PDL RV32IM Stall static prediction - 667 (1.5ns) 4724 ( ×1.00 ) 6.45 ( ×1.00 )Sodor PDL 667 (1.5ns) 1098 ( ×0.23 ) 1.39 ( ×0.21 )Max 1250 (0.8ns) 1148 ( ×0.24 ) 2.70 ( ×0.42 )Ours PDL 667 (1.5ns) 1153 ( ×0.24 ) 1.37 ( ×0.21 )Max 1250 (0.8ns) 1205 ( ×0.26 ) 2.69 ( ×0.42 )

@@ -1,0 +1,584 @@
+Title: Fovea: Physical-Implication-Aware Wafer-Scale DSE with Decision-Domain-Guided Cross-Fidelity Refinement
+
+URL Source: https://arxiv.org/pdf/2608.03285v1
+
+Published Time: Wed, 05 Aug 2026 00:49:38 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Fovea: Physical-Implication-Aware Wafer-Scale DSE with Decision-Domain-Guided Cross-Fidelity Refinement 
+
+Jinxi Li, Huizheng Wang, Jinyi Deng, Yang Hu, and Shouyi Yin 
+
+Tsinghua University, Beijing, China 
+
+ljx23@mails.tsinghua.edu.cn, wanghz22@mails.tsinghua.edu.cn, dengjinyi@mail.tsinghua.edu.cn, hu_yang@tsinghua.edu.cn, yinsy@tsinghua.edu.cn 
+
+Abstract —Modern pre-silicon design-space exploration (DSE) follows a coarse-to-fine workflow: low-cost evaluators screen candidate spaces, while detailed evaluation is reserved for a shortlist. Wafer-scale systems strain both stages. Architecture choices induce coupled physical implications for reticle compli-ance, wafer tiling, die area, D2D capability, boundary access, and placement, so the design space cannot be treated as an unconstrained Cartesian product. Meanwhile, detailed evaluation is too expensive to cover the resulting space, whereas analytical-to-reference ranking inversions make a fixed shortlist unreliable. We present Fovea, a reusable methodology for workload-specific wafer architecture selection rather than a fixed wafer template. Fovea first performs Physical-implication-aware design-space formulation to construct a distinct modeled-feasible space while preserving cross-dimensional trade-offs and applying only evaluator-preserving local reductions. It then performs Decision-Domain-guided cross-fidelity refinement . Paired in-domain cal-ibration estimates workload- and space-specific analytical-to-reference disagreement, which parameterizes reference-consistent performance intervals and induces a Decision Domain for se-lective designated-reference evaluation. Under a valid domain-wide disagreement bound, this domain contains the designated-reference optimum; the sampling-based implementation is eval-uated empirically on exhaustive-reference design spaces. Across ten reference-verifiable design spaces and seven LLM-training workloads, Fovea with 10% paired calibration recovers the exhaustive designated-reference optimum in all 70 evaluated pairs while achieving 4.13 × average and 7.80 × maximum end-to-end speedup. 
+
+I. I NTRODUCTION 
+
+The continued scaling of AI models is increasing the aggregate compute, memory, and communication demands of modern AI systems. Wafer-scale computing has consequently advanced from an architectural concept toward practical AI infrastructure, including its recent integration into OpenAI’s serving stack for low-latency inference [27]. Wafer-scale chips (WSCs) address these demands by integrating resources across a wafer-sized substrate. This extends tightly coupled integra-tion beyond the reticle limit of a monolithic die, providing substantially greater aggregate compute and memory resources together with high-bandwidth on-wafer communication. This growing practical relevance makes wafer-scale ar-chitecture decisions increasingly consequential, but does not imply a settled architecture. Wafer scale defines an integration canvas rather than a canonical architecture. Even within a ho-mogeneous repeated-die organization, candidates differ in die dimensions, compatible row–column tilings, per-die compute and memory provisioning, die-to-die (D2D) capability, and functional-area allocation. Different workloads favor different compute, memory, and communication balances. Wafer-scale DSE is therefore a recurring process for selecting an archi-tecture instance, rather than a one-time search for a universal wafer template. Modern pre-silicon architecture exploration typically fol-lows a multi-stage workflow: architects define a candidate space, low-cost models screen it, and detailed simulation or implementation feedback evaluates a shortlist. This workflow assumes that architectural choices map to a manageable, implementation-meaningful space and that low-cost screening retains the design preferred by detailed evaluation. Wafer-scale DSE strains both assumptions: the feasible space must first be constructed from coupled physical implications, and analytical ranking alone cannot safely prune it. First, wafer-scale architecture choices carry coupled physi-cal implications. Die dimensions determine reticle compliance and compatible wafer tilings, which in turn determine die count and network geometry; they also affect realizable D2D capability. Compute, memory, interconnect, and D2D-I/O re-sources compete for die area, while boundary-facing interfaces additionally consume die-edge resources. Consequently, the design space cannot be treated as an unconstrained Cartesian product of resource quantities. Architecture choices must be translated into their geometry, area, capability, interface, and placement implications before performance evaluation. Second, detailed evaluation is too expensive to cover the resulting space, whereas low-cost evaluation cannot safely define a fixed shortlist. In our setup, ASTRA-sim’s analytical backend requires 2.49 seconds per design on average, while the ASTRA-sim+ns-3 designated reference backend requires 2.78 hours—a cost difference of approximately 4,000 ×. Although analytical evaluation preserves useful global trends, 20.96% of candidate pairs are ranked in opposite orders by the two backends, and the reference-optimal design appears, on average, at the 10.77th percentile of the analytical ranking. A fixed analytical top-k cutoff can therefore exclude the reference optimum, while exhaustive reference evaluation is prohibitively expensive. Existing search methods, including simulated annealing, arXiv:2608.03285v1 [cs.AR] 4 Aug 2026 (a) Conventional Abstract Design Space        
+
+> Abstract Design Space
+> (b) Conventional Exploration method
+> Compute resources ... Memory resources ... D2D resources ... Compute Memory Low-Cost Evaluation
+> Shortlist
+> Analytical Optimal Design
+> (c) Wafer-Scale Physical Implications
+> Reticle Limit Compatible Wafer Tiling D2D Capability Boundary
+> Access
+> Wafer-scale resources couple with physical implication (d) Evaluation Cost versus Decision Reliability
+> Analytical Evaluator 2.49s/design Reference Evaluator 2.78h/design
+> ≈4000x cost gap!
+> risk of performance loss or prohibitive cost (e) Physical-Implication-Aware Design Space Formulation
+> Component Library Compute ... Memory ... D2D ... Die Design Wafer Design Physical Implication Aware
+> (f) Decision-Domain-Guided Cross-Fidelity Refinement
+> Memory Decision Domain Reference Optimal
+> Retained Trimmed
+> Evaluator Disagreement
+> Fovea integrates physical implications into design space Fovea retains potentially optimal candidates across evaluators Design Space Formulation Design Space Exploration Conventional method Challenges Our Method
+
+Fig. 1. Wafer-scale DSE strains two assumptions of conventional multi-stage exploration. Architecture choices must first be translated into a physical-implication-aware design space, while analytical-to-reference disagreement makes a fixed low-cost shortlist unreliable. Fovea addresses these two interfaces through physical-implication-aware design-space formulation and Decision-Domain-guided cross-fidelity refinement. 
+
+evolutionary search, Bayesian optimization, and multi-fidelity optimization, can reduce evaluation cost by focusing expensive evaluations on promising candidates [12], [44], [52]. However, these methods primarily determine where to evaluate within a parameterized space; the search policy alone does not jointly construct a physically meaningful wafer-scale design space and derive, from workload- and space-specific evaluator disagreement, the candidate domain that still requires higher-fidelity evaluation. We present Fovea, a general methodology for workload-specific wafer-scale DSE. Rather than prescribing a universal wafer architecture, Fovea provides a reusable exploration procedure that can be instantiated with a workload and op-timization objective, architectural component libraries, imple-mentation constraints, and a low-cost/reference evaluator pair. It separates wafer-scale exploration into two stages. First, physical-implication-aware design-space formulation 
+
+maps die, compute, memory, interconnect, and D2D choices to their modeled implementation implications, constructs the distinct modeled-feasible design space under these implica-tions, and applies exact local reductions to consolidate only evaluator-equivalent or same-footprint locally dominated con-figurations. Second, Decision-Domain-guided cross-fidelity refinement 
+
+estimates analytical-to-reference disagreement through paired in-domain calibration and converts analytical scores into reference-consistent performance intervals. These intervals define a Decision Domain of candidates that cannot yet be excluded as reference-optimal, thereby guiding selective designated-reference evaluation. Under a valid domain-wide disagreement bound, this domain contains the designated-reference optimum. The sampling-based implementation is evaluated separately through held-out design-space validation. Across ten reference-verifiable design spaces and seven LLM-training workloads, Fovea with 10% paired calibration recovers the exhaustive designated-reference optimum in all 70 workload/design-space pairs while achieving 4.13 × aver-age and 7.80 × maximum end-to-end speedup. Its physical-implication-aware formulation excludes 29.4% of analytically top-10% area-feasible candidates on average and forms a distinct modeled-feasible space containing 46,782 candidates in a broader construction sweep. This paper makes the following contributions:  
+
+> •
+
+General Methodology for Workload-Specific Wafer-Scale DSE. Fovea decomposes wafer-scale exploration into modeled-feasible design-space construction and workload- and space-specific Decision-Domain refine-ment, instantiated from user-supplied workloads, compo-nents, constraints, and evaluators.  
+
+> •
+
+Physical-Implication-Aware Design-Space Formula-tion. Fovea maps architecture choices to coupled physi-cal implications and constructs distinct modeled-feasible spaces while preserving cross-dimensional trade-offs and removing only exact local redundancy.  
+
+> •
+
+Decision-Domain-Guided Cross-Fidelity Refinement. 
+
+To the best of our knowledge, Fovea is the first wafer-scale DSE methodology to derive an explicit error-bounded Decision Domain with conditional reference-optimum containment and use it to guide selective refer-ence evaluation.  
+
+> •
+
+Reference-Verifiable End-to-End Evaluation. Across 70 workload/design-space pairs, Fovea recovers the ex-haustive designated-reference optimum with 4.13 × aver-age and 7.80 × maximum speedup. II. W AFER -S CALE DSE: B ACKGROUND AND CHALLENGES 
+
+A. Wafer-Scale Computing and Architectural Diversity 
+
+Wafer-scale systems integrate compute, memory, and com-munication resources across a wafer-sized substrate intercon-nected by a high-bandwidth on-wafer fabric [13], [20], [34], [37], [40]. By extending tightly coupled integration beyond the reticle limit of a monolithic die, they provide substantially greater aggregate compute throughput, memory capacity, and communication bandwidth, making wafer-scale integration a promising substrate for increasingly large AI workloads. Wafer scale, however, defines an integration canvas rather than a canonical architecture. In the design class studied by Fovea, the wafer is organized as a homogeneous two-dimensional array of identical, reticle-compliant dies instan-tiated from a common template. Each die contains compute engines, on-die memory, communication logic, and boundary-facing die-to-die (D2D) interfaces. As summarized in Fig. 2(a), candidate architectures differ in die dimensions, compatible Die Outline Wafer Overview Key Design Knobs Wafer Tiling                   
+
+> Compute Resource
+> Memory Capacity and
+> Bandwidth
+> D2D Capability 1) Reticle-Compliant Die Outline Compliant Reticle Limit Exceed Reticle Limit 2) Die Outline Constrained Wafer Tiling
+> Compatible
+> Wafer Tiling 3) Die-size-dependent D2D Capability small die short distance large die
+> long distance
+> High Realizable D2D BW Low Realizable D2D BW
+> 4) Boundary Access Constraints
+> Sufficient Edge Access Insufficient
+> Edge Access
+> Meets BW Targets Boundary Bottleneck
+> (a) Wafer-Scale System Model and Scope (b) Physical Implications Coupled with Design Choices (c) Evaluation Cost versus Decision Reliability
+> 1) Large Cost Gap
+> 2.49s / design Analytical
+> Evaluator 2.78h / design Reference
+> Evaluator
+> ≈4000x 2) Ranking Inversion Example Analytical Execution Time Reference Execution Time
+> X414k Y417k
+> Rank 30
+> Rank 42
+> X749k
+> Y741k Rank 7 Rank 2
+> Analytical: X is better Reference: Y is better 3) Agreement Statistics Spearman
+> ρInversion Rate Ref. Opt.
+> Rank Pct. Top-10%
+> Recall
+> 0.7752 20.96% 10.77% 64.94%
+> Incompatible
+> Wafer Tiling
+
+Fig. 2. Wafer-scale system model, coupled physical implications, and the tension between evaluation cost and decision reliability (a) Fovea models a homogeneous two-dimensional array of identical dies instantiated from a common reticle-compliant template. The key design choices include die outline, wafer tiling, compute resources, memory capacity and bandwidth, and D2D capability. (b) These choices are coupled through reticle, tiling, die-size-dependent D2D, and boundary-access constraints. (c) The low-cost analytical and designated ASTRA-sim+ns-3 reference backends exhibit an approximately 4,000 ×
+
+cost gap, a measured ranking inversion, and imperfect decision agreement. 
+
+row–column tilings, functional-area allocation, discrete com-ponent plans, and realizable D2D capability. The repeated-die organization fixes the overall integration structure while leaving these architectural choices open. Heterogeneous die mixtures and irregular die organizations are outside the current scope. The preferred architecture depends on the workload and optimization objective. Compute-intensive workloads benefit from greater compute throughput, memory-sensitive work-loads require different capacity and bandwidth provision-ing, and communication-intensive workloads favor stronger D2D support and different array organizations. These choices compete for shared physical resources: increasing compute, memory, or D2D provisioning consumes die area, while in-terface resources additionally compete for boundary access; changing the die dimensions also alters the die count, network geometry, and communication distance. Section VI shows that, under the same component libraries and physical constraints, different workloads favor different resource profiles and die organizations, and no single candidate is reference-optimal across all evaluated workloads. Training versus inference, in-tegrated versus disaggregated deployment, and throughput ver-sus latency optimization can introduce further design choices. Wafer-scale DSE is therefore a recurring process for selecting an architecture instance for a particular workload, objective, and technology setting, rather than a one-time search for a universal architecture. 
+
+B. Conventional Multi-Stage DSE Workflow 
+
+Modern chip development commonly relies on design-space exploration, although industrial flows may refer to related activities as architecture exploration, pathfinding, trade-off analysis, design–technology co-optimization (DTCO), or system–technology co-optimization (STCO) [11], [31], [49], [51]. Despite differences in terminology and implementation, these flows generally follow a multi-stage workflow: archi-tects define the workloads, optimization objectives, design variables, and implementation constraints; low-cost analytical or trace-driven evaluators screen a broad candidate space; and detailed simulation or implementation feedback is reserved for a much smaller subset of candidates [33], [44], [48], [52]. The practicality of this workflow depends on two assump-tions. First, architectural choices can be translated into a manageable and implementation-meaningful candidate space before expensive evaluation begins. Second, low-cost evalu-ation can reduce this space without excluding designs that remain competitive under detailed evaluation. Wafer-scale sys-tems challenge both assumptions. Their architectural choices have coupled implications for die dimensions, wafer tiling, functional-area allocation, D2D capability, and die-edge re-sources, while analytical and reference evaluators may rank otherwise competitive candidates differently. Fovea addresses these two challenges through physical-implication-aware design-space formulation and Decision-Domain-guided cross-fidelity refinement. 
+
+C. Physical Implications of Wafer-Scale Choices 
+
+Wafer-scale architectural choices cannot be treated as inde-pendent resource-count knobs. Die geometry, die-array orga-nization, functional-area allocation, and D2D-I/O provisioning are coupled through geometric, area, capability, and boundary constraints. Figure 2(b) summarizes the physical implications captured by Fovea’s design-space model. 
+
+Reticle-compliant die outline. Lithographic exposure con-strains the dimensions of an individual die [7], [14]. Adie therefore cannot be enlarged arbitrarily to accommodate additional architectural resources; every explored die outline must remain within the reticle envelope. 
+
+Compatible die-array tiling. Die dimensions determine both the per-die resource budget and the row–column tilings that fit within the usable wafer boundary. Each compatible tiling determines the resulting die count, array geometry, and wafer coverage. Smaller dies can generally support more tiling configurations and typically yield a larger die count. 
+
+Die-size-dependent D2D capability. We distinguish the fixed short inter-die channel between adjacent boundary PHYs from the on-die access wires that connect the die-level network endpoint to those PHYs. With a centered endpoint, larger outlines increase the center-to-edge wiring length. Under a fixed global-routing budget, each lane consumes more total wire and repeater resources, reducing the number of parallel lanes and hence the realizable aggregate D2D bandwidth. 
+
+Area budget and boundary access. Fixed power-delivery, clocking, control, and other implementation overheads reduce the die area available to configurable compute, on-die memory, interconnect, and D2D-I/O resources [32]. Satisfying the ag-gregate area budget is necessary but not sufficient for modeled feasibility: boundary-facing memory-interface and D2D-I/O blocks also require access to the die edge and may compete for the same edge-adjacent capacity [40]. As Fig. 2(b) illustrates, a configuration may satisfy the aggregate area constraint yet fail to provide sufficient boundary access. These interface blocks must therefore satisfy both aggregate area and die-edge placement constraints. Together, these coupled implications require an explicit modeled-feasibility formulation rather than an unconstrained Cartesian product of architectural resource quantities. 
+
+D. Evaluation Cost versus Decision Reliability 
+
+We use fidelity to denote an evaluator’s modeling detail; in our evaluator pair, higher fidelity also incurs substantially greater evaluation cost. We use decision reliability to denote agreement with the design selected by a designated reference evaluator. After the distinct modeled-feasible space has been constructed, evaluation faces a fundamental tension: a low-cost evaluator can cover the complete space but may rank candidates differently from the designated reference, whereas detailed reference evaluation provides the target design de-cision but is too expensive to apply exhaustively. In our implementation, ASTRA-sim’s analytical backend serves as the low-cost evaluator, while ASTRA-sim with ns-3 serves as the designated reference backend [17], [47]. The latter provides the decision reference used in this study rather than silicon ground truth. For larger workloads such as Llama-405B, the analytical backend requires 2.49 seconds per design on average, whereas the designated reference backend requires 2.78 hours, yielding an approximately 4,000 × cost difference, as summarized in Fig. 2(c). At these rates, evaluating the 192-design space used in the ranking-inversion example takes approximately 7.97 minutes with the analytical backend but 22.28 serial days with the reference backend. Exhaustive reference evaluation is therefore prohibitively expensive even for design spaces containing only hundreds of candidates. This cost advantage comes with weaker decision consis-tency. Figure 2(c) shows a measured ranking inversion in the same 192-design space under an AllReduce workload with a sequence length of 2K; execution time is reported in simulator time units, and lower is better. The analytical backend predicts Design X to be faster than Design Y, with their predicted execution times differing by less than 1%. The designated reference backend reverses this ordering and assigns Design Y a substantially better rank. Across the 70 reference-verifiable workload/design-space pairs, the two backends achieve a mean Spearman rank correlation of 0.7752, indicating that the ana-lytical evaluator preserves useful global ordering information. Nevertheless, their mean pairwise inversion rate is 20.96%, and the designated-reference-optimal design appears at the 10.77th percentile of the analytical ranking on average, where a lower percentile denotes a better rank. Analytical/reference top-k recall, defined as the fraction of reference top-k designs Reference-Selected Design   
+
+> Physical-Implication
+> Mapping
+> Architecture
+> Enumeration Modeled-Feasibility
+> Construction
+> Full-Space
+> Low-Cost Evaluation
+> Exact Local Reduction Component
+> Libraries
+> Workload /
+> Objective
+> Implementation
+> Constraints Evaluator Pair Distinct Feasible Design Space
+> Physical-Implication-
+> Aware Formulation Inputs Decision-Domain Guided Cross-Fidelity Refinement
+> Decision-Domain Formation
+> Selective Reference Evaluation
+> Disagreement  ϵ
+> Fig. 3. Overview of Fovea. Physical-implication-aware formulation con-structs a distinct modeled-feasible design space. Decision-Domain-guided cross-fidelity refinement then uses workload- and space-specific evaluator disagreement to focus designated-reference evaluation on candidates that remain potentially optimal.
+
+also present in the analytical top-k set, is 57.14%, 64.94%, and 76.62% for k = 5% , 10% , and 20% , respectively. Thus, useful global correlation does not make a fixed analytical top-k
+
+cutoff consistently reliable: the designated-reference optimum can still fall outside the retained set. Thus, analytical-only selection is scalable but may miss the designated-reference optimum, whereas exhaustive reference evaluation preserves the target decision at prohibitive cost. Fovea therefore requires a cross-fidelity exclusion rule that ties pruning to measured evaluator disagreement and reference-evaluates only unresolved candidates. III. F OVEA OVERVIEW 
+
+As shown in Fig. 3, each Fovea exploration instance is defined by four inputs: a workload and optimization objective, architectural component libraries, implementation constraints, and an evaluator pair. The first three specify the architectural choices to explore and the modeled constraints used to admit candidate combinations. The evaluator pair provides a low-cost backend for broad evaluation and a designated reference backend for resolving the retained candidates, decoupling the exploration methodology from any fixed architecture or simulator implementation. Physical-implication-aware formulation translates the sup-plied architectural choices into their modeled implementation implications and retains one representative for each distinct candidate satisfying the modeled constraints. Its output is the distinct modeled-feasible wafer-scale design space D, which defines the candidate universe for subsequent exploration. Decision-Domain-guided cross-fidelity refinement evaluates 
+
+D with the low-cost backend and uses workload- and space-specific evaluator disagreement to form the Decision Domain of candidates that may remain designated-reference-optimal. The designated reference backend resolves the retained can-didates, and the best reference-evaluated candidate is returned as the Reference-Selected Design. Sections IV and V present the two stages in detail. IV. P HYSICAL -I MPLICATION -A WARE DESIGN -S PACE 
+
+FORMULATION 
+
+A. Scope and Architecture Parameterization 
+
+Fovea formulates the design space within the homogeneous repeated-die architecture introduced in Section II. Each wafer-scale candidate consists of a regular Nrow × Ncol array 1
+
+Physical-Implication-Aware Design Space Formulation          
+
+> Scope and Architecture Parameterization Architecture Design Knob Tuples x x1= (N core , N mem , N D2D ,...) ... xk= (N core , N mem , N D2D ,...) Reticle-Compliant Die Outline Wdie
+> Homogeneous Die-Array Tiling
+> Wafer Tiling: N row ×Ncol
+> Tiled Area = N row ×Ncol ×Adie
+> Wafer Area (A wafer )
+> Non Tiled Area = A usable - A tiled
+
+2 Die-Level Area Budget Model Die Template Die Area Decomposition Non-Placeable Area (A np )Fixed Implementation Overhead (A impl )Allocatable Area (A alloc )Adie = A np + A impl + A alloc    
+
+> Allocatable Area Partitioning Compute Allocation (A comp )Memory Allocation (A mem )D2D Allocation (A intf )Aalloc = A comp + A mem + A intf
+
+3 Functional Allocation and Configuration Matching Component Plans (from libraries) Compute Plan Comp A Comp N    
+
+> ...
+> Memory Plan MEM 1 MEM N
+> ...
+> D2D Plan D2D 1 D2D 1 D2D 2
+> ...
+> Match into Die Template Feasibility Checks
+> ②Boundary Access Compatibility
+> √Ereq ≤E(L die , W die ;
+> τ)Examples Boundary Overflow
+
+× ×
+
+4 Exact Local Structural Reduction 
+
+4A 4B 
+
+> Equivalence-class Reduction
+> Same-Footprint local Strict-Dominance reduction
+
+≈ ≈        
+
+> Prune comp mem D2D
+> ABABABA, B with same footprint: ABA strictly dominates B:
+
+5 Wafer-Scale Design Space Die Designs 
+
+Physical-Implication-Aware Design Space D   
+
+> Wafer Designs
+> ...
+> D1
+> D2
+> D3
+> AB
+> √
+
+×         
+
+> Die Area (A die )Usable Area (A usable )Edge Area = A wafer –Ausable
+> ①D2D Capacity Fit BW D2D ≤BW max (L die , W die ;
+> τ)√
+> D2D Capacity Mismatch
+> BW D2D
+> BW max
+> BW D2D >BW max Lmem + L D2D >Ldie
+
+Fig. 4. Physical-implication-aware design-space formulation. Fovea enumerates reticle-compliant die outlines and compatible wafer tilings, reserves non-placeable and fixed-overhead area, and matches discrete compute, memory, interconnect, and D2D-I/O plans under coupled area, D2D-capability, boundary-access, and placement constraints. Equivalent and same-footprint locally dominated die configurations are consolidated before the retained configurations are lifted to all compatible wafer tilings, producing the distinct modeled-feasible design space D.
+
+of identical, reticle-compliant dies connected by boundary-facing D2D interfaces. A candidate is parameterized by its die dimensions, compatible row–column tiling, functional-area allocation, and discrete compute, on-die memory, interconnect, and D2D-I/O configurations selected from the supplied com-ponent libraries. These parameters are coupled through their implementa-tion implications. Die dimensions determine the per-die area budget, compatible wafer tilings, adjacent-die communication distance, and realizable D2D capability, while the selected component configurations determine area demand, boundary-access requirements, and placement class. The corresponding implication functions are technology-specific inputs to Fovea. The framework applies these functions and checks the modeled constraints before admitting an architecture-parameter tuple to 
+
+D, rather than treating the parameters as independent resource-count knobs. 
+
+B. Wafer-Level Modeled-Feasibility Checks 
+
+For each die outline (Ldie , W die ), Fovea first verifies reticle compliance and determines the wafer region available for regular die placement. Let Awafer denote the total wafer area and Aedge the wafer-edge exclusion area. The usable area is 
+
+Ausable = Awafer − Aedge . (1) Geometric compatibility is not inferred from aggregate area alone. For each integer row–column pair (Nrow , N col ),Fovea instantiates the corresponding regular die array after applying the declared wafer-edge exclusion and checks every die footprint against the usable-wafer boundary. A tiling is admitted only when every die lies entirely within this bound-ary. Thus, two arrays with the same tiled area can differ in feasibility because their row–column aspect ratios interact differently with the wafer boundary. The area quantities below are accounting attributes computed only after this geometric-containment check. For a die area Adie = Ldie Wdie , the tiled area is 
+
+Atiled = Nrow Ncol Adie , (2) and the residual usable area is 
+
+Anon -tiled = Ausable − Atiled . (3) Here, Aedge is excluded before tiling, whereas Anon -tiled 
+
+records the usable area left uncovered by a particular compati-ble tiling. Fovea retains every tiling that passes the geometric-containment check for subsequent die-level configuration. 
+
+C. Die-Level Area-Budget Model 
+
+For each die geometry, the total die area Adie = Ldie Wdie is decomposed into three aggregate area budgets: non-placeable area Anp , fixed implementation overhead Aimpl , and allocat-able area Aalloc . Anp accounts for geometric loss, keep-out regions, and placement blockages; Aimpl accounts for power delivery, clock distribution, control, and other fixed imple-mentation support; and Aalloc is available for configurable architectural resources. The die-area budget satisfies 
+
+Adie = Anp + Aimpl + Aalloc . (4) Fovea partitions Aalloc among compute, on-die memory, and interconnect and D2D-I/O resources: 
+
+Aalloc = Acomp + Amem + Aintf , (5) where Acomp , Amem , and Aintf denote the corresponding functional-area allocations. These quantities represent aggre-gate area consumption rather than necessarily contiguous physical regions. Component tuples satisfying the area bud-gets proceed to the capability and boundary-access checks described next. 
+
+D. Functional Allocation and Configuration Matching 
+
+For each functional-area allocation, Fovea selects discrete compute, on-die memory, interconnect, and D2D-I/O configu-rations from the supplied component libraries and checks their modeled physical compatibility. 
+
+Die-size-dependent D2D-capability check. For each selected D2D-I/O plan, Fovea compares its requested aggregate band-width against the capability envelope supported by the candi-date die outline: 
+
+BW D2D ≤ BW max (Ldie , W die ; τ ) , (6) where τ denotes the D2D setting: per-wire rate, slice foot-print, endpoint location, unit-length access cost, and rout-ing/interface budgets. The inter-die channel between edge PHYs is fixed and independent of outline. For each outline, Fovea uses Ldie /2 and Wdie /2 as east/west and north/south access lengths and enumerates lane counts whose length-weighted wire/repeater demand fits the global routing budget; the maximum data-lane count times per-wire rate defines 
+
+BW max .
+
+Boundary-access and placement check. The selected memory-interface and D2D-I/O plans must satisfy the effective die-edge constraint: 
+
+Ereq ≤ Emax (Ldie , W die ; τ ) (7) where τ denotes the fixed boundary-placement setting, in-cluding the footprint of each boundary-facing block, its legal sides and orientations, the usable interval on each die side, corner keep-outs, reserved edge segments, and minimum inter-block spacing. The scalar inequality is compact notation for an explicit placement-feasibility test rather than a compar-ison against the aggregate die perimeter. For each unique die-outline and interface-plan combination, Fovea enumerates the legal side assignments and orientations of the memory-interface and D2D-I/O blocks, and admits the combination only if at least one non-overlapping placement exists within the usable edge intervals. 
+
+E. Exact Local Structural Reduction 
+
+Direct configuration matching can generate redundant de-scriptions of the same effective die configuration. Before lifting die configurations to their compatible wafer tilings, Fovea applies two exact local structural reductions. 
+
+Equivalence-class reduction. Boundary-constrained blocks may be mirrored or reordered without changing the die foot-print, resource totals, placement feasibility, or any evaluator-visible attribute. As illustrated in Fig. 4, such descriptions belong to the same equivalence class. Fovea retains one canonical representative from each class. 
+
+Same-footprint local strict-dominance reduction. Two die configurations may have the same modeled footprint and satisfy the same modeled-feasibility conditions, while one pro-vides no less capability in every compared resource dimension and strictly greater capability in at least one. In Fig. 4, Designs A and B have the same modeled footprint, but A strictly dominates B in the compared compute, memory, and D2D dimensions. Within the same die-footprint, compatible-tiling-set, place-ment, and interface-compatibility class, the evaluators are monotonic in the compared capability dimensions. Therefore, B cannot outperform A and is removed. Configurations with different die geometries, compatible wafer tilings, placement or interface outcomes, or cross-dimensional resource trade-offs are retained. After reduction, each remaining die configuration is com-bined with all compatible homogeneous wafer tilings. The resulting distinct modeled-feasible wafer-scale design space is denoted by D and serves as the input to the subsequent DSE stage. V. D ECISION -D OMAIN -G UIDED CROSS -F IDELITY 
+
+REFINEMENT 
+
+This section presents Stage II of Fovea. Given the distinct modeled-feasible design space D constructed in Section IV, the objective is to reduce calls to the designated reference evaluator while retaining the design that would be selected by exhaustive designated-reference evaluation. The key idea is to replace rank-based winner prediction with bound-based candidate exclusion. A workload- and space-specific disagreement bound maps each low-cost score to a range of reference-consistent outcomes. These ranges induce a Decision Domain : the set of candidates that cannot yet be excluded from reference optimality and therefore still require reference evaluation. We first formalize the cross-fidelity dis-agreement model and then derive the Decision Domain and its conditional containment property. 
+
+A. Cross-Fidelity Disagreement Model 
+
+For a fixed workload and scalar execution-time objective, the low-cost evaluator covers the complete formed design space D, but its output should not be treated as an exact pre-diction of designated-reference performance. Instead, Fovea uses cross-fidelity disagreement to convert each low-cost point estimate into a range of reference-consistent outcomes. For each candidate d ∈ D, let PL(d) and PR(d) denote the Decision-Domain-Guided Cross-Fidelity Refinement            
+
+> (b) Decision Domain Formation Low-Cost
+> Score Upper
+> Bound U(d) d1 d2 d3 d4 d5 Retained Retained Trimmed Trimmed Trimmed
+> If P l(d) ≥R( ϵ), d is in Decision Domain
+> Lower Bound
+> L(d)
+> ABAB
+> Low-Cost A is Better Performance Score (a) Cross-Fidelity Disagreement Model
+> Reference:
+> B is Better AB
+> Performance Score  Upper Bound
+> U(d) Lower Bound L(d) L(A) <U(B): Possible Inversion Low-Cost Low Fidelity causes Rank Inversion
+> Disagreement determines L(d), U(d)
+> dl*Candidate
+> Designs
+> Retain Cutoff R( ϵ)
+> Decision
+> Domain
+> Optimal Threshold L( ϵ)
+> Status
+> Low-Cost
+> Optimal Retained
+
+Fig. 5. Decision-Domain-guided cross-fidelity refinement. (a) Low-cost and designated-reference evaluators may rank nearby candidates differently; a low-cost-to-reference disagreement bound maps each low-cost score to a reference-consistent performance interval. (b) Given a valid disagreement bound, Fovea retains candidates whose optimistic reference-performance bound can still reach the pessimistic bound of the low-cost optimum; these candidates form the Decision Domain. 
+
+performance scores produced by the low-cost and designated reference evaluators, respectively. Each score is defined as the reciprocal of the corresponding execution time, so larger values are better. We measure the low-cost-to-reference disagreement using the relative performance error 
+
+e(d) = PL(d)
+
+PR(d) − 1 , ϵ = max  
+
+> d∈D
+
+e(d). (8) Here, e(d) captures the disagreement for one candidate, while 
+
+ϵ is the worst-case disagreement over the complete formed design space and is therefore referred to as the full-domain 
+
+disagreement bound .Under a valid bound 0 ≤ ϵ < 1, the designated-reference score of each candidate lies within 
+
+PL(d)1 + ϵ ≤ PR(d) ≤ PL(d)1 − ϵ , ∀d ∈ D . (9) This interval captures the reference outcomes that remain consistent with the low-cost score and the disagreement bound; it does not assume that the low-cost ranking is preserved. As illustrated in Fig. 5(a), the right side maps each low-cost score to its pessimistic and optimistic reference-performance bounds, while the left side shows the resulting ranking am-biguity. Even if PL(A) > P L(B), the designated reference evaluator may still produce PR(A) < PR(B) when their reference-consistent intervals overlap. 
+
+B. Decision Domain Formation 
+
+The low-cost optimum provides a natural anchor for candi-date exclusion, although it need not be the final selected de-sign. Let d⋆ 
+
+> L
+
+∈ arg max d∈D PL(d) denote a low-cost optimum. Because cross-fidelity ranking inversions may occur, d⋆ 
+
+> L
+
+may not maximize the designated-reference score. Nevertheless, any designated-reference-optimal candidate must perform at least as well as d⋆ 
+
+> L
+
+under reference evaluation. Under a valid disagreement bound ϵ, Eq. (9) provides a pessimistic reference-performance bound for d⋆ 
+
+> L
+
+and an opti-mistic reference-performance bound for every other candidate. Fovea compares these two bounds to determine whether a candidate can be excluded. If even the optimistic reference performance of candidate ⌈ is lower than the pessimistic reference performance of d⋆
+
+> L
+
+, then ⌈ cannot be designated-reference-optimal. Otherwise, its ordering remains unresolved and reference evaluation is still required. Accordingly, Fovea defines the retain cutoff R(ϵ) and the corresponding Decision Domain as 
+
+R(ϵ) = 1 − ϵ
+
+1 + ϵ PL(d⋆
+
+> L
+
+),
+
+C(ϵ) = {d ∈ D | PL(d) ≥ R(ϵ)} .
+
+(10) As illustrated in Fig. 5(b), candidates below R(ϵ) are trimmed because they cannot reach the reference-performance anchor even under their optimistic bounds. Candidates in C(ϵ) remain unresolved under the disagreement bound and are therefore retained for designated-reference evaluation. When candidates are ordered by their low-cost scores, C(ϵ) can equivalently be represented as a workload- and space-specific prefix of that ranking. Unlike conventional analytical top-k screening, however, Fovea does not specify the prefix length or retained fraction in advance; the measured evaluator disagreement de-termines the retain cutoff, while the low-cost score distribution determines how many candidates lie above it. Thus, the distinc-tion is not the shape of the retained set, but the disagreement-induced, pair-specific determination of its boundary. 
+
+Conditional containment. The Decision Domain provides a conditional containment property. If ϵ upper-bounds eval-uator disagreement over every candidate in D, then ev-ery designated-reference optimum is retained. Let d⋆ 
+
+> R
+
+∈
+
+arg max d∈D PR(d) denote such an optimum. Reference op-timality and the valid reference-consistent intervals imply 
+
+PL(d⋆
+
+> R
+
+)1 − ϵ ≥ PR(d⋆
+
+> R
+
+) ≥ PR(d⋆
+
+> L
+
+) ≥ PL(d⋆
+
+> L
+
+)1 + ϵ . (11) Therefore, PL(d⋆
+
+> R
+
+) ≥ R(ϵ), so d⋆ 
+
+> R
+
+satisfies the retention condition in Eq. (10) and hence d⋆ 
+
+> R
+
+∈ C (ϵ). This containment property holds whenever ϵ is valid over the complete formed design space. 
+
+Refinement workflow. Given a workload- and space-specific disagreement value, Fovea evaluates the complete formed design space D with the low-cost evaluator, forms the De-cision Domain through Eq. (10), and applies the designated reference evaluator only to the retained candidates. Under a valid domain-wide bound, returning the highest-scoring candidate in C(ϵ) preserves the design selected by exhaustive designated-reference evaluation. If the supplied disagreement value does not permit interval-based exclusion, Fovea retains the complete space. Section VI-D describes how the evaluated implementation estimates this input through paired in-domain sampling and accounts for its cost. 
+
+C. Disagreement-Decision-Domain Diagnostic 
+
+The size of the Decision Domain depends on both the disagreement bound and the distribution of low-cost scores around the resulting retain cutoff. To characterize this rela-tionship, we define an offline diagnostic that keeps the low-cost score vector {PL(d) | d ∈ D} fixed while varying the disagreement value ϵ.Disagreement-Decision-Domain Diagnostic 
+
+(a) Monotonic Contraction 
+
+> Performance
+> Score
+> Design Space Performance
+> Score
+> Design Space
+> Decision Domain
+> Retained Designs Trimmed Designs
+> ϵ=0.15
+> Decision Domain Retained Designs Trimmed Designs
+> ϵ=0.05
+> Retain Cutoff R(0.15)
+
+(b) Disagreement-Decision-Domain Curve  
+
+> 0.6 0.8
+> 0.4
+> 0.2 1.0 norm. Decision Domain size Ineffective Trim Effective
+> Trim
+> ϵ
+> 0.15 000.05 0.10
+> Steep Region : Sensitive to Disagreement-Bound Change Flat Region : Insensitive to Disagreement-Bound Change
+
+(c) Mechanisms Behind Steep / Flat Regions      
+
+> Effective Trim (Steep Region)
+> R( ϵ1)
+> ϵ1>ϵ2
+> Clustered
+> Performance Score Effective Trim Ineffective Trim (Flat Region) R( ϵ3)R( ϵ4)
+> ϵ3>ϵ4
+> Sparse Performance Score
+> Ineffective Trim
+> Retain Cutoff R(0.05)
+> R( ϵ2)
+
+Fig. 6. Disagreement–Decision-Domain diagnostic. For a fixed low-cost score distribution, (a) tightening the disagreement bound raises the low-cost-score cutoff and contracts the Decision Domain. (b) The Disagreement–Decision-Domain Curve (DDC) reports the normalized Decision Domain size as the disagreement bound varies. (c) Dense scores near the cutoff produce a sensitive region in which a small reduction in disagreement removes many candidates, whereas sparse scores produce an insensitive region with limited additional contraction. 
+
+Equation (10) gives a monotonic relationship. For 0 ≤ ϵ2 <ϵ1 < 1, tightening the disagreement bound raises the retain cutoff and contracts the Decision Domain: 
+
+R(ϵ2) > R (ϵ1), C(ϵ2) ⊆ C (ϵ1).
+
+Thus, reducing the disagreement can only preserve or contract the Decision Domain, as illustrated in Fig. 6(a). We sum-marize this behavior by plotting the normalized domain size 
+
+|C (ϵ)|/|D| as ϵ varies, yielding the Disagreement–Decision-Domain Curve (DDC) shown in Fig. 6(b). The amount of contraction depends on the density of low-cost scores near the retain cutoff. As illustrated in Fig. 6(c), if many candidates lie between the cutoffs associated with two disagreement values, a small tightening removes many candidates and produces a steep curve segment. If few candi-dates lie in this interval, the same tightening produces a flat segment with limited additional contraction. The DDC is an offline diagnostic rather than an additional step in the Fovea workflow. It characterizes how evaluator disagreement and the score distribution jointly determine the retained-domain size and the resulting demand for designated-reference evaluation. VI. E VALUATION 
+
+A. Experimental Setup 
+
+Tables I and II summarize seven LLM-training work-loads and ten reference-verifiable design spaces, yielding 70 workload–design-space pairs. In Table I, MB, Seq., GA, and CKPT denote wafer microbatch size, sequence length, gradient-accumulation steps, and checkpoint interval; Wgt. Prec. and Opt.-State Prec. denote weight and optimizer-state precision; and DP and TP denote data and tensor parallelism. All spaces assume a 5 nm process, informed by published 5 nm logic and SRAM technology characteristics [5], [50], a 
+
+TABLE I LLM-TRAINING WORKLOADS AND EXECUTION SETTINGS .                         
+
+> ID Model MB Seq. GA CKPT Opt. Wgt. Prec. State Prec. Parallel
+> 0 Llama-3B 512 1,024 84 AdamW 16-bit 32-bit DP+TP 1 Llama-3B 32 512 14 AdamW 16-bit 32-bit DP+TP 2 Llama-8B 256 2,048 16 4 AdamW 16-bit 32-bit DP+TP 3 Qwen2.5-32B 64 2,048 16 4 AdamW 16-bit 32-bit DP+TP 4 Llama-70B 32 2,048 16 4 AdamW 16-bit 32-bit DP+TP 5 Llama-70B 8 8,192 16 2 AdamW 16-bit 32-bit DP+TP 6 Llama-405B 4 2,048 32 2 AdamW 16-bit 32-bit DP+TP
+
+220 mm ×220 mm usable wafer region, and a 33 mm ×26 mm 
+
+reticle limit. We instantiate τD2D using a literature-derived 5 nm short-reach PHY that provides 25 .2 Gb /s per direction per physical wire at a characterized 1.2 mm channel [25]. Following the BoW organization, 16 data wires per PHY slice provide 403 .2 Gb /s per direction [26]. For footprint accounting, we use the BoW advanced-package reference or-ganization at a 40 μm bump pitch, whose 16-slice arrangement occupies 1.60 mm along the die edge and 0.42 mm in edge-normal depth. We instantiate τedge with a 0.20 mm keep-out at each corner, a centered reserved segment covering 10% of each die side, and a minimum inter-block spacing of 20 μm.Performance Score is the reciprocal of workload execution time. Additional spaces containing up to 46,782 candidates are used only for the construction-scaling study. All experiments run on a single-socket x86-64 server with a six-core Intel Core i7-6850K processor at a 3.60 GHz base frequency and 128 GB of memory, executing up to 12 simulator jobs concurrently. The exhaustive reference corpus is generated once and reused across all randomized search-policy runs. Chakra [38] generates the training traces, which are evalu-ated by ASTRA-sim’s analytical backend and the designated ASTRA-sim+ns-3 reference backend [17], [47]. Exhaustive ASTRA-sim+ns-3 evaluation, denoted Exhaustive Reference, establishes the designated-reference optimum for each of the 70 pairs. These results are used only for post-search validation and remain unavailable to all DSE methods during exploration. For end-to-end search efficiency, we compare Fovea with 
+
+TABLE II REFERENCE -VERIFIABLE DESIGN -SPACE CONFIGURATIONS .                                                                                                   
+
+> DS Die-Outline Range (mm) Comp. Plans Mem. Plans D2D Plans Compatible Tiling |D|
+> Length Width Rows Cols.
+> a8–33 8–26 16 18 26–27 8–27 192 b10–33 10–26 12 27 36–21 8–21 272 c14–33 14–26 15 25 46–15 8–15 405 d10–33 10–26 40 946–21 8–21 5,655 e9–33 9–26 832 36–24 8–24 351 f12–33 12–26 12 30 26–18 8–18 248 g8–33 8–26 32 12 26–27 8–27 603 h12–33 12–26 24 16 16–18 8–18 179 i10–33 10–26 24 16 86–21 8–21 372 j8–33 8–26 32 18 46–27 8–27 677 TABLE III DECISION -LEVEL CROSS -VALIDATION AGAINST GEM 5 G ARNET .
+> DS / Workload # Designs Spearman ρSame Best
+> a / W1 192 0.9901 Yes a / W6 192 0.9984 Yes j / W1 677 0.9906 Yes j / W6 677 0.9993 Yes
+
+Exhaustive Reference. For selected-design quality, we compare Exhaustive Analytical, Fovea, Simulated Annealing (SA) [18], Theseus [52], and Polaris [36], using Exhaustive Reference as the designated-reference optimum. Where applicable, all methods use ASTRA-sim analytical and ASTRA-sim+ns-3 as the common low- and high-fidelity evaluators, optimize the same execution-time objective, and search the same formed design spaces. We additionally cross-validate ASTRA-sim+ns-3 against gem5 Garnet 3.0 [1], [3], [4]. 
+
+B. Cross-Validation of the Designated Reference Backend 
+
+ASTRA-sim+ns-3 serves as the designated reference back-end in our main evaluation rather than silicon ground truth. To examine whether the resulting architecture decisions depend on ns-3-specific modeling choices, we cross-validate four design-space/workload settings using gem5 Garnet 3.0 [1], [3], [4]. Garnet follows an implementation path independent of ns-3 and models router pipelines, input buffering, virtual channels, switch arbitration, credit-based flow control, and link traversal at cycle level. For each evaluated wafer design, Garnet uses the same die-array topology, routing policy, link bandwidth, and link latency as ASTRA-sim+ns-3, and replays the same workload commu-nication events as packet injections. Compute and memory timing remain unchanged, so this experiment isolates whether the interconnect model changes the resulting architecture rank-ing and selected design. The evaluated settings cover design spaces a and j and two workloads with distinct communication characteristics: W1, the communication-intensive Llama-3B workload, and W6, the Llama-405B workload. Across the four settings, ASTRA-sim+ns-3 and Garnet achieve a mean Spearman rank correlation of 0.9946 and select the same best design in every case. This result sup-ports decision-level consistency between the two interconnect models for the evaluated settings. 
+
+C. Physical-Formulation Effectiveness and Large-Space Con-struction 
+
+We evaluate Stage I from two perspectives: how much the formulation contracts the construction space, and whether the physical-implication checks exclude candidates that ap-pear competitive under low-cost evaluation. For each of the ten reference-verifiable design spaces, we compare three nested spaces. The Area-Feasible space satisfies the reti-cle, compatible-tiling, and aggregate-area constraints. The 
+
+Physical-Implication-Aware space further enforces the die-size-dependent D2D-capability, die-edge-access, and place-ment constraints. The final Fovea space additionally applies equivalence-class canonicalization and same-footprint local strict-dominance reduction. 1e2 design space size  design space id a~j: 1e3 1e4 1e5 1e6 1e7 Area         
+
+> Feasible Final Design
+> Space
+> Physical Implication (a) Space Construction Breakdown 040 design space 20 30 10 rejection rate/%
+> (b) Top-10% Rejection
+> Fig. 7. Physical-formulation ablation across the ten reference-verifiable design spaces. (a) Candidate counts in the Area-Feasible, Physical-Implication-Aware, and final Fovea spaces. (b) Mean Top-10% Physical-Rejection Rate across the seven workloads for each design space.
+
+To measure whether the physical checks affect performance-relevant candidates, we define the Top-10% Physical-Rejection Rate. For each workload, we rank all Area-Feasible candidates using the analytical evaluator, take the highest-scoring 10%, and measure the fraction removed by the complete physical-implication checks. The rate is computed separately for each workload and then averaged across the seven workloads for each design space. As shown in Fig. 7(a), the complete physical-implication checks remove 69.4%–90.7% of the Area-Feasible candi-dates across the ten design spaces, with an overall mean of 86.4%. The subsequent exact local reductions further eliminate 99.83%–99.96% of the Physical-Implication-Aware candidates, with an overall mean of 99.89%. More importantly, Fig. 7(b) shows mean Top-10% Physical-Rejection Rates ranging from 14.1% to 38.2%, with an overall mean of 29.4%. Thus, aggregate-area feasibility does not merely admit low-ranked tail candidates; it also admits analytically competitive designs that violate the modeled D2D, die-edge, or placement requirements. For example, in design space f, the analytical-best Area-Feasible candidate is excluded because it violates the D2D-capability constraint. Figure 8 evaluates Stage-I construction over a broader sweep of component-library configurations. As component-library diversity increases, the resulting distinct modeled-feasible space grows to 46,782 candidates in the largest eval-uated configuration. The representative spaces remain discrete and irregular across compute throughput, memory capacity, memory bandwidth, and D2D bandwidth, showing that the for-mulation preserves diverse cross-dimensional trade-offs rather than collapsing the space into a narrow family of similar configurations. 
+
+D. Practical Calibration 
+
+To instantiate the workload- and space-specific disagree-ment value required by the refinement stage, the evaluated implementation uses uniform paired sampling within each workload/design-space pair. After evaluating the complete space with the low-cost evaluator, we uniformly sample S ⊆ D 
+
+with |S| = ⌈ρ|D|⌉ , additionally evaluate these candidates using the designated reference evaluator, and compute ˆϵ =max d∈S e(d).Because ˆϵ is a sampled maximum, it may underestimate the full-domain disagreement bound. Full-domain disagree-ment coverage is sufficient for the conditional containment 0.1          
+
+> 10.2 1D2D bandwidth
+> component count=31 design space size=9430 0.2 0.6
+> 10.1 10.2 1D2D bandwidth Mem. bandwidth
+> 1
+> 0.2 0.6
+> 10.1 0.2 1D2D
+> bandwidth
+> Mem. bandwidth 0.2 0.6 10.1 10.2 1D2D
+> bandwidth
+> Mem.
+> bandwidth 10 20 30 40 50 60 0
+> 10^1 10^2 10^3 10^4 10^5 design space size
+> component count component count=60 design space size=46782 component count=4
+> design space size=37 Mem. bandwidth 10.6
+> component count=27 design space size=2460 0.2
+
+Fig. 8. Stage-I construction scale and structure of the modeled-feasible design spaces. The left panel shows the final design-space size as component-library diversity increases. The remaining panels show representative spaces containing 37, 2,460, 9,430, and 46,782 distinct candidates. The axes denote system TFLOPS, memory capacity, and memory bandwidth, while color encodes D2D bandwidth. These larger spaces extend the construction study beyond the ten reference-verifiable spaces used for end-to-end evaluation. a b c d e f g h i j02468mean 4.13 
+
+Speedup/Ex. ref. (1x) Speedup Per Design Space Speedup Per Pair 
+
+Fig. 9. End-to-end Fovea speedup over Exhaustive Reference. Each bar reports the mean across the seven workloads for one design space; the dashed line indicates the overall mean across all 70 workload/design-space pairs. 
+
+result in Section V-B, but is not necessary for retaining the reference optimum in a particular workload/design-space pair: the largest pointwise disagreement may occur on a candidate far below the retain cutoff and therefore leave the reference-optimum retention decision unchanged. We therefore treat ˆϵ as a practical disagreement estimate and select the sampling rate 
+
+ρ empirically through leave-one-design-space-out validation. For each held-out design space, we evaluate sampling rates from 1% to 15% on the other nine spaces, select the smallest rate with no observed recovery failure, and test that rate on the held-out space without further tuning. The fold-selected rates range from 8% to 10%; we therefore use 10%, the maximum selected rate, as a conservative common operating point. Section VI-F evaluates the resulting selected-design quality over 20 independent calibration draws per workload/design-space pair. In a retrospective diagnostic, the largest ob-served underestimation of the full-domain disagreement is 1.47 percentage points. The designated-reference results ob-tained during calibration are cached and reused: after form-ing C(ˆ ϵ), only candidates in C(ˆ ϵ) \ S require additional designated-reference evaluation, while final selection considers all reference-evaluated candidates in C(ˆ ϵ) ∪ S. Calibration evaluations are included in the total reference cost reported in the end-to-end results. 
+
+E. End-to-End Search Efficiency 
+
+For each workload/design-space pair, Fovea’s end-to-end runtime includes full-space analytical evaluation, 10% paired calibration, and all additional designated-reference evaluations 
+
+TABLE IV DECISION -D OMAIN AND REFERENCE -EVALUATION FRACTIONS .            
+
+> Metric Mean Median 95th Pctl. Maximum
+> Decision-Domain fraction 13.58% 11.94% 33.98% 50.37% Total reference fraction 20.42% 19.24% 38.41% 52.94%
+
+TABLE V RUN -LEVEL SELECTED -DESIGN QUALITY .                    
+
+> Method Exact Recovery Mean Norm. Perf. 5th-Pctl. Norm. Perf. Worst Norm. Perf.
+> Fovea 100% (1400/1400) 1.000 1.000 1.000
+> Polaris 84.86% (1188/1400) 0.9959 0.9921 0.6721 Theseus 25.50% (357/1400) 0.9691 0.8457 0.0056 SA 24.14% (338/1400) 0.9546 0.7874 0.0055 Exhaustive Analytical 7.14% (5/70) 0.9329 0.8182 0.7325
+
+required by the resulting Decision Domain. Calibration results are cached and reused when sampled candidates also belong to the retained domain. The Decision-Domain fraction is normalized to the formed design-space size, while the total reference fraction counts all distinct candidates evaluated by the designated reference backend during either calibration or Decision-Domain evaluation. We report speedup relative to Exhaustive Reference over the same formed design space. As shown in Table IV, the resulting Decision Domain contains 13.58% of the formed design space on average and 11.94% at the median. The 95th-percentile and maximum fractions are 33.98% and 50.37%, respectively. After including calibration samples outside the retained domain, Fovea eval-uates 20.42% of the candidates with the designated reference backend on average, with a median of 19.24% and a maximum of 52.94%. Figure 9 reports the resulting end-to-end speedup across the 70 workload/design-space pairs. After accounting for full-space analytical evaluation, calibration, additional designated-reference evaluation, and algorithmic overhead, Fovea’s av-erage runtime is 24.21% of Exhaustive Reference, corre-sponding to an average speedup of 4.13 × and a maxi-mum speedup of 7.80 ×. Variation across pairs largely re-flects the retained-domain size and the candidate-level cost of designated-reference evaluation: smaller retained domains generally require fewer additional reference evaluations and achieve greater speedup. 
+
+F. Selected-Design Quality 
+
+Exhaustive Analytical selects the low-cost optimum, while Exhaustive Reference provides the designated-reference opti-mum used for normalization. In the evaluated implementation, Fovea uses 10% paired calibration followed by designated-reference evaluation of the resulting Decision Domain. The-seus and Polaris retain their respective multi-fidelity proce-dures using the common analytical and designated-reference backends. SA follows its standard search procedure under norm. metrics      
+
+> 01TFLOPS
+> Llama-8B Mem.
+> capacity Mem.
+> BW
+> (a) resource allocation per workload
+> Qwen2.5-32B Llama-405B D2D
+> BW
+> 10x12 9X14
+> (b) representative designs
+> 0.8 0.6 0.4 0.2 10x10 Design Space d
+> Llama-8B Qwen2.5-
+> 32B Llama-405B Fig. 10. Workload-dependent reference-optimal designs. (a) Normalized com-pute throughput, memory capacity, memory bandwidth, and D2D bandwidth. (b) Representative die-array organizations.
+
+the same execution-time objective, formed design space, and runtime accounting. This common setup isolates the methods’ evaluation-allocation and design-selection policies under the same objective, candidate space, and evaluator pair. Fovea is an adaptive-cost method: its realized reference-evaluation cost is determined by the workload- and space-specific disagreement and the resulting Decision-Domain size. In contrast, SA, Theseus, and Polaris require an ex ante stopping budget. We therefore assign these methods a fixed per-pair runtime budget equal to 25% of Exhaustive Reference, selected before any search run. This budget slightly exceeds Fovea’s measured mean end-to-end runtime of 24.21% of Exhaustive Reference. The comparison therefore evaluates adaptive-cost refinement against fixed-budget search at the same benchmark-level cost scale; it does not impose hind-sight pairwise matching to Fovea’s realized cost, which is unavailable to a competing method before execution. Each method with a stochastic procedure is evaluated over 20 in-dependent runs per workload/design-space pair. All analytical evaluations, designated-reference evaluations, and algorithmic overheads are included when enforcing the runtime budget. As shown in Table V, Fovea recovers the exhaustive designated-reference optimum in all 1,400 runs across the 70 workload/design-space pairs and 20 independent calibration draws per pair; its mean, 5th-percentile, and worst-case nor-malized performance are therefore all 1.000. Polaris provides the strongest baseline average and lower-tail performance, but recovers the exact optimum in only 84.86% of its runs and reaches a worst-case normalized performance of 0.6721. Theseus and SA recover the exact optimum in only 25.50% and 24.14% of their runs, respectively, and exhibit rare near-zero tail outcomes. Exhaustive Analytical is deterministic and recovers the designated-reference optimum in only 5 of the 70 pairs. These results show that high average performance can conceal substantial failures for particular workloads or random runs. Despite receiving a slightly larger runtime budget than Fovea on average, none of the baselines matches its exact-recovery rate or worst-case performance. 
+
+G. Workload-Dependent Architectural Choices 
+
+Fig. 10 compares the reference-optimal designs for three representative LLM-training workloads. Resource metrics are normalized to the maximum among the shown designs. The preferred resource balance and die-array organization vary across workloads: the representative optima use 9 × 14 ,
+
+10 × 12 , and 10 × 10 organizations and allocate substantially different proportions of compute, memory, and D2D capabil-ity. These results confirm that no single candidate is reference-optimal across the evaluated workloads, motivating workload-specific wafer-scale DSE. VII. R ELATED WORK 
+
+Industrial and multi-stage DSE practice. Modern chip development uses workload-driven modeling, architecture ex-ploration, implementation sweeps, and expert-guided trade-off analysis, often under names such as pathfinding, DTCO, or STCO [11], [31], [49], [51]. These flows typically screen broad spaces with low-cost models and reserve detailed simulation or implementation feedback for fewer candidates. However, publicly documented practices provide limited assurance that such screening retains the design preferred by a designated reference evaluator. Fovea addresses this selection problem without assuming that industrial exploration is either purely manual or fully automated. 
+
+Wafer-scale exploration and physical feasibility. Commer-cial systems, physical-design studies, communication fabrics, and application demonstrations expose the coupled effects of compute, memory, interconnect, redundancy, mapping, and physical organization in wafer-scale systems [13], [14], [20], [29], [34], [35], [37], [40], [41], [44], [48], [52]. Physical-mapping work studies placement on wafer-scale accelerators, while SoW-X and FRED examine system-level integration and collective-oriented on-wafer fabrics. TMAC, WSC-LLM, and WATOS co-explore wafer-scale architecture choices with workload mapping, serving, or training strategies, whereas Theseus is the closest general wafer-scale DSE framework, combining system and physical constraints with multi-fidelity multi-objective Bayesian optimization using analytical and learned GNN-based evaluators. Such approaches search pa-rameterized spaces for high-quality or Pareto-efficient de-signs. In contrast, within its homogeneous repeated-die scope, Fovea constructs the complete distinct modeled-feasible do-main through physical-implication mapping, legality-aware matching, and exact local reduction before performance explo-ration. The distinction is not that prior work ignores physical constraints, but that Fovea makes complete modeled-feasible-domain construction a first-class stage. 
+
+Wafer-scale modeling and workload orchestration. Com-plementary work optimizes the execution stack for tiled or wafer-scale substrates. PALM provides event-driven perfor-mance modeling for large tiled accelerators [10]; TEMP develops memory-efficient, topology-aware tensor partition-ing and mapping [43]; and ReThermal co-designs compile-time and runtime scheduling under wafer-scale thermal con-straints [21]. Spatial-Aware Orchestration and MOCAP tar-get attention placement and long-context prefill pipelining, respectively [45], [46], while STAR combines sparse-attention algorithm–hardware co-design with deployment on a multi-core spatial architecture [42]. These methods optimize partic-ular mappings, schedules, simulators, or workload-specific ar-chitectures and are complementary to Fovea: they can serve as workload policies, modeled constraints, architectural compo-nents, or evaluation backends within the proposed exploration methodology. 
+
+Architecture and training simulation. A broader simulator ecosystem models DNN dataflows, spatial-accelerator map-pings, multi-chip manycore systems, and distributed model training at different abstraction levels. MAESTRO and Union support data-centric mapping analysis and HW–SW co-design for spatial accelerators [15], [19]; MuchiSim targets design exploration of multi-chip manycore systems [28]; and Proteus and vTrain model distributed DNN and LLM training perfor-mance [2], [8]. 
+
+Multi-fidelity hardware DSE. Prior work applies multi-fidelity optimization to HLS directives [24], [39], microar-chitecture search [9], [23], accelerator co-design [36], chiplet exploration [6], and FPGA network-switch co-design [22]. For example, Polaris transfers a low-fidelity representation trained with Timeloop [30] to a Starlight predictor using selected FireSim RTL samples [16], and embeds it in Bayesian op-timization. These methods are primarily search-centric: uncer-tainty estimates, predicted rankings, or domain-specific con-straints direct evaluation toward promising candidates, while many candidates may receive neither low-cost nor designated-reference evaluation. Fovea is instead confirmation-centric: it evaluates the complete modeled-feasible space with the low-cost backend, uses workload- and space-specific evaluator disagreement to induce the Decision Domain, and applies designated-reference evaluation to every retained candidate. Under a valid full-domain disagreement bound, this domain contains the designated-reference optimum; the evaluated im-plementation estimates disagreement through paired in-domain sampling and validates end-to-end recovery empirically. VIII. C ONCLUSION 
+
+This paper presented Fovea, a reusable methodology for workload-specific wafer-scale DSE. Fovea combines physical-implication-aware design-space formulation with Decision-Domain-guided cross-fidelity refinement to construct distinct modeled-feasible spaces and focus designated-reference eval-uation on candidates that may remain optimal. Under a valid domain-wide disagreement bound, the Decision Domain con-tains the designated-reference optimum. REFERENCES [1] N. Agarwal, T. Krishna, L.-S. Peh, and N. K. Jha, “Garnet: A detailed on-chip network model inside a full-system simulator,” in 2009 IEEE International Symposium on Performance Analysis of Systems and Software , 2009, pp. 33–42. [2] J. Bang, Y. Choi, M. Kim, Y. Kim, and M. Rhu, “vTrain: A sim-ulation framework for evaluating cost-effective and compute-optimal large language model training,” in 2024 57th IEEE/ACM International Symposium on Microarchitecture (MICRO) , 2024, pp. 153–167. [3] S. Bharadwaj, J. Yin, B. Beckmann, and T. Krishna, “Kite: A family of heterogeneous interposer topologies enabled via accurate interconnect modeling,” in Proceedings of the 57th ACM/IEEE Design Automation Conference , 2020, pp. 1–6. [4] N. Binkert, B. Beckmann, G. Black, S. K. Reinhardt, A. Saidi, A. Basu, J. Hestness, D. R. Hower, T. Krishna, S. Sardashti, R. Sen, K. Sewell, M. Shoaib, N. Vaish, M. D. Hill, and D. A. Wood, “The gem5 Simulator,” ACM SIGARCH Computer Architecture News , vol. 39, no. 2, pp. 1–7, 2011. [5] T.-Y. J. Chang, Y.-H. Chen, W.-M. Chan, H. Cheng, P.-S. Wang, Y. Lin, H. Fujiwara, R. Lee, H.-J. Liao, P.-W. Wang, G. Yeap, and Q. Li, “A 5-nm 135-mb SRAM in EUV and high-mobility-channel FinFET technology with metal coupling and charge-sharing write-assist circuitry schemes for high-density and low-vmin applications,” IEEE Journal of Solid-State Circuits , vol. 56, no. 1, pp. 179–187, 2021. [6] S. Chen, H. Zhang, J. Zhai, and B. Yu, “CHASE: A chiplet architecture simulation and exploration framework with decoupled multi-fidelity optimization,” in Proceedings of the 2026 International Symposium on Physical Design . ACM, 2026, pp. 153–161. [7] S. de Diaz, J. Fowler, M. Pfund, G. Mackulak, and M. Hickie, “Eval-uating the impacts of reticle requirements in semiconductor wafer fab-rication,” IEEE Transactions on Semiconductor Manufacturing , vol. 18, no. 4, pp. 622–632, 2005. [8] J. Duan, X. Li, P. Xu, X. Zhang, S. Yan, Y. Liang, and D. Lin, “Proteus: Simulating the performance of distributed DNN training,” 
+
+IEEE Transactions on Parallel and Distributed Systems , vol. 35, no. 10, pp. 1867–1878, 2024. [9] H. Fan, Y. Wang, S. Li, T. Liang, and W. Zhang, “Explainable fuzzy neural network with multi-fidelity reinforcement learning for micro-architecture design space exploration,” in Proceedings of the 61st ACM/IEEE Design Automation Conference . ACM, 2024, pp. 7:1–7:6. [10] J. Fang, H. Wang, Q. Yang, D. Kong, X. Dai, J. Deng, Y. Hu, and S. Yin, “PALM: A efficient performance simulator for tiled accelerators with large-scale model training,” arXiv preprint arXiv:2406.03868 ,2024. [Online]. Available: https://arxiv.org/abs/2406.03868 [11] L. M. Giacomini Rocha, M. Naeim, G. Paim, M. Brunion, P. Venugopal, D. Milojevic, J. Myers, M. Badaroglu, M. Verhelst, J. Ryckaert, and D. Biswas, “System–technology co-optimization for dense edge archi-tectures using 3-D integration and nonvolatile memory,” IEEE Journal on Exploratory Solid-State Computational Devices and Circuits , vol. 10, pp. 125–134, 2024. [12] X. Hao, Z. Ding, J. Yin, Y. Wang, and Y. Liang, “Monad: Towards cost-effective specialization for chiplet-based spatial accelerators,” in 
+
+2023 IEEE/ACM International Conference on Computer Aided Design (ICCAD) , 2023, pp. 1–9. [13] Y. Hu, X. Lin, H. Wang, Z. He, X. Yu, J. Zhang, Q. Yang, Z. Xu, S. Guan, J. Fang, H. Shang, X. Tang, X. Dai, S. Wei, and S. Yin, “Wafer-scale computing: Advancements, challenges, and future perspectives,” 
+
+IEEE Circuits and Systems Magazine , vol. 24, no. 1, pp. 52–81, 2024. [14] M. James, M. Tom, P. Groeneveld, and V. Kibardin, “ISPD 2020 physical mapping of neural networks on a wafer-scale deep learning accelerator,” in Proceedings of the 2020 International Symposium on Physical Design .ACM, 2020, pp. 145–149. [15] G. Jeong, G. Kestor, P. Chatarasi, A. Parashar, P.-A. Tsai, S. Rajaman-ickam, R. Gioiosa, and T. Krishna, “Union: A unified HW–SW co-design ecosystem in MLIR for evaluating tensor operations on spatial accelerators,” in 2021 International Conference on Parallel Architectures and Compilation Techniques (PACT) , 2021, pp. 30–44. [16] S. Karandikar, H. Mao, D. Kim, D. Biancolin, A. Amid, D. Lee, N. Pemberton, E. Amaro, C. Schmidt, A. Chopra, Q. Huang, K. Kovacs, B. Nikolic, R. H. Katz, J. Bachrach, and K. Asanovic, “FireSim: FPGA-accelerated cycle-exact scale-out system simulation in the public cloud,” in 2018 ACM/IEEE 45th Annual International Symposium on Computer Architecture (ISCA) , 2018, pp. 29–42. [17] T. Khan, S. Rashidi, S. Sridharan, P. Shurpali, A. Akella, and T. Krishna, “Impact of RoCE congestion control policies on distributed training of DNNs,” in 2022 IEEE Symposium on High-Performance Interconnects (HOTI) , 2022, pp. 39–48. [18] S. Kirkpatrick, C. D. Gelatt, Jr., and M. P. Vecchi, “Optimization by simulated annealing,” Science , vol. 220, no. 4598, pp. 671–680, 1983. [19] H. Kwon, P. Chatarasi, V. Sarkar, T. Krishna, M. Pellauer, and A. Parashar, “MAESTRO: A data-centric approach to understand reuse, performance, and hardware cost of DNN mappings,” IEEE Micro ,vol. 40, no. 3, pp. 20–29, 2020. [20] G. Lauterbach, “The path to successful wafer-scale integration: The Cerebras story,” IEEE Micro , vol. 41, no. 6, pp. 52–57, 2021. [21] C. Li, H. Wang, J. Liu, J. Liu, Z. Yue, X. Li, S. Jiang, J. Deng, Y. Hu, and S. Yin, “ReThermal: Co-design of thermal-aware static and dynamic scheduling for LLM training on liquid-cooled wafer-scale chips,” in 
+
+2026 IEEE International Symposium on High Performance Computer Architecture (HPCA) , 2026, pp. 1–15. [22] G. Li, Y. Cao, L. H. L. Ng, A. Charlton, Q. Wang, W. Punter, P. Papaphilippou, C. Guo, H. Fan, W. Luk, S. P. Amarasinghe, and A. Brahmakshatriya, “SPAC: Automating FPGA-based network switches with protocol adaptive customization,” in 2026 IEEE 34th Annual International Symposium on Field-Programmable Custom Computing Machines (FCCM) , 2026, pp. 71–80. [23] H. Liu, H. Geng, Z. He, Q. Sun, and C. Zhuo, “Swift or exact? boosting efficient microarchitecture DSE via multi-fidelity partial-order prediction,” in 2025 62nd ACM/IEEE Design Automation Conference (DAC) , 2025, pp. 1–7. [24] C. Lo and P. Chow, “Multi-fidelity optimization for high-level syn-thesis directives,” in 2018 28th International Conference on Field Programmable Logic and Applications (FPL) , 2018, pp. 272–279. [25] Y. Nishi, J. W. Poulton, W. J. Turner, X. Chen, S. Song, B. Zimmer, S. G. Tell, N. Nedovic, J. M. Wilson, W. J. Dally, and C. T. Gray, “A 0.297-pj/bit 50.4-gb/s/wire inverter-based short-reach simultaneous bi-directional transceiver for die-to-die interface in 5-nm cmos,” IEEE Journal of Solid-State Circuits , vol. 58, no. 4, pp. 1062–1073, 2023. [26] Open Compute Project ODSA BoW Workstream, “Bunch of wires (bow) phy specification,” 2023, draft Version 1.9d. [27] OpenAI, “OpenAI Partners with Cerebras,” https://openai.com/index/ cerebras-partnership/, Jan. 2026, accessed: Aug. 1, 2026. [28] M. Orenes-Vera, E. Tureci, M. Martonosi, and D. Wentzlaff, “MuchiSim: A simulation framework for design exploration of multi-chip manycore systems,” in 2024 IEEE International Symposium on Performance Anal-ysis of Systems and Software (ISPASS) , 2024, pp. 48–60. [29] S. Pal, D. Petrisko, M. Tomei, S. S. Iyer, P. Gupta, and R. Kumar, “Architecting wafer-scale processors—a GPU case study,” in 2019 IEEE International Symposium on High Performance Computer Architecture (HPCA) , 2019, pp. 250–263. [30] A. Parashar, P. Raina, Y. S. Shao, Y.-H. Chen, V. A. Ying, A. Mukkara, R. Venkatesan, B. Khailany, S. W. Keckler, and J. S. Emer, “Timeloop: A systematic approach to DNN accelerator evaluation,” in 2019 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) , 2019, pp. 304–315. [31] J. L. Peterson, P. J. Bohrer, L. Chen, E. N. Elnozahy, A. Gheith, R. H. Jewell, M. D. Kistler, T. R. Maeurer, S. A. Malone, D. B. Murrell, N. Needel, K. Rajamani, M. A. Rinaldi, R. O. Simpson, K. Sudeep, and L. Zhang, “Application of full-system simulation in exploratory system design and development,” IBM Journal of Research and Development ,vol. 50, no. 2/3, pp. 321–332, 2006. [32] K. Radhakrishnan, M. Swaminathan, and B. K. Bhattacharyya, “Power delivery for high-performance microprocessors—challenges, solutions, and future trends,” IEEE Transactions on Components, Packaging and Manufacturing Technology , vol. 11, no. 4, pp. 655–671, 2021. [33] S. Rashidi, S. Sridharan, S. Srinivasan, and T. Krishna, “ASTRA-sim: Enabling SW/HW co-design exploration for distributed DL training platforms,” in 2020 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) , 2020, pp. 81–92. [34] S. Rashidi, W. Won, S. Srinivasan, P. Gupta, and T. Krishna, “FRED: A wafer-scale fabric for 3d parallel DNN training,” in Proceedings of the 52nd Annual International Symposium on Computer Architecture .ACM, 2025, pp. 34–48. [35] K. Rocki, D. Van Essendelft, I. Sharapov, R. Schreiber, M. Morrison, V. Kibardin, A. Portnoy, J.-F. Dietiker, M. Syamlal, and M. James, “Fast stencil-code computation on a wafer-scale processor,” in SC20: International Conference for High Performance Computing, Networking, Storage and Analysis , 2020, pp. 1–14. [36] C. Sakhuja, C. Hong, and C. Lin, “Polaris: Multi-fidelity design space exploration of deep learning accelerators,” arXiv preprint arXiv:2412.15548 , 2024. [Online]. Available: https://arxiv.org/abs/2412. 15548 [37] P.-C. Shih, A.-J. Su, K.-H. Tam, T.-C. Huang, K. Chuang, and J. Yeh, “SoW-X: A novel system-on-wafer technology for next generation AI server application,” in 2025 IEEE 75th Electronic Components and Technology Conference (ECTC) , 2025, pp. 1–6. [38] S. Sridharan, A. Balogh, B. M. Beckmann, B. Coutinho, L. Feng, S. Fu, S. Gao, M. Garakani, T. Heo, D. Kanter, J. Ladd, Z. Li, W. Liu, C. Man, D. Mihailescu, S. More, J. Park, A. Ramachandran, V. Ramakrishnaiah, S. Rashidi, V. J. Reddi, P. Sharma, P. Tian, W. Won, H. Wu, H. Xu, J. Yoo, and T. Krishna, “MLCommons Chakra: Advancing performance benchmarking and co-design using standardized execution traces,” arXiv preprint arXiv:2605.11333 , 2026. [Online]. Available: https://arxiv.org/abs/2605.11333 [39] Q. Sun, T. Chen, S. Liu, J. Miao, J. Chen, H. Yu, and B. Yu, “Correlated multi-objective multi-fidelity optimization for HLS directives design,” in 2021 Design, Automation & Test in Europe Conference & Exhibition (DATE) , 2021, pp. 46–51. [40] E. Talpes, D. Das Sarma, D. Williams, S. Arora, T. Kunjan, B. Floering, A. Jalote, C. Hsiong, C. Poorna, V. Samant, J. Sicilia, A. K. Nivarti, R. Ramachandran, T. Fischer, B. Herzberg, B. McGee, G. Venkatara-manan, and P. Banon, “The microarchitecture of Dojo, Tesla’s exa-scale computer,” IEEE Micro , vol. 43, no. 3, pp. 31–39, 2023. [41] H. Wang, Z. Wang, H. Wang, J. Hou, T. Wei, C. Li, Y. Hu, and S. Yin, “WATOS: Efficient LLM training strategies and architecture co-exploration for wafer-scale chip,” in 2026 IEEE International Sympo-sium on High Performance Computer Architecture (HPCA) , 2026, pp. 1–19. [42] H. Wang, T. Wei, H. Wang, Z. Wang, X. Tang, Z. Yue, S. Wei, Y. Hu, and S. Yin, “Designing spatial architectures for sparse attention: STAR accelerator via cross-stage tiling,” IEEE Transactions on Computers ,vol. 75, no. 3, pp. 1125–1140, 2026. [43] H. Wang, T. Wei, Z. Wang, D. Jiang, Q. Yang, J. Liu, J. Hou, C. Li, J. Deng, Y. Hu, and S. Yin, “TEMP: A memory efficient physical-aware tensor partition-mapping framework on wafer-scale chips,” in 2026 IEEE International Symposium on High Performance Computer Architecture (HPCA) , 2026, pp. 1–18. [44] H. Wang, Q. Yang, T. Wei, X. Yu, C. Li, J. Fang, G. Lu, X. Dai, L. Liu, S. Jiang, Y. Hu, S. Yin, and S. Wei, “TMAC: Training-targeted mapping and architecture co-exploration for wafer-scale chips,” 
+
+Integrated Circuits and Systems , vol. 1, no. 4, pp. 178–195, 2024. [45] Z. Wang, H. Wang, Y. Xiao, H. Zuo, T. Wei, J. Deng, C. Li, Y. Hu, and S. Yin, “MOCAP: Wafer-scale-chip-oriented memory-orchestrated chunked pipelining framework for prefill-only LLM inference,” arXiv preprint arXiv:2606.22968 , 2026, accepted to APPT 2026. [Online]. Available: https://arxiv.org/abs/2606.22968 [46] T. Wei, H. Wang, Z. Wang, S. Yin, and Y. Hu, “Spatial-aware orches-tration of LLM attention on waferscale chips,” in Advanced Parallel Processing Technologies: 16th International Symposium, APPT 2025, Athens, Greece, July 13–16, 2025, Proceedings , ser. Lecture Notes in Computer Science, vol. 16062. Springer Nature Singapore, 2026, pp. 386–391. [47] W. Won, T. Heo, S. Rashidi, S. Sridharan, S. Srinivasan, and T. Krishna, “ASTRA-sim2.0: Modeling hierarchical networks and disaggregated systems for large-model training at scale,” in 2023 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) ,2023, pp. 283–294. [48] Z. Xu, D. Kong, J. Liu, J. Li, J. Hou, X. Dai, C. Li, S. Wei, Y. Hu, and S. Yin, “WSC-LLM: Efficient LLM service and architecture co-exploration for wafer-scale chips,” in Proceedings of the 52nd Annual International Symposium on Computer Architecture . ACM, 2025, pp. 1–17. [49] A. Yazdanbakhsh, C. Angermueller, B. Akin, Y. Zhou, A. Jones, M. Hashemi, K. Swersky, S. Chatterjee, R. Narayanaswami, and J. Laudon, “Apollo: Transferable architecture exploration,” in ML for Systems Workshop at NeurIPS , 2020. [Online]. Available: https: //research.google/pubs/apollo-transferable-architecture-exploration/ [50] G. Yeap et al. , “5 nm CMOS production technology platform featur-ing full-fledged EUV and high-mobility-channel FinFETs with densest 0.021 μm2 SRAM cells for mobile SoC and high-performance comput-ing applications,” in 2019 IEEE International Electron Devices Meeting (IEDM) , 2019, pp. 36.7.1–36.7.4. [51] L. Yuan, “What is DTCO?: An introduction to design–technology co-optimization,” TSMC Technology Blog, Taiwan Semiconductor Manufacturing Company, Jun. 2022, accessed: July 31, 2026. [Online]. Available: https://www.tsmc.com/english/news-events/blog-article-20220615 [52] J. Zhu, C. Xue, Y. Chen, Z. Wang, C. Zhang, Y. Shen, Y. Chen, Z. Cheng, Y. Jiang, T. Wang, Y. Lin, W. Hu, B. Cui, R. Wang, Y. Liang, and G. Sun, “Theseus: Exploring efficient wafer-scale chip design for large language models,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , vol. 44, no. 12, pp. 4793–4806, 2025.

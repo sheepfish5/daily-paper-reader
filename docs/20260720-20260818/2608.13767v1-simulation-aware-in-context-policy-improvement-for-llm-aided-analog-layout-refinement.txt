@@ -1,0 +1,275 @@
+Title: Simulation-Aware In-Context Policy Improvement for LLM-Aided Analog Layout Refinement
+
+URL Source: https://arxiv.org/pdf/2608.13767v1
+
+Published Time: Mon, 17 Aug 2026 00:14:41 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Simulation-Aware In-Context Policy Improvement for LLM-Aided Analog Layout Refinement 
+
+Bingyang Liu, Ziming Wei, Xiaohan Gao, and David Z. Pan 
+
+Department of Electrical & Computer Engineering, The University of Texas at Austin, TX, USA 
+
+{bingyangliu@, zmwei@, xiaohan.gao@austin., dpan@ece. }utexas.edu 
+
+Abstract —Analog IC layout design remains a labor-intensive iterative process dominated by simulation-driven refinement. Although end-to-end layout generators accelerate initial placement and routing, they still require experts to manually tune layout optimization parameters with repeated post-layout simulations for stringent design specifications. While Bayesian Optimization (BO) is widely adopted for parameter tuning in analog IC design, at the layout level it typically requires hundreds to thousands of evaluations, each involving costly parasitic extraction and post-layout simulation, which makes it impractical. Recently, Large Language Models (LLMs) have demonstrated potential in improving the sample efficiency of such simulation-driven tuning. However, their restricted access to geometric layout context and design-specific heuristics limits their ability to manipulate the layout optimization process. In this paper, we propose a simulation-aware LLM multi-agent framework that performs in-context policy improvement (ICPI) by iteratively updating layout optimization parameters exposed by an analog layout generator through an act–observe–reflect loop on compact structured layout rep-resentations. Experiments on real-world analog circuits show that, with only tens of post-layout simulations, our approach improves post-layout performance over the generator’s built-in heuristics and BO-based tuning method. 
+
+I. I NTRODUCTION 
+
+Analog IC layout design is a highly iterative, simulation-driven process. To reach design-specific performance targets, designers repeatedly modify layouts and run costly post-layout simulations, and industrial flows still rely on experienced designers to iteratively refine layouts from sparse simulation feedback. Because this refinement is a matter of reasoning over feedback rather than following a fixed procedure, it has stayed a human-driven loop, carried out by expert designers. In academia, decades of research on analog placement and routing (P&R) algorithms and automated layout generators have accelerated initial layout generation, from classical formulations [17], [18], [26], [34], [35] and domain-knowledge-driven methods [2], [11], [27], [28], [36] to machine-learning techniques [10], [19], [20]. Recent end-to-end analog layout generators including ALIGN [16], [30], MAGICAL [4], [5], [37], and other frameworks [9], [42], [43] optimize wirelength-centric analytical objectives augmented with heuristics and manually specified constraints. However, the real post-layout performance is far more complex than what these analytical surrogates capture. Since traditional automated flows typically apply generalized, static heuristics to all designs, they often fail to capture the flexible trade-offs required for specific high-performance targets. Therefore, designers still need to manually tune layout optimization parameters through repeated simulations, which limits the practical adoption of such tools. A natural question is whether algorithms can automatically explore better settings of layout optimization parameters in analog layout generators based on simulation feedback. Simulation-based tuning with Bayesian Optimization (BO) has been widely used for analog sizing tasks [3], [7], [8], [15], [24], [39]. However, BO typically • Proven effective in sizing 
+
+• Without relying on specific layout generator 
+
+> LLM-Interactive via Natural Language Only Simulation-based Bayesian optimization
+
+• High-quality layout solutions after interactive adjustment 
+
+• Easy to use by taking natural language instructions 
+
+• Enhanced design experience and efficiency powered by LLM. 
+
+> ICPI flow Over Layout Optimization Params
+
+• Heavy manual effort 
+
+• Steep learning curve 
+
+Layout Generator Layout Generator Layout 
+
+• Fine-grained control 
+
+• Reliable results 
+
+> Simulation & tune layout optimization params
+> Manual Tuning for
+> Layout Generator  Generate from netlist
+
++ 
+
+> Expensive simulation Hundreds of samples Bayesian Optimization
+
+Layout Generator 
+
+• Requires hundreds of simulations 
+
+• Impractical under tight post-layout simulation budgets  
+
+> Designer LLM Agents Layout Layout Natural Language Simulation
+> Feedback
+
+• Vague text description 
+
+• Knowledge tied to case-specific prompts and examples 
+
+• Reduces scripting burden 
+
+• Easy to use by taking natural language instructions Layout Generator Layout Generator 
+
+> LLM Agents
+
+ICPI loop 
+
+> Layout Optimization Params Layout State Layout Design Journal
+> Reflect Retrieve Act
+> Small-Scale Samples
+
+Fig. 1. Comparison of four simulation-driven analog layout flows built on end-to-end layout generators: manual tuning, simulation-based Bayesian optimization, LLM-interactive design via natural language only, and our ICPI flow over layout optimization parameters. 
+
+requires hundreds to thousands of samples per design, which is impractical for layout, where each sample involves costly parasitic extraction and post-layout simulation. The simulation budget is often limited to only tens of runs per design, which falls far short of the sampling requirements for effective exploration through BO. Recent work has explored leveraging the reasoning capabilities of Large Language Models (LLMs) to improve the sample efficiency of such simulation-based methods [1], [14], [23], [33], [40], sug-gesting that LLMs might help make better use of scarce evaluations. Compared with front-end sizing, back-end layout offers a particularly suitable setting for LLMs: automated layout generators including MAGICAL [4], [5], [37] expose semantically meaningful layout op-timization parameters within their placement and routing algorithms, such as symmetry constraints and routing priorities. These structured 979-8-3195-1246-8-0/26/$31.00 ©2026 IEEE arXiv:2608.13767v1 [cs.AI] 13 Aug 2026 parameters naturally align with the ability of LLMs to reason about circuit structure and layout trade-offs. However, two challenges still hinder their use for layout design automation. First, the LLM must perceive geometric layout changes through a faithful, evolving state representation rather than vague textual descriptions. Second, it must learn to adjust layout optimization parameters under a tight post-layout simulation budget. Prior LLM-powered efforts for analog layout design [22], [32] largely rely on natural-language descriptions of layout as input, which can be inherently ambiguous. They also inject domain knowledge mainly through prompt engineering and case-specific examples that often need to be rebuilt in new designs. A separate line of recent work orchestrates the full intent-to-layout flow with LLM agents, where constraint-driven generation produces the layout and post-layout metrics are fed back to select the best implementation among complete attempts [44]. Because such flows maintain neither an explicit layout state nor accumulated design-specific experience that guides how feedback should update layout optimization parameters, the two challenges above remain open there as well. These unresolved challenges make it difficult to substantially and reliably improve analog layout generation in a simulation-aware and scalable manner. As summarized in Fig. 1, current simulation-driven flows therefore rely on manual tuning, simulation-based BO, or natural-language-only LLM interaction on top of such generators, each with its own limitations under tight post-layout simulation budgets. In this paper, we introduce a simulation-aware multi-agent frame-work that performs in-context policy improvement (ICPI) by iter-atively updating a set of exposed layout optimization parameters. Here, layout optimization parameters refer to generator-exposed placement and routing parameters, including net weights, placement bias, symmetry constraints, routing priorities, and wire widths. The framework treats layout refinement as an adaptive process that evolves a design-specific policy for each circuit instance under a fixed budget of tens of post-layout simulations. It exposes current geometry, constraints, and metrics through a compact, LLM-friendly intermediate representation, the layout state, and retains simulation-verified experience in a design journal for retrieval and reflection across rounds, all without updating model weights. In each iteration, the agents select one family of layout optimization parameters to adjust, propose concrete edits, observe feasibility and post-layout feedbacks, and record the resulting reflections as new experience. Our main contributions are summarized as follows:  
+
+> •
+
+We design a compact, LLM-friendly layout state that contains structured, multi-level information including circuit connectiv-ity, device locations, exposed layout optimization parameters, parasitic summaries, and post-layout simulation outcomes. This structured state replaces purely natural-language layout descrip-tions and enables state-aware reasoning during refinement.  
+
+> •
+
+We build a simulation-aware act–observe–reflect ICPI loop around a mature analog layout generator, exposing a structured set of layout optimization parameters for placement and routing refinement. In each round, the agents update one parameter family based on the current layout state and sparse post-layout feedback, while storing validated experience in a persistent design journal.  
+
+> •
+
+We validate the framework on two OTA benchmarks across different technologies and scales of the parameter space. Under the small budget of post-layout simulations, our method achieves better post-layout performance than the generator’s built-in heuristics, BO-based tuning, and a non-ICPI baseline. The rest of the paper is organized as follows. Section II describes the background, Section III explains the detailed algorithm and implementation, Section IV demonstrates the results, and Section V concludes the paper. II. P RELIMINARIES 
+
+A. In-Context Policy Improvement and Self-Feedback 
+
+Recent work on the self-feedback and internal consistency of LLMs shows that they can improve their behavior at test time by struc-turing feedback, reflection, and retrieval around their own outputs. Self-refinement methods [6], [25] follow a propose–feedback–refine pattern: the model first produces an answer, then generates natural-language feedback or confidence signals, and finally rewrites or abstains based on this feedback, yielding quality gains under fixed weights. Beyond purely in-context refinement, self-improvement methods further exploit self-generated signals for training, including rationales, scores, and language feedback [12], [29]. Liang et al . [21] further unify these approaches under a common view where behavior is improved by exploiting self-generated evaluation signals. Here, we use the term in-context policy improvement (ICPI) to refer specifically to the test-time variant with frozen weights, where the “policy” is realized by prompts, retrieved memories, and structured context rather than by parameter updates. ICPI ideas also appear in multi-step agents and domain-specific optimization. ReAct-style agents [38] interleave chain-of-thought reasoning with environment actions, and Reflexion [31] augments this loop with explicit self-feedback, where the model summarizes failures and proposes strategy updates that are fed into later prompts. Similar propose–execute–revise patterns underlie code optimization and configuration frameworks [13], [41], [45], in which the model repeatedly edits programs or settings, runs tests or benchmarks, and uses execution traces to guide further changes. Across these settings, performance improves because the in-context state becomes richer over iterations, including past trajectories, feedback, and heuristic rules. These studies suggest that ICPI is particularly well suited to tasks where the model’s actions correspond to semantically mean-ingful controls and the environment returns rich, domain-specific signals each round. Analog layout back-end optimization exhibits both properties: automated generators expose interpretable layout optimization parameters including symmetry constraints, wirelength weights, routing priorities, and wire widths and spacings, while parasitic extraction and post-layout simulation provide high-value though costly feedback. This makes simulation-aware ICPI well suited to our setting and motivates the structured layout state, design journal, and iterative scheme introduced in this work. 
+
+B. End-to-end Analog Layout Generator 
+
+Modern end-to-end analog layout generators build on decades of research on analog placement and routing algorithms to produce layouts directly from circuit netlists, technology information, and user constraints. Systems such as MAGICAL [4], [5], [37], ALIGN [16], [30], and recent analog P&R frameworks [9], [42], [43] share a broadly similar pipeline: given a schematic and high-level constraints, they first place devices, then legalize the placement to satisfy design rules while preserving key relations, and finally run an analog-aware router that enforces symmetry, spacing, and other heuristics. This integrated place–legalize–route flow systematically encodes many analog layout requirements into analytical objectives, substantially reducing manual effort for producing a DRC-clean first-pass layout. TABLE I LAYOUT OPTIMIZATION PARAMETER FAMILIES USED IN ICPI.       
+
+> Param. Family Effect
+> Net weights Increase the weight of selected nets in the placement objective. Placement bias Bias selected devices toward preferred layout directions in placement. Symmetry Enforce symmetry constraint on selected devices during placement and legalization. Priority Prioritize routing on critical nets. Wire widths Trade off parasitic resistance and capacitance during routing.
+
+Despite this progress, most practical flows still rely on designers to provide and tune constraints and tool-level parameters, including symmetry groups, optimizer configurations, wire spacing options, and a small set of global weights that balance different objectives. In principle, analog layout generators could expose much finer-grained net-level optimization parameters, including initial device positions or anchors, well-cluster assignments, per-net wirelength weights, routing width and spacing options, and per-net routing priorities. However, the large number of such layout optimization parameters makes systematic manual tuning impractical. As a result, these settings often remain fixed across simulation iterations and even across designs, which leaves a large portion of the design space underexplored. In this work, we modify a place-and-route kernel derived from the open-source analog layout generator MAGICAL [4], [5], [37] to explicitly surface a structured subset of such net-level layout optimization parameters, serving as the action space for the ICPI framework described next. III. F RAMEWORK 
+
+As discussed in Section I, we focus on two challenges in LLM-aided simulation-aware analog layout refinement: (i) how to give the LLM precise access to the evolving layout beyond ambiguous natural-language descriptions, and (ii) how to improve decisions over layout optimization parameters across iterations under a budget of only tens of expensive post-layout simulations. As shown in Figure 2, we address these challenges through three core components: a structured 
+
+layout state that synchronizes the current layout and feedback, a persistent design journal that stores design-specific experience across rounds, and a simulation-aware act–observe–reflect loop driven by three agents, namely a Supervisor, an Executor, and a Reflector. In addition, a one-shot Analyzer provides circuit-level prior hints to prune the search space before iterative refinement. Table I summarizes the exposed parameter families that define the action space of this ICPI loop. 
+
+A. Action Space and Circuit-Level Analysis 
+
+Our framework runs on top of an analog layout generator derived from the open-source layout generator MAGICAL [4], [5], [37], with extended PDK support and additional interfaces that expose layout optimization parameters. We keep the underlying optimization algorithms unchanged, but explicitly expose a structured set of layout optimization parameters that can be updated by the LLM agents dur-ing refinement. In this work, we use layout optimization parameters 
+
+to refer to the generator-exposed placement and routing parameters that directly influence layout evolution during optimization, rather than generic tool hyperparameters. As summarized in Table I, these parameters are organized into five interpretable parameter families: net weights, placement bias, symmetry constraints, routing priorities, and wire widths. These parameters have direct geometric or electrical implications, including pulling devices on critical nets closer in place-ment, biasing selected devices toward preferred directions, tightening matching on sensitive structures, prioritizing routing resources, and trading off parasitic resistance and capacitance through wire width. In the following, we treat this parameter space as the action space of the ICPI loop, while the resulting parameter settings and their geometric consequences are encoded back into the layout state for subsequent rounds. Although the exposed parameter space is much more structured than raw layout editing, it is still combinatorially large under even coarse discretization, especially when applied across a large number of nets and devices. Under a budget of only tens of expensive post-layout evaluations, purely black-box exploration can cover only a very small fraction of this space. We therefore introduce an off-loop Analyzer that processes the netlist once before iterative refinement. It decomposes the design into stages and functional blocks, identifies critical devices and nets that are sensitive to mismatch or parasitics, and suggests candidate symmetry constraints together with rough importance scores for different devices and nets. Intuitively, this step uses the LLM’s reasoning ability and pretrained circuit knowledge to separate likely critical structures from background details. These outputs are reused in every round without re-parsing the netlist, allowing the Supervisor and Executor to focus on a pruned subset of parameters and likely critical structures. In this sense, the Analyzer serves as a circuit-level prior that improves search efficiency, but the main adaptation during refinement still comes from the iterative ICPI loop itself. In practice, this pruning is especially important because the exposed parameters are heterogeneous: some primarily affect placement geometry, while others mainly affect routing parasitics or matching-related constraints. The Analyzer therefore does not attempt to predict the final best setting directly, but instead narrows the search to parameter families and structures that are more likely to matter under sparse post-layout feedback. 
+
+B. Layout State 
+
+As discussed earlier, we consider two key challenges. The first is how to convey layout information to the LLM without exposing raw polygons or the full GDS description. Polygon-level representations are verbose and lack explicit circuit structure, while image-based representations fail to capture circuit topology, making it difficult to associate rectangles with devices and to infer routing connectivity. We therefore define a layout state as a structured, synchronized inter-mediate representation of the current layout, as illustrated in Figure 2. It organizes multi-level information that matters for refinement into two views: a device-level view that captures geometry and placement-related structure, and a net-level view that captures routing-related properties and parasitic summaries, as well as current parameter settings. Concretely, the layout state combines four types of information. First, it records structural context, including connectivity, subcircuit membership, bounding boxes, and coordinate-based geometric fea-tures, so that the LLM can reason about where devices and nets sit geometrically and how they are topologically related. Second, it records the current exposed parameters from Subsection III-A, allowing the agents to see which parameter family is currently active and how the layout is being steered. Third, after each placement-and-routing result, it incorporates parasitic extraction summaries Layout    
+
+> State
+> connection
+> Device
+> symmetry
+> coordinate position
+> normalized position
+> Net
+> connection symmetry
+> weight
+> priority parasitics
+> bias
+> bbox
+> post-layout performance
+> Policy
+> Decision
+> Traceback
+> Params
+> Update
+
+Design Journal  
+
+> Layout
+> Accumulated Experience
+> Iteration Snapshots
+> results and reflections
+> Iteration k
+> compressed Layout State
+> layout optimization params
+
+…
+
+> Post-Sim
+> Parasitics
+> Extraction
+> Layout Generator
+
+Netlist  
+
+> Analyzer
+> Observe Act Reflect
+
+Layout State 
+
+Circuit-Level Analysis   
+
+> topology partition
+> critical devices & nets
+> initial constraints
+> width
+> ①
+> Supervisor
+> ②
+> Executor
+> ③
+> Reflector
+> ④Fig. 2. Overview of the proposed LLM multi-agent ICPI framework. Light-green boxes represent LLM agents executing an act–observe–reflect loop within the yellow region. Colored arrows denote observation (green), action (red), and reflection (blue) steps. The right panels illustrate the structured layout state and design journal, where color-coded labels distinguish simulation feedback (purple) from the parameter families (yellow) detailed in Table I.
+
+that approximately indicate layout quality. Finally, when post-layout simulation is run for the current round, it appends the performance results. By composing structural information, applied parameters, and observed feedback in a single representation, the layout state allows the LLM to answer three questions within a short context window: what the layout looks like now, how it is currently behaving, and which settings produced that behavior. 
+
+C. Design Journal 
+
+The second challenge is how to let the LLM accumulate design-specific knowledge during optimization, rather than relying only on static prompts or hand-crafted exemplars. Prior LLM-assisted analog layout efforts [22], [32] mainly inject expertise through fixed instructions, and do not maintain persistent memory of which edits helped or hurt within a particular design. In contrast, our goal is to keep the prompts largely design-agnostic and let the model adapt within each design instance through iterative interaction with layout and simulation feedback. To support this, we introduce a design journal that serves as cross-round memory for the ICPI loop. Each journal entry for round 
+
+k stores a compressed snapshot of the pre-round layout state, the selected parameter family and intended goal of the round, the concrete edits and outcomes produced by the Executor, and a short reflection on why the update appears beneficial or harmful. It also records practical experience for failure handling, such as repeated routing or legalization breakdowns caused by overly aggressive settings. During subsequent rounds, the journal is retrieved as in-context experience, allowing the agents to reuse previously validated heuristics, avoid repeating unproductive trials, and adapt their parameter decisions to the current design without updating model parameters. 
+
+D. ICPI Loop 
+
+The ICPI loop follows an act–observe–reflect pattern driven by three agents, as shown in Figure 2. At the beginning of round 
+
+k, the Supervisor receives the current layout state, the Analyzer’s circuit-level hints, and the design journal. Based on recent parasitic and post-layout feedback, it decides whether the next step should continue refining a previously promising parameter family or explore a different one. It then selects exactly one parameter family ck from the exposed action space in Subsection III-A and formulates a small set of high-level goals for that family, such as strengthening matching around a sensitive pair or prioritizing routing for a set of critical nets. In this way, the Supervisor performs policy-level decision making while keeping attribution at the parameter-family level. The Executor translates the Supervisor’s goals into concrete param-eter updates. It looks up past attempts of the same parameter family in the design journal, uses those experiences to choose which parameters to modify and by how much, and then invokes the layout generator with the proposed settings. If the generator fails to produce a legal layout, for example, because symmetry becomes over-constrained or widths become too aggressive, the Executor enters a small traceback loop that rolls back to safer values using failure logs and related journal entries. The output of this stage is a new legal layout together with an updated layout state containing refreshed parasitic summaries and, when scheduled, post-layout simulation results. After each round, the Reflector compresses the history into a new journal entry. It summarizes the pre-round state, records the selected parameters and resulting outcomes, and adds a brief reflection on why the change appears helpful or harmful. Over time, this journal becomes a design-specific memory of what has worked, what has failed, and how different parameter families interact with the current circuit. This persistent memory is what turns repeated prompting into in-context policy improvement. All agents share the same backbone LLM but use role-specific prompts, similar in spirit to Self-Refine [25] and Reflexion-style [31] prompting. The Analyzer receives a structured netlist serialization, whereas the Supervisor receives the current layout state, the Ana-lyzer’s circuit-level hints, and the design journal. Both agents use fixed output schemas, while the Executor is constrained to return only concrete parameter updates and short rationales. The Reflector is prompted to compress the current round into a reusable journal entry. IV. E XPERIMENTAL RESULTS 
+
+A. Experimental Setup 
+
+We evaluate the proposed framework on two operational transcon-ductance amplifiers (OTAs) from different technology nodes and topologies, which are widely used building blocks in analog de-sign. OTA1 is a two-stage Miller-compensated OTA in a 65 nm CMOS process, and OTA2 is a fully differential OTA with common-mode feedback in a 40 nm process. Although the benchmark set is limited to two designs, these cases are not toy examples: each candidate requires a full layout-generation step followed by parasitic extraction, and selected iterations further require post-layout simulation. As a result, the optimization budget is fun-damentally different from conventional low-cost parameter search. This makes the benchmark suitable for evaluating whether struc-tured state, circuit-level priors, and design-specific memory can improve search efficiency beyond one-shot prompting and black-box optimization. In both cases, Gain denotes the open-loop gain, while UGB and PM are extracted from the closed-loop sim-ulations. For OTA1, the target specifications are Gain ≥ 50 dB, UGB ≥ 18 MHz, CMRR ≥ 80 dB, and PM ≥ 60 ◦. For OTA2, the targets are Gain ≥ 60 dB, UGB ≥ 1.5 MHz, CMRR ≥ 80 dB, and PM ≥ 60 ◦. For both designs, a smaller area is preferred. Our implementation builds on a layout generator derived from the open-source layout generator MAGICAL [4], [5], [37], with extended PDK support and additional interfaces that expose layout optimization parameters as described in Subsection III-A. For each candidate layout, we perform parasitic extraction using Siemens Calibre and post-layout simulation using Spectre within Cadence Virtuoso. The Analyzer, Supervisor, Executor, and Reflector agents all use GPT-5 as the shared backbone LLM, while the framework also supports open-source backbone LLMs through the same interface. We compare our framework with three baselines. Heuristic uses the generator’s built-in fixed settings of the layout optimization parameters: all net weights are set to 1, all device bias terms are set to 0, symmetry constraints are manually specified, routing priorities are set to 1 for all nets, and wire widths are set to the minimum width for all non-power nets and to 4× the minimum width for power nets. 
+
+BO applies Bayesian optimization over the same exposed parameter space, treating the post-layout FoM defined below as the objective. 
+
+Ours is the full simulation-aware workflow described in Section III, with the complete ICPI loop enabled. All optimization-based methods start from the same initial layout-optimization parameters. BO and Ours use the same 31-candidate optimization horizon, with different post-layout simulation schedules as described below. For Ours , we run 30 iterations per design. Each iteration invokes the generator and full-circuit parasitic extraction, while post-layout simulation is performed every three iterations, adding up to 31 parasitic extractions and 11 post-layout simulations per design. Because BO requires the objective value at every iteration, we run both extraction and post-layout simulation for all 31 of its iterations. Ours w/o ICPI uses the same 31-candidate optimization horizon and post-layout simulation schedule as Ours, but removes the design journal and cross-round reflection. Each update is generated without retrieving experience from previous rounds.. To summarize electrical quality, we define a scalar FoM over m ∈{Gain , UGB , CMRR }. For each metric with target Lm and value vm,we compute 
+
+sm =
+
+
+
+( vm
+
+Lm
+
+)2, vm < L m,
+
+1 + vm − Lm
+
+vm
+
+, vm ≥ Lm,
+
+(1) 
+
+αPM = min 
+
+
+
+( vPM 
+
+LPM 
+
+)2, 1
+
+
+
+(2) where LPM = 60 ◦. To emphasize violations of minimum perfor-mance specifications, we apply a quadratic penalty when a metric falls below its target, while retaining a bounded reward above the target. Thus sm = 1 at the target and increases smoothly when the metric exceeds it, while αPM caps the contribution of phase margin once the design is sufficiently stable. The final FoM is defined as the geometric mean of sGain , sUGB , and sCMRR , multiplied by αPM , so FoM is sensitive to degradation in any of the metrics. 
+
+B. Post-layout Performance Comparison 
+
+In Table II, for each method we report the layout with the highest FoM found within the allowed simulation budget. Neither BO nor our ICPI framework directly optimizes area, and the objective is purely the electrical FoM, since the exposed parameter space in our current setup contains no explicit area controls. We therefore report area separately to distinguish gains obtained by enlarging the layout from gains achieved through more effective use of the exposed parameter space. Nonetheless, area or other multi-objective scores can be incorporated through the same feedback interface without modifying the loop. Furthermore, we observed a qualitative robustness difference. BO 
+
+can produce candidates that are geometrically legal and LVS-clean yet electrically non-functional once evaluated. On several unfavorable parameter combinations, excessive parasitics prevented the loop gain from reaching unity, and these committed candidates were assigned a zero FoM. In contrast, the infeasibilities encountered by Ours arise as backend-infeasible intermediate proposals, such as over-constrained symmetry or overly aggressive wire widths that break legalization or routing. Such proposals are detected from failure logs and rolled back to a nearby feasible setting via the Executor and the design journal before commitment, so all committed layouts from Ours and 
+
+Ours w/o ICPI are feasible, electrically functional, and LVS-clean. This contrast highlights the limitation of black-box methods that lack physical awareness under sparse simulation feedback. For OTA1, the parameter space is relatively modest, so BO can explore it reasonably well and reaches a FoM of 0.979 , slightly lower than Ours w/o ICPI with 1.003 . Even in this smaller search space, however, Ours achieves the highest FoM 1.104 with an area essentially identical to BO, showing that the act–observe–reflect ICPI loop can extract additional performance beyond both one-shot LLM guidance and black-box search. Although the ICPI layout is larger than the Heuristic design, this is consistent with our setup, where area is reported separately rather than directly penalized in the objective. Notably, Ours w/o ICPI already improves both performance and area over the Heuristic , indicating that our framework can exploit the action space to enhance electrical behavior without necessarily increasing area. For OTA2, the action space is much larger, with a parameter dimension roughly two orders of magnitude higher than that of OTA1. Under the same 31-candidate optimization horizon, BO improves over the Heuristic on all four electrical metrics, but its CMRR remains below the target and its area increases by more than 25%. Ours w/o ICPI improves both FoM and area over the Heuristic, although it does not meet the Gain and CMRR targets. In contrast, Ours meets all four electrical targets and achieves the highest FoM of 1.038 
+
+while reducing area relative to both the Heuristic and BO layouts. Compared with Ours w/o ICPI, the full ICPI loop increases the FoM from 0.868 to 1.038 and slightly reduces area, while keeping UGB above its target. 
+
+C. Runtime and overhead 
+
+To isolate the cost of the agent orchestration itself, we profile the agent loop with the same backbone LLM. Per round, orchestration takes about 37 s and 12k tokens for OTA1 and about 43 s and 17k TABLE II POST -LAYOUT PERFORMANCE COMPARISON ON OTA1 AND OTA2.                                                                
+
+> OTA1 OTA2
+> Method Gain (dB) UGB (MHz) CMRR (dB) PM (deg) FoM Area ( μm2)Gain (dB) UGB (MHz) CMRR (dB) PM (deg) FoM Area ( μm2)Heuristic 47.66 15.67 78.1 69.2 0.869 3592.9 53.15 1.454 55.70 59.4 0.696 7080.0 BO 62.18 53.80 54.89 69.3 0.979 4036.9 62.14 1.610 62.80 70.4 0.880 8857.3 Ours w/o ICPI 50.59 17.24 87.62 69.3 1.003 3288.3 55.70 1.611 67.36 72.6 0.868 6490.5 Ours 51.39 18.69 108.6 69.4 1.104 4031.4 62.72 1.597 80.86 72.3 1.038 6468.2 (a) Heuristic (b) Ours
+> Fig. 3. Layout comparison of (a) Heuristic and (b) Ours on OTA2.
+
+tokens for OTA2, with input context accounting for over 90% of the tokens, which amounts to roughly 18 to 21 minutes over 30 rounds. By comparison, parasitic extraction and the post-layout simulations alone require more than 141 min per design under a conservative lower-bound timing, before accounting for place-and-route. The LLM orchestration therefore accounts for less than 16% of total wall-clock time under this bound, and substantially less under realistic timing. The dominant cost remains the simulation-driven evaluation that the framework is designed to economize, rather than the agent loop. V. C ONCLUSION 
+
+In this paper, we presented a simulation-aware LLM multi-agent framework that wraps a mature analog layout generator and performs in-context policy improvement over layout optimization parameters through an act–observe–reflect loop driven by sparse post-layout feedback. Experiments on real-world analog circuits show that, with only tens of post-layout simulations, our approach improves post-layout performance over the generator’s built-in heuristics, BO-based tuning, and a non-ICPI baseline. While the framework is effective on the studied designs, scaling it to more complex systems remains challenging due to the growing complexity of state representation and the high cost of simulation-driven search. Future work will address these limitations by exploring hierarchical partitioning and more scalable refinement strategies for larger circuits, and by extending the real-flow evaluation beyond the OTA benchmarks to a broader range of analog blocks. To support reproducibility, we release a PDK-free demonstrator 1 that reproduces the core mechanisms of our framework in a synthetic analog-layout environment with a swappable LLM backbone. Overall, this work establishes a viable state-aware refinement loop for simulation-driven analog layout optimization that can assist expert designers under tight evaluation budgets. 
+
+> 1https://github.com/bingyang1132/ICLAD2026-demo-sim-aware-in-conte xt
+
+VI. A CKNOWLEDGMENT 
+
+This work was supported in part by NSF under grant CCF-2112665, SRC under task 3160.007, Samsung, UT Austin’s iMAG-iNE consortium, and an equipment donation from NVIDIA. REFERENCES 
+
+[1] A HMADZADEH , M., ET AL . AnaFlow: Agentic LLM-based Workflow for Reasoning-Driven Explainable and Sample-Efficient Analog Circuit Sizing. arXiv preprint arXiv:2511.03697 (2025). [2] B ASARAN , B., ET AL . Latchup-aware placement and parasitic-bounded routing of custom analog cells. In Proc. ICCAD (1993), IEEE, pp. 415– 421. [3] B UDAK , A. F., ET AL . An efficient analog circuit sizing method based on machine learning assisted global optimization. IEEE TCAD 41 , 5 (2021), 1209–1221. [4] C HEN , H., ET AL . MAGICAL 1.0: An Open-Source Fully-Automated AMS Layout Synthesis Framework Verified With a 40-nm 1GS/s Σ∆ 
+
+ADC. In Proc. CICC (Austin, TX, USA, Apr. 2021), IEEE, pp. 1–2. [5] C HEN , H., ET AL . MAGICAL: An Open- Source Fully Automated Analog IC Layout System from Netlist to GDSII. IEEE MDAT 38 , 2 (2021), 19–26. [6] C HEN , X., ET AL . Teaching large language models to self-debug. arXiv preprint arXiv:2304.05128 (2023). [7] D U, S., ET AL . A surrogate-based parallel optimization of analog circuits using multi-acquisition functions. AEU-International Journal of Electronics and Communications 146 (2022), 154105. [8] E RIKSSON , D., ET AL . Scalable global optimization via local bayesian optimization. Proc. NIPS 32 (2019). [9] G AO , X., ET AL . Joint placement optimization for hierarchical analog/mixed-signal circuits. In Proc. ICCAD (2024), pp. 1–9. [10] G USM ˜AO , A., ET AL . Semi-supervised artificial neural networks towards analog IC placement recommender. In Proc. ISCAS (2020), IEEE, pp. 1– 5. [11] H O, K.-H., ET AL . Coupling-aware length-ratio-matching routing for capacitor arrays in analog integrated circuits. In Proc. DAC (2013), pp. 1–6. [12] H UANG , J., G U, S., H OU , L., W U, Y., W ANG , X., Y U, H., AND HAN ,J. Large language models can self-improve. In Proc. EMNLP (2023), pp. 1051–1068. [13] J IANG , S., ET AL . Selfevolve: A code evolution framework via large language models. arXiv preprint arXiv:2306.02907 (2023). [14] K OCHAR , D. V., ET AL . Ledro: LLM-enhanced design space reduction and optimization for analog circuits. In Proc. ICLAD (2025), IEEE, pp. 141–148. [15] K ONG , Z., ET AL . PVTSizing: A TuRBO-RL-Based Batch-Sampling Optimization Framework for PVT-Robust Analog Circuit Synthesis. In 
+
+Proc. DAC (2024), pp. 1–6. [16] K UNAL , K., ET AL . ALIGN: Open-Source Analog Layout Automation from the Ground Up. In Proc. DAC (Las Vegas NV USA, June 2019), ACM, pp. 1–4. [17] L AMPAERT , K., ET AL . A performance-driven placement tool for analog integrated circuits. IEEE Journal Solid-State Circuits 30 , 7 (1995), 773– 780. [18] L AMPAERT , K., ET AL . Analog routing for manufacturability. In 
+
+Proc. CICC (1996), pp. 175–178. [19] L I, Y., ET AL . A customized graph neural network model for guiding analog IC placement. In Proc. ICCAD (2020), pp. 1–9. [20] L I, Y., ET AL . Exploring a machine learning approach to performance driven analog IC placement. In Proc. ISVLSI (2020), IEEE, pp. 24–29. [21] L IANG , X., ET AL . Internal consistency and self-feedback in large language models: A survey. arXiv preprint arXiv:2407.14507 (2024). [22] L IU , B., ET AL . LayoutCopilot: An LLM-powered Multi-agent Collabo-rative Framework for Interactive Analog Layout Design. arXiv preprint arXiv:2406.18873 (2024). [23] L IU , C., ET AL . LLM-based AI Agent for Sizing of Analog and Mixed Signal Circuit. arXiv preprint arXiv:2504.11497 (2025). [24] L IU , M., ET AL . Parasitic-aware analog circuit sizing with graph neural networks and Bayesian optimization. In Proc. DATE (2021), IEEE, pp. 1372–1377. [25] M ADAAN , A., ET AL . Self-refine: Iterative refinement with self-feedback. Proc. NIPS 36 (2023), 46534–46594. [26] M ALAVASI , E., ET AL . A Routing Methodology for Analog Integrated Circuits. In Proc. ICCAD (1990), pp. 202–205. [27] M ARTINS , R., ET AL . Current-flow and current-density-aware multi-objective optimization of analog IC placement. Integration, the VLSI Journal 55 (2016), 295–306. [28] O U, H.-C., ET AL . Simultaneous analog placement and routing with current flow and current density considerations. In Proc. DAC (2013), pp. 1–6. [29] P ATEL , A., ET AL . Large language models can self-improve at web agent tasks. arXiv preprint arXiv:2405.20309 (2024). [30] S APATNEKAR , S. S., ET AL . The ALIGN Automated Analog Layout Engine: Progress, Learnings, and Open Issues. In Proc. ISPD (Virtual Event USA, Mar. 2023), ACM, pp. 101–102. [31] S HINN , N., ET AL . Reflexion: Language agents with verbal reinforce-ment learning. Proc. NIPS 36 (2023), 8634–8652. [32] W ANG , Z., ET AL . ChatPattern: Layout pattern customization via natural language. In Proc. DAC (2024), pp. 1–6. [33] W EI , Z., ET AL . TopoSizing: An LLM-aided Framework of Topology-based Understanding and Sizing for AMS Circuits. arXiv preprint arXiv:2509.14169 (2025). [34] X IAO , L., ET AL . Practical placement and routing techniques for analog circuit designs. In Proc. ICCAD (2010), IEEE, pp. 675–679. [35] X U, B., ET AL . Hierarchical and analytical placement techniques for high-performance analog circuits. In Proc. ISPD (2017), pp. 55–62. [36] X U, B., ET AL . Device layer-aware analytical placement for analog circuits. In Proc. ISPD (2019), pp. 19–26. [37] X U, B., ET AL . MAGICAL: Toward Fully Automated Analog IC Layout Leveraging Human and Machine Intelligence: Invited Paper. In 
+
+Proc. ICCAD (Westminster, CO, USA, Nov. 2019), IEEE, pp. 1–8. [38] Y AO , S., ET AL . ReAct: Synergizing reasoning and acting in language models. arXiv preprint arXiv:2210.03629 (2022). [39] Y IN , S., ET AL . Fast surrogate-assisted constrained multiobjective optimization for analog circuit sizing via self-adaptive incremental learning. IEEE TCAD 42 , 7 (2022), 2080–2093. [40] Y IN , Y., ET AL . ADO-LLM: Analog design Bayesian optimization with in-context learning of large language models. In Proc. ICCAD (2024), pp. 1–9. [41] Y U, C., ET AL . Autonomous code evolution meets NP-completeness. 
+
+arXiv preprint arXiv:2509.07367 (2025). [42] Z HANG , H., ET AL . SAGERoute: Synergistic analog routing considering geometric and electrical constraints with manual design compatibility. In Proc. DATE (2023), IEEE, pp. 1–6. [43] Z HANG , H., ET AL . SAGERoute 2.0: Hierarchical Analog and Mixed Signal Routing Considering Versatile Routing Scenarios. In Proc. DATE 
+
+(2024), IEEE, pp. 1–6. [44] Z HANG , H., F AN , W., G AO , X., L IU , B., W ANG , R., AND LIN ,Y. PANDA: An LLM-enhanced performance-driven analog design framework bridging design intent and layout generation. In Proc. DAC 
+
+(Long Beach, CA, USA, 2026). Invited Paper. [45] Z HOU , Z., ET AL . ISR-LLM: Iterative self-refined large language model for long-horizon sequential task planning. In Proc. ICRA (2024), IEEE, pp. 2081–2088.
