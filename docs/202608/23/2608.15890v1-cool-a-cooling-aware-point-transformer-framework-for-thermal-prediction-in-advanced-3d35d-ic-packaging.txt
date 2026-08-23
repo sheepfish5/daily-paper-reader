@@ -1,0 +1,381 @@
+Title: COOL: A Cooling-Aware Point Transformer Framework for Thermal Prediction in Advanced 3D/3.5D IC Packaging
+
+URL Source: https://arxiv.org/pdf/2608.15890v1
+
+Published Time: Tue, 18 Aug 2026 01:44:42 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# COOL: A Cooling-Aware Point Transformer Framework for Thermal Prediction in Advanced 3D/3.5D IC Packaging 
+
+# Yao Lu, Zhicheng Guo, Qijun Zhang, Shang Liu, Wenji Fang, Wenkai Li, Zhiyao Xie ∗
+
+# Hong Kong University of Science and Technology Email: eezhiyao@ust.hk (∗corresponding author) 
+
+## ABSTRACT 
+
+Advanced 3D and 3.5D IC packaging significantly improves inte-gration density but elevates thermal management challenges due to cross-layer heat coupling and complex cooling structures. Tra-ditional solvers deliver high fidelity but are too slow for iterative design flows, while existing learning-based methods either fail to capture inter-die thermal coupling or treat cooling structures as static components, limiting their applicability in real packaging co-design scenarios. In this work, we introduce COOL, a cooling-aware point transformer framework that represents heterogeneous assemblies (dies, interposers, TIMs, heat spreaders) as annotated 3D point clouds embedding geometric, material and power attributes. COOL explicitly encodes geometric boundaries and cooling struc-tures, and introduces a physics-informed boundary condition (PI-BC) loss to enforce thermal consistency at material interfaces and cooling boundaries. Extensive experiments demonstrate that COOL achieves a remarkable 2.4% NMAE on our constructed benchmark of multi-package thermal designs, substantially outperforming exist-ing learning-based approaches while providing over 15.7× speedup compared to commercial FEM solvers. 
+
+ACM Reference Format: 
+
+Yao Lu, Zhicheng Guo, Qijun Zhang, Shang Liu, Wenji Fang, Wenkai Li, Zhiyao Xie ∗, Hong Kong University of Science and Technology, Email: eezhiyao@ust.hk, ( ∗corresponding author). 2026. COOL: A Cooling-Aware Point Transformer Framework for Thermal Prediction in Advanced 3D/3.5D IC Packaging. In 63rd ACM/IEEE Design Automation Conference (DAC ’26), July 26–29, 2026, Long Beach, CA, USA. ACM, New York, NY, USA, 7 pages. https://doi.org/10.1145/3770743.3804229 
+
+## 1 INTRODUCTION 
+
+Advanced 3D and 3.5D IC packaging technologies enable high inte-gration density and performance, but also introduce severe thermal coupling and non-uniform heat dissipation challenges. Accurate thermal analysis is essential for ensuring performance and reli-ability. However, conventional finite-element method (FEM) or finite-difference method (FDM) solvers such as COMSOL, Cadence Celsius, and ANSYS Icepak are computationally expensive, often requiring hours to simulate a single power trace. In addition, these solvers require substantial manual effort for geometric modeling and meshing. This makes them impractical for iterative design space exploration or layout optimization automatically.   
+
+> Please use nonacm option or ACM Engage class to enable CC licenses
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> DAC ’26, July 26–29, 2026, Long Beach, CA, USA
+> © 2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2254-7/2026/07 https://doi.org/10.1145/3770743.3804229 Repair / Simplification
+> Geometry Heat
+> Sources Boundary
+> Conditions
+> Complex Mesh Generation Assign Material & Power FEM/FVM Solver
+> Input
+> Files
+> Material
+> Properties
+> [feature vectors]
+> Point Cloud with Feature Embedding Point Transformer
+> Temperature
+> Field
+> …
+> COOL Flow Traditional Flow
+> Geometry Reconstruction
+> Transition up
+> Transition
+> down
+> MLP
+
+Figure 1: Comparison between the traditional thermal workflow and the proposed COOL framework. Traditional FEM/FVM workflows require manual preprocessing for ge-ometry, meshing, and boundary setup. COOL encodes all inputs into a unified point-cloud embedding and uses a point transformer for direct temperature prediction, enabling fast and automated thermal analysis. 
+
+In realistic 3D/3.5D packaging, multiple active dies are vertically stacked and thermally coupled through inter-die interfaces [9, 15] such as thermal interface materials (TIMs), through-silicon vias (TSVs), and micro-bumps. At the same time, chiplets often differ in thickness and material composition, resulting in heterogeneous and highly anisotropic heat transfer paths. These cross-layer inter-actions and geometric variations jointly determine the temperature field within the package, making accurate modeling far more com-plex than in single-die systems [4, 6, 12]. Recent learning-based thermal models [2, 3, 7, 8, 14, 17, 19] have achieved promising speedup over traditional FEM solvers. However, they are inadequate for capturing complex thermal dynamics in advanced packaging. These approaches face serious limitations in modeling inter-die thermal coupling and adapting to design-dependent cooling paths, restricting their applicability to real 3D/3.5D IC scenarios as follows. First, existing models fail to capture inter-die thermal cou-pling across multiple stacked layers . For example, DeepOheat [8] and DeepOheat-v1 [17] learn temperature distributions from 2D or volumetric power maps only within a single active die, their formulations do not model heat propagation between vertically stacked chiplets. Similarly, ASRR-PINN [19] assumes a uniform power map at one cross-section and does not vary power across layers, over-simplifying treating the system as a single-die struc-ture. Such simplifications fail to capture the vertical conduction and lateral spreading effects that dominate real 3D IC thermal behavior. Second, current learning frameworks treat cooling structures as static fixed conditions rather than flexible design ele-ments with variation . Both DeepOHeat models [8, 17] and ASRR-PINN [19] assume fixed boundary conditions, ignoring the influence of cooling structures such as heat spreaders or TIMs. SAU-FNO [7] arXiv:2608.15890v1 [cs.CE] 16 Aug 2026 makes progress by explicitly modeling boundary constraints and in-clude cooling-related layers like heat sinks or TIMs. However, its for-mulation treats these components as pre-defined, hard-coded layers with fixed material properties and thickness. Such rigid modeling cannot capture the design-dependent variations commonly found in advanced packaging, where TIM thickness and chiplet stacking geometry may all be adjusted dynamically during co-design. As a result, existing approaches fail to generalize across packaging configurations with heterogeneous structural variability. To overcome these challenges, a more flexible geometric repre-sentation is needed to model the complex, heterogeneous structures of 3D/3.5D packages, along with a corresponding model capable of rapidly capturing information from this new data format. In this work, we propose COOL , the first cooling-aware data-driven framework that jointly learns heat transfer across chips, packages, and cooling components in Figure 1. We propose two key techniques: data format and point transformer model . ❶ COOL represents the heterogeneous advanced packaging structures by point cloud, which can naturally encode spatial and material hetero-geneity at arbitrary resolutions. Each point can represent a physical location with attributes such as material type, power distribution, or boundary conditions, enabling modeling of thermal behavior across irregular geometries and die interfaces. ❷ COOL applies transformer-based attention mechanisms on this point-cloud for-mulation as the foundation of our thermal learning framework. To incorporate more physical information, we customize COOL to be aware of the boundary conditions. We use the point-based neural operators [16, 18], which demonstrate strong capability in learning spatially continuous physical fields directly from point sets, achieving both geometric flexibility and data efficiency. In summary, by representing the 3D thermal domain as a point cloud and applying transformer-based attention mechanisms, COOL captures complex geometric and material interactions efficiently. This unified formulation enables efficient and generalizable temper-ature prediction across diverse 3D packaging configurations. Our key contributions are summarized as follows: 
+
+• COOL is the first learning-based thermal prediction frame-work that explicitly models the coupled heat transfer among chips, packages, and cooling structures in realistic 3D and 3.5D IC packaging. This formulation captures the design-dependent effects of TIMs, TSVs, and heat spreaders, which are overlooked by existing grid-based or single-die approaches. 
+
+• We propose a point-cloud-based learning methodology 
+
+that represents the entire thermal domain as a collection of spatial points, each annotated with its material property, structural domain type, and power activity. 
+
+• We introduce physics–informed boundary conditioning (PI–BC) in our learning framework, which injects bound-ary physics into training, enforcing boundary-conditioned heat transfer and inter-die coupling to enhance accuracy at material interfaces and hotspot regions. 
+
+• We construct diverse thermal datasets covering multiple 3D/3.5D packaging configurations. Comprehensive exper-iments demonstrate that COOL achieves fast convergence and a speedup of 15.7 × over commercial FEM solvers, with only an NMAE of around 2.4%, which is significantly lower than the baselines on the testing set. 
+
+Figure 2: The structure of 3.5D integrated chips, a fusion of 2.5D and 3D-ICs. (a) is a 3D schematic view showing the heterogeneous integration of multiple chiplets on a silicon interposer. (b) Cross-sectional view illustrating CoWoS-based packaging with thermal management structures, including heat spreader, TIM, and heat dissipation devices. 
+
+## 2 BACKGROUND 
+
+In this section, we review background on advanced IC packaging and learning-based thermal prediction. We first discuss modeling challenges in 2.5D, 3D, and 3.5D stacks, then summarize prior ap-proaches for incorporating boundary conditions in thermal models. 
+
+## 2.1 Advanced Packaging Modeling 
+
+Advanced packaging technologies such as 2.5D and 3D integration have emerged as key enablers for continuing system scaling beyond the limits of traditional monolithic SoCs. In particular, 3.5D inte-gration combines the advantages of both 2.5D interposer-based and 3D stacked architectures, enabling heterogeneous integration of multiple high-performance chiplets on silicon interposers with vertical interconnects for high bandwidth and low latency. Because COOL is explicitly designed for these practical 3D/3.5D configurations, it is necessary to model the geometric and material complexity inherent to such packages. Figure 2 illustrates a repre-sentative 3.5D structure, where chiplets are bonded onto a silicon interposer through micro-bumps, and heat transfer paths involve multiple materials such as silicon, underfill, die attach, TIMs, and heat spreaders. Accurately capturing these structures requires de-tailed 3D representations, yet meshing fine-pitch objects such as C4 bumps and TSV arrays is computationally prohibitive. To build reliable thermal models for learning, we adopt physically meaningful geometric abstractions that retain thermal behavior while remaining simulation-friendly. C4 bumps are approximated as 
+
+regularized cubic primitives with equivalent thermal conductivity, ensuring consistent heat-flow representation without prohibitive meshing cost. Similarly, dense TSV arrays are handled through 
+
+area-normalized material homogenization : instead of meshing thousands of individual TSVs, we compute an effective anisotropic conductivity based on TSV density within each chiplet region. These techniques allow us to simulate real 3.5D structures with high fidelity and produce temperature fields.    
+
+> 2Advanced IC Packaging Point Cloud Dataset
+> Sec 4.2: Preprocessing & Feature Representation
+> ①Material Segmentation
+> ②Geometric Segmentation
+> …
+> Die
+> Interposer TIM C4 Bump with underfill
+> …
+
+·
+
+·       
+
+> [feature vectors]
+> ① ② ③④
+> ①Material Properties
+> ②Geometrical ID
+> ③Tri-channel Power
+> ④Boundary Condition
+> Point Transformer
+> Transition Down-Up MLP Predicted Thermal
+> Regression Head
+> One of the Chiplets
+> Loss Function
+> (only during training)
+
+COOL Framework  
+
+> (X,Y,Z)
+> Sec 4.3: Network Architecture
+> Output
+
+Figure 3: The framework of COOL. Point clouds representing heterogeneous 3D/3.5D IC assemblies are preprocessed with material and structural features and processed by a boundary-aware point transformer. A regression head predicts per-point steady-state temperatures, while the training loss enforces data fidelity, boundary conditions, and physics-inspired consistency. 
+
+## 2.2 Learning-based Thermal Prediction 
+
+Learning-based thermal prediction has emerged as a promising approach for accelerating thermal analysis in complex IC stacks. A central challenge is accurately incorporating boundary condi-tions (e.g., Robin, Neumann) and material transitions , which strongly influence heat spreading in 3D/3.5D packages. Prior studies [5, 7, 13, 14, 19] have explored various mechanisms for embedding boundary information into neural models. For exam-ple, NeuralMesh [5] enriches the network input by decomposing the 3D structure into material-transition layers and appending per-plane tensors that encode material properties, heat sources, and boundary attributes. ASRR-PINN [19] enforces analytic satis-faction of 3D thermal constraints through a dedicated boundary-conditioning module. Despite these efforts, enforcing boundary physics in highly heterogeneous IC stacks remains challenging due to complex material interfaces and heat-dissipation paths. These limitations motivate our design of COOL. We adopt a hi-erarchical point-based transformer architecture that directly processes 3D point clouds of advanced packages, avoiding grid quantization error. To ensure physical correctness, COOL inte-grates a scalable physics-informed boundary condition (PI-BC) 
+
+scheme that incorporates Robin and Neumann interactions directly into the training objective. This combination yields a cooling-aware framework suited for realistic 3D/3.5D IC thermal prediction. 
+
+## 3 PROBLEM FORMULATION 
+
+Each 3D/3.5D IC design is represented as a point set and the task is to learn a mapping that outputs the steady-state temperature. 
+
+𝑃 = {( x𝑖 , f𝑖 )} 𝑁 𝑖 =1 → ( ˆ𝑇 1, . . . , ˆ𝑇 𝑁 ) (1) where 𝑁 is the number of the points in a design, ˆ 𝑇 𝑖 is the tem-perature of the point 𝑖 , x𝑖 ∈ 𝑅 3 are the coordinates and f𝑖 contains material-domain features, engineered power descriptors, and geo-metric/boundary indicators as described in Sec. 4.2. This defines the point-based thermal prediction problem ad-dressed by COOL: predicting physically consistent temperature fields directly from a unified point-cloud embedding. 
+
+## 4 COOL FRAMEWORK 
+
+This section introduces the architecture and design of the proposed COOL framework as illustrated in Figure 3. Since we are the first to formulate thermal prediction for advanced IC packaging using point clouds, we develop a dedicated data preprocessing (in Section 4.2) and a corresponding point transformer (in Section 4.3) backbone that unifies chip and cooling structures. 
+
+## 4.1 Overview 
+
+The proposed COOL is a point transformer framework for steady-state temperature prediction in heterogeneous 3D/3.5D IC packages. Unlike traditional FEM solvers that discretize volumetric geometries onto fixed meshes, COOL directly operates on point-level representations , maintaining both spatial fidelity and scalability. The framework is designed to (1) efficiently scale to designs con-taining hundreds of thousands of spatial points, (2) explicitly encode heterogeneous material domains and cooling structures, and (3) enhance the learnability of boundary-aware thermal distributions through carefully engineered representations. 
+
+## 4.2 Preprocessing and Feature Representation 
+
+The COOL framework begins by transforming each 3D/3.5D IC design into a unified point-based thermal representation. On av-erage, a single design contains around 3 × 10 5 points, which cap-ture fine-grained structural and material variations across multiple stacked dies, interconnect layers, and packaging materials. This fine-resolution representation enables COOL to model cross-die thermal coupling and heat spreading paths with high fidelity. Coordinates (𝑋, 𝑌, 𝑍 ) are normalized to the interval [0, 1]3. Each point includes intrinsic features such as intrinsic thermal-related properties, geometric boundaries, and power dissipation values. 
+
+4.2.1 Material-domain Features. Thermal conduction in advanced packaging is governed by interactions among highly heterogeneous materials, such as silicon, copper, underfill, and polymer. However, these materials often exhibit overlapping physical ranges of thermal conductivity ( 𝑘 𝑖𝑠𝑜 ), specific heat ( 𝐶 𝑝 ) and density ( 𝜌 ), which makes it difficult for purely continuous representations to distinguish domains unambiguously. To address this, COOL adopts a dual-domain encoding scheme. Each material domain is first assigned a categorical identifier that is one-hot encoded and concatenated with its continuous attributes 
+
+{𝐶 𝑝 , 𝜌, 𝑘 𝑖𝑠𝑜 }. The combined vector is then projected into a material embedding space, enabling the model to learn both domain-specific conduction patterns and cross-material transition behavior. This can help COOL capture heat transfer across different materials. 
+
+> 3
+
+However, many previous works [5, 19] fail to capture such specific material information in their learning model. 
+
+4.2.2 Comprehensive Power Features. Power dissipation ( 𝑞 ), serv-ing as the heat source, is extremely sparse and exhibits strong spatial skewness in real 3D IC systems. To capture this distribu-tional complexity, COOL employs an engineered tri-channel power representation: 1) Raw Power: retains the absolute magnitude of dissipation, preserving direct correspondence to thermal intensity. 
+
+2) Binary Flag: indicates active versus passive regions. It helps guide the model to focus attention on power-generating sites. 3) Log-Transformed Power: converts long-tailed power distribu-tions. It helps stabilize gradient flow during training. These comprehensive representations enable COOL to specialize on different source regions, enhancing the model’s awareness of local heat density and spatial coherence. 
+
+4.2.3 Geometric and Boundary Features. Accurate steady-state thermal prediction strongly depends on how well the model cap-tures geometric complexity and boundary-driven heat transfer be-havior. To handle this, COOL augments each point with a set of geometry-aware encodings. First, different geometry domains are one-hot encoded. Then, boundary-type indicators are assigned to points whose coordinates lie on heat-exchange surfaces, including (1) convection boundaries flag ( 𝑏 conv  
+
+> 𝑖
+
+) and (2) adiabatic boundaries flag ( 𝑏 neu  
+
+> 𝑖
+
+). These features help the network localize boundary con-ditions that govern heat entering or exiting the system. Overall, these encoding strategies yield a unified and physics-aware point representation for 3D/3.5D ICs. By embedding material properties, power descriptors, and geometry–boundary cues into each point, COOL provides the essential physical context required by the downstream transformer. 
+
+## 4.3 Network Architecture 
+
+COOL adopts a hierarchical point-based transformer architecture. We extend it with thermal-aware sampling and physics-informed constraints to better capture thermal behavior, cross-material con-duction, and boundary-driven heat exchange that are critical in 3D/3.5D ICs. The network follows the encoder–decoder paradigm commonly used in geometric deep learning [1]. 
+
+4.3.1 Encoder with Transition Down. The encoder progressively reduces point resolution with several transition down (TD) layers and point transformer blocks while increasing feature capacity, en-abling the network to reason jointly about local conduction patterns and global heat-spreading structures. 
+
+➀ Transition Down . Each TD stage consists of sampling, neigh-borhood grouping, feature aggregation. 
+
+Sampling. Standard farthest point sampling (FPS) relies solely on geometry and may overlook thermally important regions such as hotspots and interfaces. COOL incorporates temperature–aware farthest point sampling (TA–FPS) , which biases FPS using an importance score that reflects local thermal activity and material transitions. To quantify importance, TA–FPS computes a composite score 𝑠 𝑖 ∈ [ 0, 1]:
+
+𝑠 𝑖 = 𝛼 1 ˆ𝑔 𝑖 + 𝛼 2 ˆ𝑞 𝑖 + 𝛼 3 ˆ𝑏 𝑖 (2) ˆ𝑔 𝑖 , ˆ 𝑞 𝑖 , and ˆ𝑏 𝑖 are normalized temperature gradient magnitude, normalized power density, and boundary indicator, respectively. The classical FPS distance metric 𝐷 𝑖 is biased as 𝐷 ′ 
+
+> 𝑖
+
+= (1 + 𝛾𝑠 𝑖 ) 𝐷 𝑖 .This sampling strategy ensures that regions influencing heat flow are retained at coarser resolutions, improving the fidelity of cross-scale thermal reasoning. 
+
+Neighborhood Grouping. For each sampled point, a local neighbor-hood is constructed using 𝑘 -nearest neighbors ( 𝑘 -NN) [11]. Relative coordinates and local feature differences are concatenated to pro-vide spatial and thermal context for aggregation. 
+
+➁ Point Transformer Block . Each TD stage includes a point transformer module that refines local representations using atten-tion mechanisms. Given a point’s latent vector and its surrounding neighbors, the module computes attention weights based on learned positional encodings and feature affinity. This allows the network to adaptively prioritize neighbors that influence heat transfer. 
+
+4.3.2 Decoder with Transition Up. The decoder mirrors the encoder and gradually restores the prediction to full resolution. 
+
+Transition Up (TU) . Each TU stage upsamples features from a lower-resolution point set to a higher-resolution one. 
+
+Interpolation. Features are propagated using distance-weighted interpolation over a small 𝑘 -NN neighborhood, ensuring smooth reconstruction across materials and interfaces. 
+
+Skip Connections. Encoder features are aligned and concatenated with decoder features to restore fine-grained structure lost during downsampling. 
+
+4.3.3 Global Structure and Regression Head. Across the hierarchy, the feature dimension expands from 𝑑 = 128 at the input embed-ding to progressively higher capacities at deeper layers. At the end of the decoder, a two-layer MLP maps point features to a scalar temperature prediction. 
+
+4.3.4 Physics–Informed Boundary Conditioning. Thermal behavior in packaged ICs is strongly influenced by boundary interactions, including heat spreading through heat sinks, convection at exposed surfaces, and continuity of flux across material interfaces. To capture these effects, COOL introduces PI-BC, which operates jointly with the data supervision loss. The total loss is defined as 
+
+𝐿 = 𝐿 data + 𝛼 R𝐿 𝑅𝑜𝑏  
+
+> BC
+
++ 𝛼 N𝐿 𝑁 𝑒𝑢  
+
+> BC
+
++ 𝛼 p𝐿 phys (3) where 𝛼 R, 𝛼 N, and 𝛼 p are coefficients. 
+
+Data term: 𝐿 data is the mean squared error of 𝑁 pints between predicted ˆ 𝑇 and ground-truth 𝑇 temperatures. 
+
+𝐿 data = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+ ˆ𝑇 𝑖 − 𝑇 𝑖 
+
+2
+
+. (4) 
+
+Physics term: Temperature within a homogeneous material domain should remain spatially smooth except near heat sources. To discourage non-physical jumps, we introduce 𝐿 phys , a Laplacian-based regularization that penalizes deviations between each point and a weighted average of its same-material neighbors. 
+
+Boundary condition term: The boundary loss terms 𝐿 𝑅𝑜𝑏  
+
+> BC
+
+and 
+
+𝐿 𝑁 𝑒𝑢  
+
+> BC
+
+are formulated similarly to the data term, but are selectively applied to points belonging to Robin and Neumann boundaries [10], respectively. For each boundary type, we compute the mean squared error between predicted and ground-truth temperatures. 
+
+> 4
+
+## 5 EXPERIMENTS 5.1 Experimental Setup 
+
+5.1.1 Dataset Construction. We first generate a diverse dataset of 74 heterogeneous 3D and 3.5D IC packaging designs. These designs are constructed by systematically varying key structural param-eters listed in Table 1. The parameter set spans multiple aspects of advanced packaging, including: (1) chip and substrate geom-etry (e.g., lateral dimensions 𝐿 𝑥,𝑦 , die and interposer sizes) that determine heat–spreading distances; (2) vertical stacking config-urations such as the number of dies 𝑁 die and number of stacks 
+
+𝑁 stacks , covering both monolithic dies and multi-die 3D stacks; (3) 
+
+interconnect-related thermal paths , including TSV density 𝑓 TSV 
+
+and C4 bump parameters, which influence vertical heat conduc-tion; and (4) cooling-structure parameters such as TIM, lid, and heat-sink thicknesses (𝐿 TIM  
+
+> 𝑧
+
+, 𝐿 lid  
+
+> 𝑧
+
+, 𝐿 hs  
+
+> 𝑧
+
+) directly affecting heat extrac-tion efficiency. Sampling each variable within the ranges of Table 1 yields design instances that collectively various 3D/3.5D designs. For each of the 74 generated designs, we additionally create 10 power-map variants, resulting in a total of 740 simulated thermal scenarios. Steady-state thermal fields are then computed using an FEM solver under realistic boundary and cooling conditions. The resulting temperature distributions are sampled into 3D point clouds, forming the dataset used for training and evaluating COOL .To avoid geometric leakage, splits are performed at the design level. We randomly choose 80% of the designs for training and 20% for testing. Based on the different structures of the designs, there are a total of 58 designs, generating 580 training samples. The remaining 16 designs, with 160 samples, are used for testing. 
+
+5.1.2 Preprocessing. To enable batch training and ensure architec-tural consistency, the original point clouds are resampled to a fixed size of 300 ,000 points using farthest point sampling (FPS). For each point, we construct the feature vector defined in Section 4.2. The process includes: (1) normalized 3D coordinates ( 3 dimen-sions); (2) material-domain descriptors, consisting of an 7-dimensional one-hot material ID and 3 physical properties ( 𝑘 𝑖𝑠𝑜 , 𝐶 𝑝 , 𝜌 ); (3) 11 -dimensional geometry one-hot encoding and 2-dimensional bound-ary indicators, and power-related features. Concatenating all components yields a 26-dimensional raw fea-ture vector. Before entering the network, this vector is mapped to a 64-dimensional through a feature embedding layer. 
+
+5.1.3 Model Setting. COOL follows the hierarchical encoder–decoder architecture in Section 4.3 with fixed-resolution point inputs. The encoder performs three transition down stages, reducing the point set from 300K → 150K → 75K → 37 .5K, while expanding feature channels as 64 → 128 → 256 → 512. Each stage includes TA–FPS sampling and a point transformer block. The decoder mirrors this hierarchy with symmetric Transition Up stages using interpolation-based feature propagation and skip connections. A lightweight MLP head (64 → 64 → 1) produces normalized temperature predictions for all points. 
+
+5.1.4 Training and Testing. Training uses the AdamW optimizer with initial learning rate 1 × 10 −3 and weight decay 1 × 10 −4. A ten-epoch linear warm-up is followed by cosine annealing. Dis-tributed data-parallel training on eight NVIDIA RTX 4090 GPUs 
+
+Variable Description Range [Unit] 
+
+𝐿 𝑥,𝑦 Substrate lateral size (x-y) 8-16 [mm] 
+
+𝐿 𝑧 Substrate thickness 400 [μm] 
+
+𝐿 Si  
+
+> 𝑥
+
+Interposer lateral size 6-14 [mm] 
+
+𝐿 C4 C4 bump height 80-120 [μm] 
+
+𝑓 TSV TSV density in interposer 5–30% of Si area 
+
+𝑁 stacks Number of stacks 1,2,3 
+
+𝑁 die Number of stacked dies 2,3,4 
+
+𝐿 (𝑠𝑡𝑎𝑐𝑘 ) 
+
+> 𝑥,𝑦
+
+3D-stacked IC lateral size 4-7 [mm] 
+
+𝐿 (𝑠𝑡𝑎𝑐𝑘 ) 
+
+> 𝑧
+
+3D-stacked IC thickness 100-250 [μm] 
+
+𝐿 (𝑚𝑜𝑛𝑜 ) 
+
+> 𝑥,𝑦
+
+Monolithic die lateral size 6-10 [mm] 
+
+𝐿 (𝑚𝑜𝑛𝑜 ) 
+
+> 𝑧
+
+Monolithic die thickness 300-800 [μm] 
+
+𝐿 TIM  
+
+> 𝑧
+
+TIM thickness 100-220 [μm] 
+
+𝐿 lid  
+
+> 𝑧
+
+Lid thickness 500-800 [μm] 
+
+𝐿 hs  
+
+> 𝑧
+
+Heat sink thickness 600-1800 [μm] 
+
+Table 1: Design variables and parameter ranges used for con-structing the 3D/3.5D IC thermal dataset. 
+
+supports batch size = 16. The full training schedule runs for 200 epochs and requires approximately 35.6 hours of wall-clock time. During testing, inference is executed on a single RTX 4090 GPU. The predicted normalized temperatures are inverse-transformed to obtain physical temperature fields. 
+
+5.1.5 Error Metrics. We evaluate prediction accuracy using the 
+
+mean absolute error (MAE) and its range-normalized counter-part, the normalized MAE (NMAE) . MAE measures the average absolute difference between predicted and ground-truth tempera-tures, while NMAE provides a scale-independent error expressed as a percentage of the thermal range. They are defined as MAE = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+|𝑇 𝑖 − ˆ𝑇 𝑖 |, NMAE = MAE 
+
+𝑇 max − 𝑇 min 
+
+× 100% (5) where ˆ 𝑇 𝑖 and 𝑇 𝑖 and are the predicted and label temperatures at point 𝑖 , 𝑁 is the number of sampled points, and 𝑇 max and 𝑇 min 
+
+denote the maximum and minimum temperatures of the design.  
+
+> (a) (b)
+
+Figure 4: Comparison among COOL (ours), U-Net, and U-Net+SA. (a) In the evaluation stage, the testing results show that COOL consistently outperforms the two baselines, con-firming that our method achieves better overall prediction accuracy. (b) During the training stage, COOL exhibits a faster and more stable convergence in training loss.             
+
+> 5(a) The first case study from our designs: 𝑁 stacks =1,𝑁 die =3.
+> (b) The second case study from our designs: 𝑁 stacks =2,𝑁 die =2.
+
+Figure 5: Three-dimensional point cloud result visualization of temperature for specific designs. 
+
+## 5.2 Baseline 
+
+We use commercial FEM tools to generate the temperature field as ground truth. Since SAN-FNO [7] is originally designed for grid-based inputs and cannot directly handle point-cloud data, we con-struct comparable point-based baselines for comparison. Specifi-cally, we implement a plain U-Net and an enhanced U-Net+SA (U-Net with Self-Attention) following similar design principles. These two models serve as point-based counterparts to SAN-FNO [7], enabling a fair evaluation against our proposed COOL framework. 
+
+## 5.3 Results 
+
+In order to validate the effectiveness of COOL, we conducted ex-periments on heterogeneous IC designs under the experimental settings described in Section 5.1. The aim was to assess both the predictive accuracy and computational efficiency of COOL. Figure 4 presents a general comparison between COOL and baseline methods during both training and testing. It is evident from the figure that COOL exhibits a consistently lower loss trajectory throughout the process, suggesting more stable learning behavior. Figure 4a reports testing results on the NMAE metric at epoch = 200 . COOL consistently outperforms the baselines, achieving an NMAE of approximately 2.4%, while U-Net and U-Net+SA reach 15.6% and 13.7%, respectively. This substantial margin highlights COOL’s superior predictive capability and confirms that it can accurately capture the underlying thermal patterns from point-cloud input data. Importantly, this performance gap suggests that traditional point-based and U-Net-based approaches struggle to generalize across the full spatial variability of heterogeneous IC designs, whereas COOL effectively models these complexities. Figure 4b illustrates the training dynamics of COOL compared to point-based baselines, U-Net and U-Net+SA, over the first 200 epochs. COOL’s loss decreases rapidly and approaches convergence around epoch 160, whereas both U-Net and U-Net+SA continue to decline noticeably, indicating slower convergence. This rapid con-vergence of COOL not only reduces the required training time but also suggests improved optimization stability, potentially leading to more robust performance across different IC designs. Figure 5 provides a visualization of COOL’s prediction perfor-mance on two heterogeneous IC designs. The figure includes both full-chip temperature prediction results and detailed temperature distributions over the primary heat sources (chip regions). Figure 5a corresponds to a fully three-dimensional stacked IC, while Figure 5b shows a 3.5D configuration with a separate chip module. COOL accurately captures spatial thermal gradients and temperature pat-terns in both scenarios, achieving particularly high fidelity in active chip regions with MAEs of approximately 0 .45 ◦C and 0 .38 ◦C for the 3D and 3.5D designs, respectively. These visual results further confirm that COOL not only achieves low global error but also delivers precise temperature estimation in critical regions, reinforcing its effectiveness for heterogeneous ICs. We also provide a rough estimate of runtime. Using a commer-cial FEM solver as a reference, predicting each design typically requires 189 seconds, excluding manual interventions such as mesh refinement or parameter tuning. COOL completes prediction in 12 seconds per design without any manual intervention, resulting in a speedup greater than 15.7 ×. The combination of rapid con-vergence, high predictive accuracy, and low computational cost demonstrates that COOL provides a practical solution for real-time thermal analysis and design verification in heterogeneous ICs. 
+
+## 6 CONCLUSION 
+
+In this work, we propose COOL, a cooling-aware point transformer for thermal prediction in advanced 3D/3.5D IC packaging. By rep-resenting the thermal domain as an annotated point cloud, COOL explicitly models cooling structures as dynamic design elements. The proposed PI-BC scheme enforces physical consistency at mate-rial interfaces and cooling boundaries. Extensive experiments show COOL achieves 2.4% NMAE, substantially outperforming point-based baselines while providing 15.7× speedup over FEM solvers. These results confirm COOL’s practicality for thermal-aware co-design in next-generation IC packaging. 
+
+## ACKNOWLEDGEMENT 
+
+This work is supported by Hong Kong Research Grants Council (RGC) CRF-YCRG C6003-24Y, GRF 16216825, and T46-415/25-R. It was partially conducted by ACCESS – AI Chip Center for Emerging Smart Systems, supported by the InnoHK initiative of the Inno-vation and Technology Commission of the Hong Kong Special Administrative Region Government. 
+
+> 6
+
+## REFERENCES 
+
+[1] Michael M. Bronstein, Joan Bruna, Yann LeCun, Arthur Szlam, and Pierre Van-dergheynst. 2017. Geometric Deep Learning: Going beyond Euclidean data. IEEE Signal Processing Magazine 34, 4 (July 2017), 18–42. https://doi.org/10.1109/msp. 2017.2693418 [2] Liang Chen, Wentian Jin, and Sheldon X-D Tan. 2022. Fast thermal analysis for chiplet design based on graph convolution networks. In 2022 27th Asia and South Pacific Design Automation Conference (ASP-DAC) . IEEE, 485–492. [3] Liang Chen, Jincong Lu, Wentian Jin, and Sheldon X-D Tan. 2023. Fast full-chip parametric thermal analysis based on enhanced physics enforced neural networks. In 2023 IEEE/ACM International Conference on Computer Aided Design (ICCAD) . IEEE, 1–8. [4] Liang Chen, Sheldon X-D Tan, Zeyu Sun, Shaoyi Peng, Min Tang, and Junfa Mao. 2020. A fast semi-analytic approach for combined electromigration and thermomigration analysis for general multisegment interconnects. IEEE Transac-tions on Computer-Aided Design of Integrated Circuits and Systems 40, 2 (2020), 350–363. [5] Pengju Chen, Dan Niu, Dekang Zhang, Wenhao Wang, Depeng Xie, Zhou Jin, Wei W Xing, and Lei He. 2025. NeuralMesh: Neural Network For FEM Mesh Generation in 2.5 D/3D Chiplet Thermal Simulation. In 2025 62nd ACM/IEEE Design Automation Conference (DAC) . IEEE, 1–7. [6] Yinxiao Feng and Kaisheng Ma. 2022. Chiplet actuary: A quantitative cost model and multi-chiplet architecture exploration. In Proceedings of the 59th ACM/IEEE Design Automation Conference . 121–126. [7] Zhen Huang, Hong Wang, Wenkai Yang, Muxi Tang, Depeng Xie, Ting-Jung Lin, Yu Zhang, Wei W Xing, and Lei He. 2025. Self-Attention to Operator Learning-based 3D-IC Thermal Simulation. In 2025 62nd ACM/IEEE Design Automation Conference (DAC) . IEEE, 1–7. [8] Ziyue Liu, Yixing Li, Jing Hu, Xinling Yu, Shinyu Shiau, Xin Ai, Zhiyu Zeng, and Zheng Zhang. 2023. DeepOHeat: operator learning-based ultra-fast thermal simulation in 3D-IC design. In 2023 60th ACM/IEEE Design Automation Conference (DAC) . IEEE, 1–6. [9] Jiwoo Pak, Sung Kyu Lim, and David Z Pan. 2014. Electromigration study for mul-tiscale power/ground vias in TSV-based 3-D ICs. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 33, 12 (2014), 1873–1885. [10] Tobias Pfaff, Meire Fortunato, Alvaro Sanchez-Gonzalez, and Peter W. Battaglia. 2021. Learning Mesh-Based Simulation with Graph Networks. arXiv:2010.03409 [cs.LG] https://arxiv.org/abs/2010.03409 [11] Charles R. Qi, Li Yi, Hao Su, and Leonidas J. Guibas. 2017. Point-Net++: Deep Hierarchical Feature Learning on Point Sets in a Metric Space. arXiv:1706.02413 [cs.CV] https://arxiv.org/abs/1706.02413 [12] Yakun Sophia Shao, Jason Clemons, Rangharajan Venkatesan, Brian Zimmer, Matthew Fojtik, Nan Jiang, Ben Keller, Alicia Klinefelter, Nathaniel Pinckney, Priyanka Raina, et al. 2019. Simba: Scaling deep-learning inference with multi-chip-module-based architecture. In Proceedings of the 52nd annual IEEE/ACM international symposium on microarchitecture . 14–27. [13] Zeyu Sun, Weijie Tong, Xiaoning Ma, He Cao, Jianyun Liu, Zhiqiang Li, and Qinzhi Xu. 2025. ChipletEM: Physics-Based 2.5D and 3D Chiplet Heterogeneous Integration Electromigration Signoff Tool Using Coupled Stress and Thermal Simulation. In 2025 62nd ACM/IEEE Design Automation Conference (DAC) . IEEE, 1–7. [14] Zhenyu Wang, Pragnya Sudershan Nalla, Jingbo Sun, A Alper Goksoy, Sumit K Mandal, Jae-sun Seo, Vidya A Chhabria, Jeff Zhang, Chaitali Chakrabarti, Umit Y Ogras, et al. 2025. HISIM: Analytical Performance Modeling and Design Space Exploration of 2.5 D/3D Integration for AI Computing. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems (2025). [15] Zhenyu Wang, Jingbo Sun, Alper Goksoy, Sumit K Mandal, Yaotian Liu, Jae-Sun Seo, Chaitali Chakrabarti, Umit Y Ogras, Vidya Chhabria, Jeff Zhang, et al. 2024. Exploiting 2.5 d/3d heterogeneous integration for ai computing. In 2024 29th Asia and South Pacific Design Automation Conference (ASP-DAC) . IEEE, 758–764. [16] Xiaoyang Wu, Li Jiang, Peng-Shuai Wang, Zhijian Liu, Xihui Liu, Yu Qiao, Wanli Ouyang, Tong He, and Hengshuang Zhao. 2024. Point transformer v3: Simpler faster stronger. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition . 4840–4851. [17] Xinling Yu, Ziyue Liu, Hai Li, Yixing Li, Xin Ai, Zhiyu Zeng, Ian Young, and Zheng Zhang. 2025. DeepOHeat-v1: Efficient Operator Learning for Fast and Trustworthy Thermal Simulation and Optimization in 3D-IC Design. arXiv preprint arXiv:2504.03955 (2025). [18] Hengshuang Zhao, Li Jiang, Jiaya Jia, Philip HS Torr, and Vladlen Koltun. 2021. Point transformer. In Proceedings of the IEEE/CVF international conference on computer vision . 16259–16268. [19] Zijian Zhou, Min Tang, and Liang Chen. 2025. ASRR-PINN: Adaptive Sub-Regional Random Resampling-Based PINN for Thermal Analysis of 3D-ICs. In 
+
+2025 62nd ACM/IEEE Design Automation Conference (DAC) . IEEE, 1–7.
