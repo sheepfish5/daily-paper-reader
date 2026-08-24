@@ -1,0 +1,826 @@
+Title: Automated Estimation of MBIST Area and Test Time in Heterogeneous Memory IPs via Stacked Ensemble Framework
+
+URL Source: https://arxiv.org/pdf/2608.19705v1
+
+Published Time: Fri, 21 Aug 2026 00:31:14 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# Automated Estimation of MBIST Area and Test Time in Heterogeneous Memory IPs via Stacked Ensemble Framework 
+
+Chee Jin Teoh 1, Ab Al-Hadi Ab Rahman 1,∗, Johnny Kee Hui Wong 2,Premkumar A/L Kesavan Prabagaran 2, Muhammad Nadzir Marsono 1, Nuzhat Khan 1
+
+> 1
+
+Faculty of Electrical Engineering, Universiti Teknologi Malaysia, Johor Bahru, Johor, Malaysia 
+
+> 2
+
+Intel Microelectronics (M) Sdn. Bhd., Bayan Lepas, Malaysia 
+
+> ∗
+
+Corresponding author: hadi@utm.my 
+
+Abstract 
+
+Embedded memories occupy a large portion of modern System-on-Chip (SoC) designs, especially in high-performance applications such as artificial intelligence and edge comput-ing. Memory Built-In Self-Test (MBIST) is commonly used to ensure memory reliability, but it introduces additional area and test time overhead. Accurate early estimation of these overheads is important during design planning, yet conventional methods rely on full Register Transfer Level (RTL) synthesis and test pattern generation, which are slow and resource-intensive. This study proposes a supervised learning framework that predicts MBIST area and test time directly from RTL-level design parameters without synthesis. A dataset of 4,470 samples for area and 624 for test time was generated using Synopsys Design Compiler and MINT, an Intel-enhanced MBIST tool. Input features include memory count, word width, address depth, port configuration, and clock domains. For area prediction, the features are processed through polynomial expansion, log transformation, and scaling, followed by a stacked ensemble model using XGBoost, LightGBM, and a Neural Network with Gradient Boosting as the meta-learner. For test time, XGBoost and LightGBM are combined using Ridge Regression, with hyperparameters tuned through a 100-trial Optuna search. The models achieved 90.68% accuracy for area and 96.80% for test time within a ±10% margin, improving over baseline methods by 8.53% and 48.80% respectively. The results show that this approach enables faster estimation of MBIST costs and supports more efficient design decisions in memory IP development. 
+
+Keywords: Memory Built-In Self-Test (MBIST), design-for-test (DFT), machine learning, stacked ensemble, feature engineering 
+
+## 1 Introduction 
+
+Memory Built-In Self-Test (MBIST) has become an indispensable component in System-on-Chip (SoC) designs, particularly as embedded memories now dominate the silicon area in modern semiconductor architectures [1], [2], [3]. In advanced SoCs, embedded SRAMs and register files often exceed 70% of the total chip area [4], [5], necessitating efficient and scalable test strategies. Among various Design-for-Test (DFT) methodologies, MBIST accounts for the highest area overhead, reaching up to 66% in some cases [5], [6], far surpassing other components like scan chains or boundary scan [7]. This underscores its central role in ensuring memory fault detection, repairability, and in-field reliability [8], [9]. However, the integration of MBIST logic introduces significant design challenges, especially in the early stages where area overhead and test time must be balanced against stringent performance and cost requirements [5], [10], [11], [12]. 1arXiv:2608.19705v1 [cs.AR] 20 Aug 2026 The architecture of MBIST, as depicted in Fig. 1, exemplifies the components and process flow [9], which forms the basis for evaluating the system’s impact on overall chip performance. Despite the availability of automated solutions such as MINT, which is Intel’s repackaged version of Siemens Tessent [8], [9], accurate estimation of MBIST area and test time remains inherently dependent on complete synthesis. Reliable metrics can only be obtained after the RTL is trans-formed into a gate-level netlist and test pattern generation is completed [5], [6], [7], [9], both of which are time-consuming and require significant computational resources. For complex designs containing hundreds of memory instances and diverse architectural configurations, this process may take several hours or even days. Furthermore, the iterative nature of synthesis-based work-flows [10] slows design convergence and limits opportunities for early-stage exploration. The difficulty is compounded by heterogeneous RTL coding styles, inconsistent naming conventions, and varying memory topologies, all of which introduce noise and complexity into the prediction process. Traditional analytical and statistical regression approaches often fail to capture the intricate nonlinear relationships between memory attributes, such as type, port configuration, depth, word size, and algorithm complexity, resulting impact on MBIST overhead [13]. Additionally, manual port labeling to extract key RTL signals [14] such as clocks, addresses, and data adds further bottlenecks and susceptibility to human error, limiting automation and scalability. Recent advances in machine learning (ML) [15], [16] have opened new opportunities for predictive modeling in Electronic Design Automation (EDA). In particular, ensemble learn-ing methods [17], [18] have shown promise in modeling complex, nonlinear relationships across high-dimensional datasets, while deep learning approaches [19], [20] offer potential for pattern recognition tasks such as semantic signal classification. By combining these strengths, it be-comes feasible to build a unified framework capable of early, synthesis-free estimation of MBIST area and test time across a wide range of memory configurations [21], [22], [23], [24]. A stacked ensemble learning framework [17], [18] is proposed for predicting MBIST area and test time directly from RTL-level design parameters [25], [26], thus eliminating the need for synthesis or manual preprocessing. The framework integrates domain-specific feature engineering, a three-tiered regression ensemble (XGBoost, LightGBM, Neural Network), and an AI-driven RTL signal classification module [13], [14] to provide accurate, scalable, and design-independent pre-dictions. Validation was performed on a dataset consisting of over 5,000 memory IP variants [25], [26], [27], which were automatically generated through controlled MBIST insertion and syn-thesis flows using MINT [8], [9] and Synopsys Design Compiler [27]. The results highlight high prediction accuracy, accompanied by substantial reductions in runtime and development effort, making the framework highly suitable for early-stage design planning and MBIST configuration optimization. The main contributions of this work are as follows: 1. To the best of our knowledge, this is the first machine learning-based framework that ap-plies domain-specific RTL-level feature engineering. The selected features include memory count, word width, address depth, port configuration, and the number of clock domains. These are combined with polynomial feature expansion, logarithmic transformation, and standard scaling to enable accurate estimation of MBIST area and test time directly from RTL. This eliminates the need for synthesis or test pattern generation and supports early design evaluation with lower computational cost. 2. A stacked ensemble regression model is developed to improve prediction accuracy and generalizability across various memory configurations. The model combines XGBoost, LightGBM, and a Neural Network as base learners, with Gradient Boosting and Ridge Regression used as meta-learners for area and test time prediction respectively. This multi-model strategy captures complex data patterns and enhances robustness across datasets. 3. An AI-based RTL signal classification module is proposed to automatically identify clock, 2MBIST Controller 
+
+> MBIST
+> Collateral
+> Algorithm 1
+> Algorithm 2
+> Algorithm 3
+> .
+> .
+> .
+> Algorithm N
+> FSM
+> Pointer and
+> Loop Control
+> Address
+> Generator
+> Data
+> Generator
+> Control
+> Generator
+> Func Data
+> Func Addr
+> Func
+> Rd/Wr
+> BIST Enable
+> Compare Logic
+> Diagnostic Data
+> Array
+> Read Data
+
+Figure 1: MBIST architecture diagram that shows the MBIST Controller with its components, including the Address, Data, and Control Generators, and the MBIST Collateral for memory testing and diagnostic operations. address, data input, and data output signals based on their naming characteristics. The classifier employs character-level n-gram encoding and logistic regression, effectively re-moving the need for manual annotation and enabling scalable, design-independent pre-processing across diverse IP blocks. 4. The framework is evaluated using a dataset of 4,470 samples for area and 624 samples for test time, generated with Synopsys Design Compiler and MINT. Experimental results show prediction accuracy of 90.68% for area and 96.80% for test time within a ±10% mar-gin, outperforming baseline models by 8.53% and 48.80% respectively, while eliminating the need for full RTL-to-GDS flows in early MBIST planning. 
+
+## 2 Related Works 
+
+Recent research has increasingly explored the use of machine learning techniques [28], [29], [30], [31] for estimating MBIST area and test time to reduce reliance on iterative synthesis flows. Initial efforts focused on regression models [29], such as those proposed by Jamal et al. [5], who applied linear and polynomial regression to predict MBIST overhead with reported R2 values of 0.9922 for area and 0.89 for test time. Although effective in simple system-on-chip contexts, these models lacked the capacity to model non-linear dependencies and feature interactions [32], making them less suitable for modern, feature-rich memory IP designs. More advanced approaches have utilized ensemble methods to improve accuracy [17], [18], [31]. Arora et al. [7] employed models such as Random Forest, LassoCV, and Gradient Boosting Regressor [32], [33], [34], [35] for MBIST area estimation. Their work demonstrated solid performance on small subsystems but showed limited generalization to larger and more diverse 3memory architectures [22], [24]. The models did not incorporate stacked ensemble strategies and did not extend to test time estimation or automated preprocessing. Other studies investigated optimization-based approaches. For example, Jamal et al. [10] integrated decision tree classifiers and K-means clustering to optimize memory groupings [21] and test strategies [32]. While beneficial for post-floorplanning design stages, these methods did not address early-stage estimation and lacked predictive capabilities that could be applied directly to RTL-level design decisions. Despite the growing number of studies, several limitations remain. Prior work often over-looks the importance of comprehensive feature engineering [15], suffers from limited general-ization across memory types [6], [7], [10], and depends heavily on manual preprocessing. To overcome these gaps, this work introduces a unified machine learning framework that combines memory-aware encodings, log and polynomial transformations, and a robust stacked ensemble model built from XGBoost, LightGBM, and Neural Networks. Furthermore, a semantic sig-nal classification module is developed to automatically detect key RTL signals such as clock, address, and data, enabling scalable and design-independent MBIST prediction across a wide range of configurations. 
+
+## 3 Problem Formulation 
+
+The input to this problem is a collection of RTL-based memory designs [25], [26], denoted as 
+
+D = {d1, d 2, . . . , d n}, where each instance di comprises a unique configuration of embedded memories characterized by parameters such as depth, word width, port count, clock domain diversity [5], [7], and MBIST test algorithm selection [9]. These parameters directly influence the physical area overhead [10] introduced by MBIST insertion and the total time required for test execution. For each design instance di, the MBIST area overhead Ai and test time Ti are extracted using post-synthesis and post-test pattern generation analysis via industrial EDA tools such as Synopsys Design Compiler [27] and Tessent MINT [8], [9]. The primary objective is to estimate these two metrics early in the design cycle, without executing time-consuming synthesis or pattern generation flows. The problem can therefore be framed as learning two functions, farea and ftime , that predict MBIST area and test time respectively from a design’s feature representation Xi. Formally, this can be expressed as: 
+
+Ai ≈ farea (Xi); Ti ≈ ftime (Xi),
+
+where Xi is a domain-engineered feature vector [15] constructed from RTL-level attributes of 
+
+di, including structural memory parameters and semantically classified signals such as clocks, addresses, and data. The core challenge lies in building models that generalize well across a wide spectrum of memory configurations [36] while preserving prediction accuracy in the presence of non-linear and combinatorial interactions among the design parameters. 
+
+3.1 Complexity of Predicting MBIST-Induced Area Overhead 
+
+Accurately estimating MBIST area requires the model to infer complex relationships between the number, size, and configuration of memory instances [5], [6] and the additional logic [11] introduced by MBIST insertion. Unlike generic area estimation problems, MBIST area overhead is tightly coupled with the memory test algorithm type, controller sharing strategy, and access port distribution [22], [24]. These factors introduce non-trivial correlations and make it difficult to estimate area using simple feature sets. The learning task must capture the variability introduced by different RTL configurations [13], [14] and produce accurate predictions before synthesis is performed. 43.2 Modeling Temporal Behavior for Test Time Prediction 
+
+MBIST test time estimation presents a distinct challenge, as it depends not only on memory size and count, but also on clock domains, test algorithm depth [37], and access parallelism. The test time is influenced by how the MBIST controller sequences operations across memories [38], [39], especially in multi-clock environments. Estimating this metric requires reasoning over both structural and temporal attributes extracted from the design [40]. In addition, the model must generalize to unseen configurations with varying test architectures, making the prediction problem highly non-linear [41] and sensitive to design structure. 
+
+## 4 Proposed Methodology 
+
+The proposed framework focuses on early-stage prediction of MBIST area and test time di-rectly from RTL descriptions without invoking synthesis or test generation flows is illustrated in Fig. 2. It begins with the automated generation of memory design variants through system-atic parameter variation (see Section 4.1), followed by MBIST insertion and metric extraction using industrial EDA tools (see Section 4.2). Structured memory features are then extracted and transformed using polynomial expansion, logarithmic scaling, and standardization (see Section 4.3). These features serve as input to a stacked ensemble learning model compris-ing XGBoost, LightGBM, and a Neural Network, with a gradient boosting or ridge regression meta-learner optimized via Optuna search (see Section 4.4). Additionally, a semantic signal recognition module automatically classifies RTL ports as clock, address, or data to enhance model generalizability across different coding styles (see Section 4.5). 
+
+4.1 Automated Variant Generation for Dataset Construction 
+
+Early-stage prediction of MBIST area and test time requires a diverse and scalable dataset reflecting realistic design variations. A structured dataset was constructed by systematically modifying key architectural parameters such as memory instance count, word width, address depth, clock domain multiplicity, and the proportion of excluded memory blocks [5], [7]. These architectural factors significantly influence controller logic complexity, clock routing challenges, and the volume of generated test patterns [10], which in turn impact area overhead and test latency. An automation framework based on Python and GNU Makefile was employed to generate design variants by modifying RTL templates and Tessent configuration files. The resulting designs were processed through MBIST insertion using the MINT tool [8], [9] and synthesized with Synopsys Design Compiler [27] to extract area metrics. A total of 4,470 variants were collected for MBIST area prediction and 624 for test time prediction. Each variant shares a unified core feature set and incorporates additional task-specific attributes aligned with prediction targets. Table 1 summarizes the raw features and their observed value ranges, forming a robust foundation for subsequent machine learning-based modeling. 
+
+4.2 MBIST Insertion and Metric Extraction 
+
+Each generated design variant undergoes MBIST logic insertion using the MINT tool [8], [9], which performs structural validation, controller generation, pattern creation, and functional verification. During this process, MINT produces configuration files that encode the number of memory-connected clock domains and the operating frequency, both of which are essential for later test time estimation. The RTL netlist, post-insertion, is synthesized using Synopsys Design Compiler [27] to retrieve gate-level area information. MBIST area is quantified as the difference between the area of the design after insertion and the baseline area of the original RTL in (1): 5module  SYNC_1RW_128x16 (
+
+input  CLK, WE, RE, OE, ECC, 
+
+input  [15:0] D, 
+
+input  [7:0] A, 
+
+output  [15:0] Q
+
+); 
+
+// Memory and output instance(s) 
+
+... 
+
+endmodule 
+
+(a) Original RTL Design  (b) Original Tessent Core Description (TCD) 
+
+MemoryTemplate (<memoryIP_name>) {
+
+MemoryType  : <memory_type>; 
+
+CellName  : <cell_name>; 
+
+Algorithm  : <algorithm_name>; 
+
+Port (<port_name_1>) {
+
+Function: <port_function>; 
+
+Polarity: <port_logic_state>; 
+
+}
+
+// Other ports' definition 
+
+... 
+
+}
+
+(j) Semantic Port Recognition and Classification Module 
+
+Clock 
+
+Address 
+
+Row  Column 
+
+I/O Ports 
+
+Data In  Data Out 
+
+(c)  Automated Design Variant Generation Module  (f) Configuration File 
+
+Block(<topModule_name>) {
+
+VerilogFile  : <verilog_file>; 
+
+TestModeSignal: <test_mode_signal>; 
+
+ClocksInfo {
+
+... 
+
+}
+
+MemoryInfo {
+
+... 
+
+}
+
+// Other relevant configurations 
+
+... 
+
+}
+
+(d) Modified RTL Design 
+
+RTL Variant 1 
+
+RTL Variant 2 
+
+RTL Variant N 
+
+...
+
+(e) Modified TCD 
+
+TCD Variant 1 
+
+TCD Variant 2 
+
+TCD Variant N 
+
+...
+
+(g) Data Generation and Preprocessing 
+
+MBIST Insertion using MINT  Synthesis using Design Compiler 
+
+(i) Feature Engineering 
+
+No. of Instantiated Memor(ies) 
+
+Types of Memory 
+
+SRAM  RF 
+
+Memory Testing 
+
+Included  Excluded  Total Bits  Bits per Memory 
+
+MBIST Area (Features) 
+
+MBIST Test Time (Features) 
+
+Address Sizing  Port Ratio 
+
+MBIST Area  MBIST Test Time 
+
+Features  Target  Features  Target 
+
+(h) Scaling 
+
+Log Normalization of Area 
+
+MBIST Area (Target) 
+
+Log Normalization of 
+
+Test Time 
+
+MBIST Test Time (Target) 
+
+Types of Memory 
+
+(k) Ensemble Learning Module 
+
++
+
++
+
+Predicted MBIST Area 
+
+Predicted MBIST Test Time 
+
+(l) Performance Evaluation 
+
+Clock Frequenc(ies) 
+
+R2 Score  Accuracy  MAPE Figure 2: Overview of the proposed framework for predicting MBIST area and test time, in-tegrating domain-specific feature engineering, stacked ensemble learning, and AI-driven signal classification for accurate and efficient prediction directly from RTL-level parameters. 
+
+MBIST Area = Modified Area − Original Area , (1) with the relative area overhead computed as: 
+
+Area Overhead (%) = MBIST Area Original Design Area × 100% . (2) To evaluate test time, the MINT summary report provides the total number of test cycles, which is then combined with the configured clock information. The final test time is calculated using either of the following equivalent expressions in (3) and (4): 
+
+Test Time = Clock Period × Test Cycles , (3) 
+
+Test Time = Test Cycles Frequency . (4) All extracted metrics, including MBIST area, area overhead, and test time, are compiled into structured datasets alongside the corresponding architectural parameters. These datasets serve as labeled outputs for supervised machine learning models in the prediction pipeline. 6Table 1: Raw Features and Corresponding Dataset Ranges Used for Predicting MBIST Area and Test Time Metrics 
+
+Feature Description Range MBIST area raw features 
+
+SRAM Number of embedded SRAM instances 0 – 80 RF Number of register file (RF) instances 0 – 80 Total Memories Total number of memories (SRAM + RF + ex-cluded memories) 2 – 103 Clock Domains Number of clock domains connected to memory blocks 1 – 3 Address Depth Bit-width of address used to access memory 64 – 512 Data Width Bit-width of data bus used for read/write access 8 – 32 
+
+MBIST test time raw features 
+
+Row Count Bit-width of row number in the memory library 2 – 4096 Column Count Bit-width of column number in the memory li-brary 2 – 16384 Write Port Total number of memory write ports 1 – 2 Read Port Total number of memory read ports 1 – 2 
+
+4.3 Feature Engineering and Input Transformation 
+
+Feature engineering serves as a critical component in enhancing model accuracy and generaliz-ability [15] for MBIST area and test time prediction. The transformation pipeline incorporates both raw design attributes and engineered descriptors tailored to capture complex dependencies across memory configurations. For area prediction, core inputs such as memory instance count, word width, address depth, and the number of clock domains are processed using polynomial feature expansion to capture higher-order interactions, while logarithmic scaling mitigates skew-ness in features with wide dynamic ranges. These transformed features are then standardized via z-score normalization to ensure consistent scaling across all samples, enabling stable learning dynamics and improved convergence behavior. The final engineered feature set, summarized in Table 2, facilitates effective pattern recognition across heterogeneous memory architectures. The test time branch expands this feature space by integrating geometry-specific parame-ters and access-related indicators that influence test cycle duration. Notably, attributes such as address sizing and port ratio encapsulate both structural complexity and control overhead of memory blocks. Given that test time typically correlates more linearly with structural pa-rameters than MBIST area, the model applies fewer nonlinear transformations. Nevertheless, both the feature vectors and the log-transformed test cycle target undergo standard scaling to stabilize variance and equalize feature influence. Engineered targets used in both tasks are presented in Table 3. While earlier methods often relied on minimal transformations and basic input parameters, the proposed feature construction process incorporates advanced domain-specific techniques to enrich the input space and improve model generalizability. By encoding architectural patterns, control overheads, and memory geometry into engineered features, the models are equipped to capture both linear and nonlinear dependencies inherent in MBIST behavior. This enriched representation leads to stronger learning performance, particularly when handling heterogeneous memory IPs with diverse sizes, port configurations, and test strategies. The resulting pipeline not only enhances accuracy and stability across tasks but also demonstrates scalability to unseen RTL designs that differ significantly from training distributions. 7Table 2: Engineered Features for MBIST Area and Test Time Prediction, Focusing on Key Memory Configurations and Performance Ratios 
+
+Feature Description MBIST area engineered features 
+
+Included Indicates whether a memory is configured for MBIST inser-tion Included Ratio Ratio of included memories to total memory instances Included per Clock Do-main Average number of included memories per clock domain Memory Type Encoded memory type (0 for SRAM, 1 for Register File) Total Bits Total memory capacity calculated as depth multiplied by width Excluded Ratio Ratio of excluded memories within the design Bits per Memory Average bit size per memory instance 
+
+MBIST test time engineered features 
+
+Address Sizing Estimated number of addressable memory cells calculated from row and column Port Ratio Ratio of write to read ports with a constant added to main-tain stability Table 3: Engineered Targets for MBIST Metrics Prediction, Including Log-Transformed Values of Area and Test Cycles to Stabilize Variance and Improve Accuracy 
+
+Target Description MBIST area engineered target 
+
+Log Area Log-transformed value of area to stabilise variance 
+
+MBIST test time engineered target 
+
+Log Test Cycles Log-transformed value of test cycles used as the prediction target 
+
+4.4 Stacked Ensemble Learning Architecture 
+
+This section presents a stacked ensemble learning architecture designed to predict MBIST area and test time from RTL-level memory configurations. The framework combines the predictive strengths of multiple base learners with a meta-learner that refines the final output [31], [41]. Fig. 3 illustrates the complete structure of the ensemble system. In the MBIST area prediction task, the model combines three base learners, namely XG-Boost, LightGBM, and a feedforward Neural Network. Each learner is trained on log-transformed and standardised features, which consist of both raw design inputs and engineered descriptors. The XGBoost and LightGBM models are well-suited for capturing hierarchical feature depen-dencies through gradient-boosted decision trees. The Neural Network complements them by learning complex nonlinear interactions that are difficult to express through tree-based meth-ods. To ensure convergence and generalisation, the network employs Swish activation, dropout layers, and an early stopping mechanism based on validation performance. The predictions produced by all base models are concatenated and passed into a Gradient Boosting Regressor, which functions as the meta-learner. This regressor learns to model the residual errors of the base learners and produces the final output with improved accuracy. The full learning workflow is summarised in Algorithm 1. For MBIST test time prediction, a more compact ensemble structure is adopted. XGBoost and LightGBM serve as the base learners, and their predictions are fused using a Ridge Regres-8Algorithm 1 Stacked Ensemble for Area Prediction                                                                               
+
+> Input: Dataset D={X, y }with engineered features, ylog-scaled;
+> 1: polynomial degree p= 2;
+> 2: base learners M1(XGBoost), M2(LightGBM), M3(NN);
+> 3: meta-learner Mmeta (Gradient Boosting Regressor);
+> 4: convergence threshold ε
+> Output: Trained meta-learner Mmeta
+> 5: ˜X←poly expand( X, p )▷polynomial expansion
+> 6: ˜X←standardize( ˜X)▷feature scaling
+> 7: for Mi∈ { M1, M 2, M 3}do
+> 8: Train Mion ( ˜X, y )
+> 9: Z←M1( ˜X), M 2( ˜X), M 3( ˜X)▷stacked features
+> 10: err prev ← ∞
+> 11: repeat
+> 12: Train Mmeta on ( Z, y )
+> 13: ˆy←Mmeta (Z)
+> 14: err curr ←MAPE( y, ˆy)
+> 15: if |err prev −err curr |< ε then
+> 16: break ▷convergence reached
+> 17: else
+> 18: Adjust hyperparameters of Mmeta
+> 19: err prev ←err curr
+> 20: until convergence return Mmeta
+
+sion meta-learner with L2 regularisation to improve stability. The input features are standard-ised, and the target variable representing test cycle count is log-transformed to reduce variance and support better convergence. The final test time is derived by scaling the predicted test cycles using the associated clock period or by applying the inverse of the operating frequency. Hyperparameters for XGBoost are optimised using a 100-trial Optuna search [30] that evalu-ates tree depth, learning rate, and feature sampling. LightGBM uses cross-validated defaults to maintain computational efficiency. The model training terminates once the validation MAPE satisfies a predefined convergence criterion. This workflow is outlined in Algorithm 2. In contrast to prior methods that typically rely on single-model estimators or shallow feature mappings, the proposed stacked ensemble architecture demonstrates improved accuracy, scal-ability, and adaptability. By integrating heterogeneous learners and leveraging residual error correction through a meta-regressor [16], [17], the framework captures both complex nonlinear interactions and simpler linear relationships that are often overlooked by standalone models. This design also supports modular upgrades, allowing future inclusion of new model types or additional engineered features without requiring substantial changes to the overall architecture [15]. As a result, the proposed approach offers a more comprehensive and flexible solution for early-stage MBIST metric prediction. 
+
+4.5 Semantic Port Recognition and Classification Module 
+
+Accurate identification of signal roles such as clock, address, data input, and data output is essential for MBIST area and test time prediction. Manual labeling of these ports is often time-consuming and prone to errors, especially when naming conventions vary across RTL designs. To overcome these limitations, a semantic port recognition and classification module is introduced, as illustrated in the system architecture shown in Fig. 4. The process begins by parsing Verilog RTL files to extract top-level port declarations along with their corresponding identifiers. These identifiers are then tokenized using a character-level n-gram technique [13], [14] designed to capture lexical, structural, and positional naming patterns that are often indicative of port function. The extracted token features are vectorized 9Algorithm 2 Stacked Ensemble for Test Time Prediction 
+
+Input: Dataset D = {X, y } with engineered features, y log-scaled;  
+
+> 1:
+
+base learners M1 (XGBoost) and M2 (LightGBM);  
+
+> 2:
+
+meta-learner Mmeta (Ridge Regression);  
+
+> 3:
+
+Optuna search with T = 100 trials; ▷ hyperparameter optimization  
+
+> 4:
+
+convergence threshold ε
+
+Output: Optimized meta-learner Mmeta  
+
+> 5:
+
+X ← standardize( X) ▷ feature scaling  
+
+> 6:
+
+M1 ← optuna tune(XGBoost , X, y, T ) 
+
+> 7:
+
+Train M2 on ( X, y ) 
+
+> 8:
+
+Z ← M1(X), M 2(X) ▷ stacked features  
+
+> 9:
+
+err prev ← ∞  
+
+> 10:
+
+repeat  
+
+> 11:
+
+Train Mmeta on ( Z, y ) 
+
+> 12:
+
+ˆy ← Mmeta (Z) 
+
+> 13:
+
+err curr ← MAPE( y, ˆy) 
+
+> 14:
+
+if |err prev − err curr | < ε then  
+
+> 15:
+
+break ▷ convergence reached  
+
+> 16:
+
+else  
+
+> 17:
+
+Adjust hyperparameters of Mmeta  
+
+> 18:
+
+err prev ← err curr  
+
+> 19:
+
+until convergence return Mmeta 
+
+and passed into a logistic regression classifier trained on a labeled dataset of annotated RTL designs. This learning-based approach allows the classifier to generalize across inconsistent naming schemes and reliably predict port categories with high accuracy. Unlike rule-based or static filtering methods, the classifier adapts to varied naming styles commonly found in both academic and industrial IP cores. The structured CSV output, which includes signal names, bit widths, and their inferred roles, is directly integrated into the MBIST feature pipeline. This allows for consistent and automated feature extraction without requiring any manual intervention. Compared to conven-tional heuristics or static filtering rules, the proposed module significantly improves classification accuracy and robustness across heterogeneous IPs. Its ability to generalize across inconsistent naming schemes enables more reliable and scalable RTL analysis in complex memory IP design environments. 
+
+## 5 Experimental Results and Discussion 
+
+This section presents a comprehensive evaluation of the proposed framework for predicting MBIST area overhead and test time. The analysis is organised into five parts. Section 5.1 describes the experimental setup, including dataset specifications and preprocessing workflow. Section 5.2 outlines the hyperparameter optimisation strategies adopted for each learning model. Section 5.3 provides a performance comparison between the proposed method and several classi-cal baseline models. Section 5.4 reports on ablation studies conducted to assess the contribution of ensemble learning and feature engineering. Section 5.5 offers a tradeoff analysis that com-pares the proposed method against prior works in terms of model complexity, scalability, and training efficiency. The experiments are conducted using two structured datasets. The area dataset comprises 4470 synthesised MBIST variants, while the test time dataset contains 624 validated RTL designs. Each dataset is preprocessed through a consistent pipeline involving log transformation, polynomial feature expansion, and z-score standardisation. For area prediction, the framework 10 Input Features             
+
+> Feature 1Feature 2Feature N...
+> MBIST Area Raw Features
+> Feature 1Feature 2Feature N...
+> MBIST Test Time Raw Features
+> Stacked Ensemble Model
+> Base Models
+> XGBoost LightGBM Neural Network
+> Predictions
+> Area
+> p1p2p3
+> Test Time
+> p1p2
+> Meta-Learner
+> Area Test Time
+> Gradient Boosting Regressor Ridge Regression
+> Final Prediction
+> Predicted MBIST Area Predicted MBIST Test Time
+> Target
+> MBIST Area Target
+> MBIST Test Time Target
+
+Figure 3: Proposed stacked ensemble architecture for MBIST area and test time prediction, combining base models (XGBoost, LightGBM, Neural Network) with meta-learners (Gradient Boosting and Ridge Regression) for final predictions. employs three base learners, which are XGBoost, LightGBM, and a feedforward Neural Network. These are followed by a Gradient Boosting Regressor acting as the meta-learner. The test time prediction uses a simpler ensemble structure combining XGBoost and LightGBM, fused with a Ridge Regression meta-learner. All models are trained using the engineered feature sets described in Section 4.3. Multiple evaluation metrics are used to assess model performance. These include R2 score, MAPE, and prediction accuracy within a ±10% margin. The results confirm that the stacked ensemble models outperform traditional baselines. In addition to accuracy, the framework demonstrates consistent prediction across different memory configurations. The final subsection extends the discussion by comparing the computational efficiency, training time, and architec-11 N-gram (Raw features/token) 
+
+module  LPSS_1RW_128x16_wrp (
+
+input  CLK, WE, RE, OE, ECC, 
+
+input  [15:0] DIN, 
+
+input  [7:0] A, 
+
+output  [15:0] QOUT 
+
+); 
+
+// Memory and output instance(s) 
+
+... 
+
+endmodule 
+
+RTL Design  Configuration File 
+
+Block(<topModule_name>) {
+
+VerilogFile  : <verilog_file>; 
+
+TestModeSignal: <test_mode_signal>; 
+
+ClocksInfo {
+
+... 
+
+}
+
+MemoryInfo {
+
+... 
+
+}
+
+// Other relevant configurations 
+
+... 
+
+}
+
+CLK  DIN  QOUT A
+
+CLK  DIN  QOUT A
+
+(b) Automated Port Extraction Engine 
+
+WE  OE  ECC RE 
+
+Clock  Data In  Data Out Address  Others 
+
+Verilog Database (.json) 
+
+Logistic Regression 
+
+(c) Classification Training 
+
+Count Vectorizer 
+
+Feature Vector 
+
+(d) Tokenization 
+
+CLK 
+
+DIN 
+
+QOUT 
+
+A
+
+Classified Features  Reference from Tessent Core Description (TCD) 
+
+MemoryTemplate (<memoryIP_name>) {
+
+MemoryType  : <memory_type>; 
+
+CellName  : <cell_name>; 
+
+Algorithm  : <algorithm_name>; 
+
+Port (<port_name_1>) {
+
+Function: <port_function>; 
+
+Polarity: <port_logic_state>; 
+
+}
+
+// Other ports' definition 
+
+... 
+
+}
+
+=
+
+(e) Validation 
+
+Bit Width Calculator 
+
+Memory Instance Calculator 
+
+(f) Design Analyzer 
+
+(a) Input  (g) Output 
+
+Clock 1 
+
+Clock 2 
+
+Clock N 
+
+.
+
+.
+
+.
+
+Clock 
+
+Write Address 1 [n-1:0] 
+
+.
+
+..
+
+Address 
+
+.
+
+..
+
+Write Address 2 [n-1:0] 
+
+Write Address N [n-1:0] 
+
+Read Address 1 [n-1:0] 
+
+Read Address 1 [n-1:0] 
+
+Read Address 1 [n-1:0] 
+
+I/O Ports 
+
+Data In 1 [n-1:0] 
+
+..
+
+.
+
+Data In 2 [n-1:0] 
+
+Data In N [n-1:0] 
+
+Data Out 1 [n-1:0] 
+
+..
+
+.
+
+Data Out 2 [n-1:0] 
+
+Data Out N [n-1:0] 
+
+Memory Instance 
+
+Included Memory 
+
+Memory Instance 1 
+
+Clock 1 
+
+Frequency 2 
+
+Frequency N 
+
+.
+
+.
+
+.
+
+Memory Instance 2 
+
+.
+
+.
+
+.
+
+Memory Instance N 
+
+Excluded Memory 
+
+Memory Instance 1 
+
+Memory Instance 2 
+
+..
+
+.
+
+Memory Instance N 
+
+No 
+
+Yes 
+
+Interactive 
+
+Feedback 
+
+Mode 
+
+Yes 
+
+No 
+
+Confidence Level 
+
+Dimension Figure 4: Proposed architecture for semantic port classification, including key components such as signal identification, classification layers, and their roles in improving RTL signal recognition. tural simplicity of this approach with previous work. This highlights the practical advantages of the proposed pipeline in terms of design-time integration and scalability for large-scale MBIST optimisation. 
+
+5.1 Experimental Setup 
+
+The experimental evaluation is based on two large datasets generated through an automated flow that processes RTL designs into measurable MBIST metrics. The first dataset includes 4470 samples containing MBIST area information obtained after synthesis, while the second consists of 624 validated samples for test time prediction, extracted following test pattern generation. 12 MBIST insertion is performed using the MINT framework [8], [9], and synthesis is conducted using Synopsys Design Compiler [27] on a Linux-based server environment. This setup ensures consistency and scalability in design processing across all variants. Model development and training are conducted on a Windows 11 workstation equipped with an Intel Core i7-1370P processor and 16 GB of RAM. Python 3.11 is used as the programming platform, alongside libraries such as scikit-learn, XGBoost, LightGBM, TensorFlow, and Op-tuna. The data is divided into training and testing subsets using an 80 to 20 ratio. Validation is internally applied during Neural Network training and hyperparameter optimisation to main-tain generalisation performance. Model accuracy is evaluated using multiple metrics including the coefficient of determination ( R2 score), MAPE, and prediction accuracy within a ±10% error margin from the actual values as defined below [41]. 
+
+R2 Score = 1 −
+
+Pni=1 (yi − ˆyi)2
+
+Pni=1 (yi − ¯y)2 (5) MAPE = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+yi − ˆyi
+
+yi
+
+× 100% (6) Accuracy = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+1
+
+ |yi − ˆyi|
+
+yi
+
+≤ 0.10 
+
+
+
+× 100% (7) The yi represents the actual values, ˆ yi represents the predicted values, ¯ y is the mean of the actual values, and n is the total number of data points. The R2 score quantifies the proportion of the variance in the actual values explained by the model’s predictions, with higher values indicating better model performance. MAPE measures the average percentage error between the predicted and actual values by calculating the absolute difference between yi and ˆ yi, normalized by yi, and then multiplying by 100. Lower MAPE values indicate better accuracy. The accuracy metric calculates the percentage of predictions that fall within a 10% error margin of the true values, with the indicator function 1(·) returning 1 when the condition is met and 0 otherwise. Together, these metrics provide a comprehensive evaluation of the model’s prediction accuracy, with R2 reflecting goodness of fit, MAPE providing error magnitude, and accuracy assessing how often predictions are within an acceptable range [16]. 
+
+5.2 Hyperparameter Tuning 
+
+Hyperparameter tuning plays an essential role in enhancing the generalisation performance of machine learning models. It involves optimising key parameters that influence model behaviour during training, including learning rate, tree depth, and regularisation strength for boosting models, as well as network architecture and dropout configuration for Neural Networks. This study employs the Optuna framework to automate the tuning process for both MBIST area and test time prediction tasks. All tuning is performed on training partitions after appropriate feature transformation, using fixed random seeds to ensure reproducibility. For the MBIST area prediction task, a stacked ensemble model composed of XGBoost, LightGBM, and a feedforward Neural Network is developed. Input features are processed using polynomial expansion and standardisation [15], [19]. The XGBoost and LightGBM models are tuned with respect to their maximum depth, learning rate, number of estimators, subsample ratio, and regularisation terms. Typical values explored include tree depths from 4 to 12 and estimator counts ranging from 500 to 2000. The Neural Network model is constructed with multiple dense layers, Swish activations, batch normalisation, and dropout layers. Its learning rate and training epochs are optimised using early stopping to avoid overfitting. After tuning, outputs from all base learners are combined and fed into a Gradient Boosting Regressor meta-learner, which is further optimised using a quantile loss objective [34], [35]. Table 4 summarises the final hyperparameters for each component. 13 Table 4: Tuned Hyperparameters for MBIST Area Prediction across Single Base Learners 
+
+Hyperparameter XGBoost LightGBM Neural Network 
+
+Max Depth 7 7 –Learning Rate 0.0135 0.0130 0.0015 N Estimators 850 850 –Subsample 0.92 0.92 –Colsample Bytree 0.87 0.87 –Reg Alpha 0.15 0.15 –Reg Lambda 0.35 0.35 –Dropout Rate – – 0.3 / 0.2 Batch Size – – 128 Table 5: Tuned Hyperparameters for MBIST Test Time Prediction across Single Base Learners 
+
+Hyperparameter XGBoost LightGBM 
+
+Max Depth 4 10 Learning Rate 0.0278 0.015 N Estimators 719 1500 Subsample 0.65 0.80 Colsample Bytree 0.85 0.85 Gamma 1.083 × 10 −4 –Reg Alpha 7.397 × 10 −4 0.05 Reg Lambda 1.400 × 10 −4 0.5 For MBIST test time prediction, the ensemble model consists of XGBoost and LightGBM as base learners, with Ridge Regression serving as the meta-learner. The features are standard-ised, and domain-specific engineered attributes such as port ratios and memory geometry are included. XGBoost is optimised using 100 trials of Optuna’s Tree-structured Parzen Estimator [30], targeting mean absolute error on the log-transformed test cycle count. LightGBM uses hyperparameters refined from cross-validation experiments. The Ridge Regression model uses L2 regularisation with fixed alpha to stabilise blending of predictions from the base models. The tuning process results in improved convergence, reduced validation error, and enhanced prediction accuracy. The selected hyperparameters are listed in Table 5. 
+
+5.3 Baseline Methods and Performance Comparison 
+
+This section presents a comprehensive comparison between the proposed stacked ensemble framework and various baseline models used for MBIST area and test time prediction. Classical machine learning methods such as Linear Regression (LR), Polynomial Regression (PolyReg), LassoCV, AdaBoostRegressor, Gradient Boosting Regressor (GBR), K-Nearest Neighbors (KNN), and Neural Network (NN) were implemented with and without feature engineering. These base-lines serve as a foundation to evaluate the gains introduced by advanced ensemble learning and domain-specific transformations. In the case of MBIST area prediction, the simple regression models exhibited weak perfor-mance, especially in capturing nonlinear relationships across parameters such as SRAM instance count, address and data widths, and port configurations. Polynomial Regression marginally im-proved over Linear Regression, but still suffered from high error margins. The more expressive models like GBR and NN offered better accuracy but encountered overfitting issues due to the increasing model complexity. As shown in Table 6, even the strongest baseline (NN with fea-14 No. of RF Total Memories Ex cluded Memories                                           
+
+> No. o f Clock Domains Size of Address Data Width
+> 1.00 -0.16 -0.02 -0.61 0.00 0.19 -0.11 -0.16 1.00 0.15 -0.11 0.00 -0.04 0.02 -0.02 0.15 1.00 0.73 0.01 -0.09 0.06 -0.61 -0.11 0.73 1.00 0.00 -0.18 0.11 0.00 0.00 0.01 0.00 1.00 -0.00 0.00 0.19 -0.04 -0.09 -0.18 -0.00 1.00 -0.30 -0.11 0.02 0.06 0.11 0.00 -0.30 1.00
+
+Correlation Matrix for MBIST Area (Features Only) 
+
+> 1.00
+> 0.75
+> 0.50
+> 0.25
+> 0.00 0.25 0.50 0.75 1.00 No. of SRAM No. of SRAM Total Memories Size of Address Data Width
+> No. o f Clock Domains Ex cluded Memories No. of RF
+
+(a) Row Column No. of Write Port No. of Read Port             
+
+> 1.00 -0.13 -0.00 0.00 -0.13 1.00 0.00 -0.00 -0.00 0.00 1.00 0.25 0.00 -0.00 0.25 1.00
+> 1.00
+> 0.75
+> 0.50
+> 0.25
+> 0.00 0.25 0.50 0.75 1.00
+
+Correlation Matrix for MBIST Test Time (Features Only)  
+
+> Row Column No. of Write Port No. of Read Port
+
+(b) 
+
+Figure 5: Correlation matrix showing the relationships between key design parameters and MBIST (a) area and (b) test time, where diagonal values should be as high as possible to indicate true positive relations, and off-diagonal values should be low to indicate minimal correlations. ture engineering) reached only 82.15% accuracy. In contrast, the proposed stacked ensemble, combining XGBoost, LightGBM, and NN as base learners with a GBR meta-learner, achieved a test accuracy of 90.68% and an R2 score of 0.9999. This 8.53% improvement demonstrates the ensemble’s ability to capture residual patterns more effectively while preserving generalisation. For MBIST test time prediction, baseline methods faced even greater challenges due to the intricate relationship between test cycles, clock frequency, and MBIST algorithm configuration. Without feature engineering, models like LR and KNN performed poorly with high MAPE values exceeding 1000%. Feature engineering improved the predictive power of GBR and NN, but their accuracy remained limited. The proposed method, using XGBoost and LightGBM fused through Ridge Regression, achieved a substantial leap to 96.80% test accuracy and reduced MAPE to 2.10%, outperforming the best baseline (GBR with feature engineering) by 48.80% as seen in Table 7. The Ridge meta-model effectively mitigated variance and overfitting in the final prediction. The correlation matrices for MBIST area and test time features, shown in Figure 5, highlight key relationships between the design parameters. For MBIST area, a strong positive correlation (∼ 0.73) between the total number of memories and excluded memories indicates that higher memory counts lead to more memories being excluded from MBIST. The number of SRAM instances shows a moderate negative correlation ( ∼ − 0.61) with excluded memories, suggesting that more SRAM reduces the number of excluded memories, as SRAM blocks are prioritized for MBIST. Other features like the number of clock domains and data width show little corre-lation with total memories but still influence MBIST area through bus widths and controller complexity. For MBIST test time, the correlation matrix shows that row and column counts are strongly related, meaning larger memory arrays require longer test times. The moderate correlation ( ∼ 0.25) between write and read port counts reflects their role in test concurrency, which affects test scheduling. These findings underscore the importance of feature engineering to capture these relationships for accurate predictions. These results validate that the stacked ensemble architecture, coupled with advanced fea-ture engineering, is critical to achieving robust and scalable MBIST estimation. The use of tree-based models ensures efficiency and strong generalisation, while Neural Networks capture high-order interactions. Logarithmic and polynomial feature transformations resolve non-linear 15 Table 6: Comparison of MBIST Area Prediction Metrics With and Without Feature Engineer-ing.                                                                                               
+
+> Feature Engineering Model Training Set Test Set R2Score Accuracy (%) MAPE (%) R2Score Accuracy (%) MAPE (%)
+> No Linear Regression [5] 0.4074 6.10 2979.99 0.3756 4.26 2871.76 Polynomial Regression [5] 0.8254 19.41 1973.07 0.7927 18.07 2066.40 LassoCV [7] 0.4074 6.12 2982.90 0.3757 4.26 2874.53 AdaBoostRegressor [7] 0.9886 46.97 137.83 0.9882 45.79 137.44 Gradient Boosting Regressor [7, 10] 0.9999 71.32 22.65 0.9998 70.59 21.07 Neural Network [7] 0.9943 68.06 20.69 0.9947 68.24 16.70 Proposed Work 0.9971 75.64 73.33 0.9946 69.13 121.00 Yes Linear Regression [5] 0.9854 51.83 36.62 0.9875 50.51 34.65 Polynomial Regression [5] 0.9289 46.74 17.31 0.9327 45.90 15.78 LassoCV [7] 0.8855 23.40 2319.90 0.8740 21.21 2190.96 AdaBoostRegressor [7] 0.9887 47.39 117.50 0.9884 46.35 108.76 Gradient Boosting Regressor [7, 10] 0.9994 80.25 20.07 0.9994 79.91 22.18 Neural Network [7] 0.9990 83.43 10.37 0.9992 82.15 8.95
+> Proposed Work 1.0000 91.60 5.54 0.9999 90.68 5.14
+
+Table 7: Comparison of MBIST Test Time Prediction Metrics With and Without Feature Engineering.                                                           
+
+> Feature Engineering Model Training Set Test Set R2Score Accuracy (%) MAPE (%) R2Score Accuracy (%) MAPE (%)
+> No Linear Regression [5] 0.2761 4.68 2795.41 0.1302 6.78 1909.91 Gradient Boosting Regressor [5] 0.8327 39.48 16.49 0.7818 33.60 19.40 K-Nearest Neighbors [5, 10] 0.4412 4.80 88.15 0.4412 4.80 88.15 Proposed Work 0.9936 35.87 532.88 0.9360 22.40 788.14 Yes Linear Regression [5] 0.9053 7.89 2062.17 0.8989 7.02 1138.62 Gradient Boosting Regressor [5] 0.9520 50.50 12.21 0.9095 48.00 14.18 K-Nearest Neighbors [5, 10] 0.9072 19.84 23.76 0.8315 19.20 35.26
+> Proposed Work 0.9997 100.00 1.06 0.9978 96.80 2.10
+
+design dependencies that traditional models fail to learn. The framework significantly advances prediction accuracy across complex and heterogeneous RTL designs, confirming its superiority over existing standalone methods. 
+
+5.4 Ablation Study on Stacked Ensemble and Feature Engineering 
+
+Ablation experiments were conducted to evaluate the relative impact of each component within the proposed stacked ensemble framework, focusing on MBIST area and test time prediction. The objective was to examine how individual elements such as feature engineering and spe-cific base learners contribute to the overall prediction performance. The ensemble integrates XGBoost, LightGBM, and a Neural Network, while incorporating domain-driven feature trans-formations including polynomial expansion and logarithmic scaling. The evaluation considered the effect of selectively removing these components on model accuracy. For MBIST area prediction, the complete ensemble achieved a maximum test accuracy of 90.68%, as presented in Fig. 6(a). Removing any of the base learners resulted in a measurable decline in performance, indicating that each model captured distinct data patterns essential for robust learning. Tree-based models such as XGBoost and LightGBM provided effective han-dling of nonlinear boundaries and interactions, whereas the Neural Network offered improved capacity in capturing high-order dependencies. Additionally, eliminating feature transforma-tions caused a substantial reduction in predictive accuracy, highlighting their role in mitigating feature skewness and amplifying meaningful patterns. The test time prediction exhibited a similar trend. The full ensemble attained an accuracy of 96.80%, as shown in Fig. 6(b). The absence of any single base model produced noticeable deterioration in results, while the removal of feature engineering led to the most pronounced loss of performance. This observation reflects the intricate dependency between test time behavior 16 90.68 85.35 85.79 85.68 82.66 77.74 82.55 82.55 020 40 60 80 100     
+
+> Full Stack Ensemble No XGBoost No LGBM No Neural Network
+> Accuracy (%)
+> MBIST Area Accuracy
+> With Feature Engineering Without Feature Engineering
+
+(a) 96.80 64.80 69.11 22.40 12.00 20.80      
+
+> No XGBoost No LGBM Full Stack Ensemble
+> 20 40 60 80 100
+> Accuracy (%)
+> MBIST Test Time Accuracy
+> With Feature Engineering Without Feature Engineering
+> 0
+
+(b) 
+
+Figure 6: Comparison of MBIST area and test time accuracy in the ablation study, illustrating the effects of both feature engineering and base learners on model performance for (a) area and (b) test time. and variables such as memory configuration, clock frequency, and test cycles. The Ridge Regres-sion meta-learner, incorporated for its L2 regularization capability, played a significant role in improving generalization and stabilizing predictions across varying input distributions. In con-trast, the Gradient Boosting Regressor meta-learner in the area prediction model contributed by refining residual errors produced by the base learners. These results affirm that both the diversity of the ensemble and the application of tailored feature engineering are necessary to ensure model reliability and scalability. The findings suggest that simplified or partial variants of the proposed framework may be insufficient for capturing the complexities inherent in MBIST area and test time estimation, particularly when applied to large-scale or heterogeneous memory IPs. 
+
+5.5 Comparative Analysis of Model Efficiency and Deployment Tradeoffs 
+
+This section presents a comparative analysis of the performance efficiency and deployment trade-offs for four models used in predicting MBIST area and test time, namely XGBoost, LightGBM, Neural Network, and stacked ensemble. The models are evaluated based on key performance metrics, which include training time, inference time, model complexity, accuracy, and model size. These metrics are crucial for understanding both the predictive performance and the computational demands associated with deploying each model in practical applications. XGBoost and LightGBM demonstrate relatively fast training and inference times, with training durations significantly lower than those of the Neural Network and stacked ensemble models. Their simpler architectures contribute to reduced complexity and memory usage, mak-ing them well-suited for resource-constrained environments. On the other hand, the Neural Network, due to its deep architecture [35], requires more substantial training time and exhibits higher model complexity. Despite its higher resource consumption, the Neural Network model offers lower accuracy compared to the ensemble models, with a larger memory footprint that may limit its practical deployment in scenarios with limited resources. The stacked ensemble, combining XGBoost, LightGBM, and Neural Network, provides the highest accuracy, achieving 90.68% for MBIST area prediction. However, this performance comes at the cost of increased training time, inference time, and model complexity. While the stacked ensemble’s model size is larger due to the aggregation of base models and the meta-learner, its improved accuracy makes it an appealing choice for applications where prediction precision is prioritized. Nevertheless, the increased computational overhead may be acceptable, given that tasks like MBIST area and test time prediction do not require the same stringent 17 Inference Time Model Complexity Accuracy Model Size    
+
+> 0.2 0.4 0.6 0.8 1.0 XGBoost LightGBM Neural Network Stacked Ensemble
+> Trade-offs in Performance and Efficiency of MBIST Area Model
+> Training Time
+
+(a) Trade-offs in Performance and Efficiency of MBIST Test Time Model  
+
+> Training Time
+> 0.8 0.6 0.4 0.2 1.0
+> Inference Time Model Complexity Accuracy Model Size
+> XGBoost LightGBM Stacked Ensemble
+
+(b) 
+
+Figure 7: Comparison of the trade-offs in performance and efficiency for the MBIST (a) area and (b) test time model across different models based on training time, inference time, model complexity, accuracy, and model size, where higher values indicate better performance. Table 8: Comparison of Model Performance Metrics for MBIST Area Prediction 
+
+Metric XGBoost LGBM NN Stacked Ensemble 
+
+Train Time (s) 2.3752 0.8217 105.8558 109.6995 Inference Time (s) 0.0028 0.0083 0.2981 0.1293 Complexity 108,800 108,800 214,017 431,817 Accuracy (%) 78.90 78.34 39.84 90.68 Model Size (MB) 2.496 1.324 0.816 4.900 Table 9: Comparison of Model Performance Metrics for MBIST Test Time Prediction 
+
+Metric XGBoost LGBM Stacked Ensemble 
+
+Train Time (s) 0.1753 0.8729 1.0737 Inference Time (s) 0.0014 0.0144 0.0128 Complexity 11,504 46,500 58,006 Accuracy (%) 69.11 64.80 96.80 Model Size (MB) 1.021 2.263 3.284 timing constraints as real-time tasks such as video or image processing. Fig. 7 illustrates the performance efficiency trade-offs between the models, highlighting the speed advantages of XGBoost and LightGBM, while also demonstrating the superior accuracy of the stacked ensemble and Neural Network models, with the stacked ensemble offering the best balance of accuracy and computational cost. The performance metrics for each model in terms of training time, inference time, model com-plexity, accuracy, and model size for both MBIST area and test time prediction are summarized in Tables 8 and 9. These tables show that while XGBoost and LightGBM exhibit relatively fast training and inference times, the stacked ensemble model, despite its larger size and increased computational cost, achieves significantly better accuracy. Specifically, the stacked ensemble achieves 90.68% accuracy in predicting MBIST area and 96.80% for test time, highlighting its superior performance in comparison to the other models. 18 6 Conclusion 
+
+This study presents a stacked ensemble framework integrating XGBoost, LightGBM, and Neural Networks for the early prediction of MBIST area and test time in complex memory IPs. The approach employs advanced feature engineering techniques, including polynomial expansion and log transformation, to capture complex non-linear relationships and reduce data skewness, thereby improving model generalization. The ensemble model, using Gradient Boosting Regres-sor for area prediction and Ridge Regression for test time prediction, achieves high accuracies of 90.68% and 96.80%, respectively, outperforming traditional approaches such as linear regression and single-model Neural Networks. Semantic port recognition is automated to enhance feature extraction and scalability across diverse memory configurations. This method reduces the need for full synthesis and test pattern generation, thus accelerating the design process and lowering development costs. Future work will focus on integrating the proposed framework into existing EDA tools, along with expanding to additional performance metrics and traditional MBIST optimization techniques, to further enhance its practicality and robustness in real-world design flows. 
+
+## Acknowledgments 
+
+This work was supported by Professional Development Research University Special Grant num-ber R.J130000.7113.07E51 MOHE and in part by MoHE Research Industry-Infused Incubator (MRI3). The authors would like to thank Intel Microelectronics (M) Sdn. Bhd. and MRI3 for their collaboration and technical support throughout this work. 
+
+## Ethics and Privacy Statement 
+
+This study does not involve human participants, animals, or personal data. The datasets used in this work consist solely of engineering design parameters and tool-generated measurements, and therefore do not raise ethical or privacy concerns. 
+
+## References 
+
+[1] F. Last and U. Schlichtmann. Training ppa models for embedded memories on a low-data diet. ACM Transactions on Design Automation of Electronic Systems , 28(2):1–24, 2022. [2] B. Kim, S. H. Shin, Y. Moon, E. Jeong, and S. Kang. A low area built-in self-repair using hybrid fault address memory for hbm. IEEE Transactions on Very Large Scale Integration (VLSI) Systems , 2025. [3] T. C. Jin. Stacked ensemble learning-enabled early prediction of mbist area and test time in complex memory ips. Master’s thesis, Universiti Teknologi Malaysia, 2025. [4] S. Zhang, Z. Wang, and Y. Wang. The mbist implementation of soc chip. In 2024 9th International Conference on Integrated Circuits and Microsystems (ICICM) , 2024. [5] D. Jamal and R. Veetil. Efficient mbist area and test time estimator using machine learn-ing technique. In 2023 36th International Conference on VLSI Design and 2023 22nd International Conference on Embedded Systems (VLSID) , 2023. [6] T. McLaurin and R. Knoth. The challenges of implementing an mbist interface: A practical application. In 2019 IEEE International Test Conference (ITC) , 2019. 19 [7] P. Arora, V. Jain, T. Goyal, and N. Card. Machine learning based mbist area estimation. In 2023 IEEE International Test Conference India (ITC India) , 2023. [8] Siemens Inc. Tessent ™ MemoryBIST User’s Manual for Use with Tessent Shell . Siemens Inc., 2023. [9] S. Ramesh, M. Junxia, J. Sharada, and K. Neelima. Memory-bist insertion, validation and test generation environment (mint): Mint external product specification, 2024. [10] D. Jamal and R. T. Veetil. Mbist area and test time optimization using machine learning. In 2023 IEEE International Test Conference India (ITC India) , 2023. [11] A. Z. Jidin, R. Hussin, W. F. Lee, and M. S. Mispan. Mbist implementation and evaluation in fpga based on low-complexity march algorithms. Journal of Circuits, Systems and Computers , 33(08):2450152, 2024. [12] A. Z. Jidin, R. Hussin, L. W. Fook, M. S. Mispan, N. A. Zakaria, L. W. Ying, and N. Za-min. Generation of new low-complexity march algorithms for optimum faults detection in sram. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems ,42(8):2738–2751, August 2023. [13] M. Jimenez, C. Maxime, Y. L. Traon, and M. Papadakis. On the impact of tokenizer and parameters on n-gram based code analysis. In 2018 IEEE International Conference on Software Maintenance and Evolution (ICSME) , page 437, 2018. [14] M. Ashour, C. Salama, and M. W. El-Kharashi. Detecting spam tweets using character n-gram features. In 2018 13th International Conference on Computer Engineering and Systems (ICCES) , page 190, 2018. [15] S. Ning, K. Nguyen, S. Bagchi, and Y. Park. The study of feature engineering in machine learning and deep learning for network intrusion detection systems. In 2024 Silicon Valley Cybersecurity Conference (SVCC) , 2024. [16] S. Raschka and V. Mirjalili. Python Machine Learning: Machine Learning and Deep Learn-ing with Python, scikit-learn, and TensorFlow 2 . Packt Publishing Ltd, 2019. [17] T. G. Jang, S. Y. Park, J. A. Lee, H. Y. Park, T. Dorjmaa, and D. Kang. Ensemble learning approaches for automatic detection of chronic kidney disease stages during sleep. In 2024 46th Annual International Conference of the IEEE Engineering in Medicine and Biology Society (EMBC) , 2024. [18] N. Ramteke and R. Maidamwar. Cardiac patient data classification using ensemble machine learning technique. In 2023 14th International Conference on Computing Communication and Networking Technologies (ICCCNT) , 2023. [19] A. Fatima, R. Maurya, M. K. Dutta, R. Burget, and J. Masek. Android malware detec-tion using genetic algorithm based optimized feature selection and machine learning. In 
+
+2019 42nd International Conference on Telecommunications and Signal Processing (TSP) ,page 4, 2019. [20] V. Kore and V. Khadse. Progressive heterogeneous ensemble learning for cancer gene expression classification. In 2022 International Conference on Machine Learning, Computer Systems and Security (MLCSS) , page 149, 2022. [21] R. Yang, Z. Wang, and M. Shen. An efficient grouping method for large-scale mbist. In 
+
+2024 2nd International Symposium of Electronics Design Automation (ISEDA) , 2024. 20 [22] M.-Y. Lin, W.-K. Chiang, and C.-H. Wang. Enhancing memory bist with an optimized rtl-bist ip core: A low-power, high-fault-coverage approach. IEEE Transactions on Very Large Scale Integration (VLSI) Systems , 33(10):2902, October 2025. [23] K. H. Ng, N. E. Alias, A. Hamzah, M. L. P. Tan, U. U. Sheikh, and Y. A. Wahab. A march 5n fsm-based memory built-in self-test (mbist) architecture with diagnosis capabilities. In 
+
+2022 IEEE International Conference on Semiconductor Electronics (ICSE) , 2022. [24] T. N. Kong et al. An efficient march (5n) fsm-based memory built-in self test (mbist) architecture. In 2021 IEEE Regional Symposium on Micro and Nanoelectronics (RSM) ,2021. [25] K. Sun, Y. Shen, Y. Lao, Z. Zhang, X. You, and C. Zhang. A new error correction scheme for physical unclonable function. In 2018 IEEE Asia Pacific Conference on Circuits and Systems (APCCAS) , 2018. [26] N. Sridevi, K. Jamal, and K. Mannem. Implementation of error correction techniques in memory applications. In 2021 5th International Conference on Computing Methodologies and Communication (ICCMC) , 2021. [27] Synopsys Inc. SolvNetPlus: Design Compiler User Guide . Synopsys Inc., 2024. [28] G. Biagetti, P. Crippa, L. Falaschetti, and C. Turchetti. Machine learning regression based on particle bernstein polynomials for nonlinear system identification. In 2017 IEEE 27th International Workshop on Machine Learning for Signal Processing (MLSP) , 2017. [29] D. Maulud and A. M. Abdulazeez. A review on linear regression comprehensive in machine learning. Journal of Applied Science and Technology Trends , 1(2):140–147, 2020. [30] S. Kumari, V. C. Ranganayaki, K. Sathyamoorthy, K. Selvi, T. A. Mohanaprakash, and C. Tamilselvi. Optuna-optimized machine learning technique for accurate diabetes predic-tion and classification. In 2024 4th International Conference on Sustainable Expert Systems (ICSES) , page 1478, Kaski, Nepal, 2024. [31] C. C. Tsai and C. C. Chan. Ensemble and unsupervised machine learning applied on laser ablation quality study of silicon nitride during cmos-mems post processing. In 2022 IEEE 4th Eurasia Conference on IOT, Communication and Engineering (ECICE) , Yunlin, Taiwan, 2022. [32] J. Kinseher, M. Voelker, and I. Polian. Improving testability and reliability of advanced sram architectures. IEEE Transactions on Emerging Topics in Computing , 7(3):456–467, 2017. [33] L. Massaron and A. Boschetti. Regression Analysis with Python . Packt Publishing Ltd, 2016. [34] E. Ilhan, M. Y. Turali, and S. S. Kozat. Gradient boosting with moving-average terms for nonlinear sequential regression. IEEE Signal Processing Letters , 30:5, 2023. [35] L. Aththanayake, A. Mahmud, N. Hosseinzadeh, and A. Gargoom. Performance analysis of regression and artificial neural network schemes for dynamic model reduction of power systems. In 2021 3rd International Conference on Smart Power & Internet Energy Systems (SPIES) , 2021. [36] Y. Lu, Y. Zhu, and M. Li. A mbist controller based on jtag interface applied in power line chip. In 2016 13th IEEE International Conference on Solid-State and Integrated Circuit Technology (ICSICT) , 2016. 21 [37] M. Peng, K. Ouyang, F. Pan, G. Zhou, and L. Chen. A novel method to achieve high efficient iteration of mbist pattern. In 2023 China Semiconductor Technology International Conference (CSTIC) , 2023. [38] K. S. Das and P. Prakash. Automatic mbist scheduling engine. In 2019 IEEE International Conference on Electronics, Computing and Communication Technologies (CONECCT) ,2019. [39] J. Kinseher, M. Richter, and I. Polian. On the automated verification of user-defined mbist algorithms. In ZuE 2015; 8. GMM/ITG/GI-Symposium Reliability by Design , Siegen, Germany, 2015. [40] N. Maneshinde, P. Hegade, R. Mittal, N. Palecha, and M. Suma. Programmable fsm based built-in-self-test for memory. In 2016 IEEE International Conference on Recent Trends in Electronics, Information & Communication Technology (RTEICT) , 2016. [41] K. Chatzilygeroudis, I. Hatzilygeroudis, and I. Perikos. Machine learning basics. In Intel-ligent Computing for Interactive System Design: Statistics, Digital Signal Processing, and Machine Learning in Practice , pages 143–193. Springer, 2021. 22

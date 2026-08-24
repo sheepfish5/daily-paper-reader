@@ -1,0 +1,298 @@
+Title: Completion-Path Credits: Multi-Resource Control for Scale-Up Fabrics
+
+URL Source: https://arxiv.org/pdf/2608.17523v1
+
+Published Time: Wed, 19 Aug 2026 00:42:29 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Completion-Path Credits: Multi-Resource Control for Scale-Up Fabrics 
+
+# Fan Yang 
+
+Institute of Computing Technology, Chinese Academy of Sciences Beijing, China yangfan2020@ict.ac.cn 
+
+# Jiaqi Liu 
+
+Institute of Computing Technology, Chinese Academy of Sciences Beijing, China Hangzhou Institute for Advanced Study, UCAS Hangzhou, China liujiaqi242@mails.ucas.ac.cn 
+
+# Tao Jiang 
+
+Institute of Computing Technology, Chinese Academy of Sciences Beijing, China jt@ncic.ac.cn 
+
+# Zhan Wang 
+
+Institute of Computing Technology, Chinese Academy of Sciences Beijing, China wangzhan@ncic.ac.cn 
+
+## Abstract 
+
+Scale-up fabrics connecting GPUs and AI accelerators carry tensor transfers together with remote reads, writes, atomics, and notifica-tions over shared target-side receiver resources. Byte-denominated credits protect link buffers and streaming HBM traffic, but poorly represent small operations dominated by Atomic execution or re-sponse injection. This paper presents SemaCredit , a receiver con-troller that admits each remote-memory operation against a vector of target-resource demands and returns each component when its corresponding HBM, Atomic, or response stage completes. In a deterministic event simulator with multipath queues, eight HBM partitions, a serialized Atomic engine, and a response engine, Sema-Credit matches a strong per-resource byte baseline on HBM-hotspot traffic while reducing small-operation P99 latency by 52.4% under Atomic contention and 10.2% under response incast. Application-shaped mixes show 57.7% and 14.5% P99 latency improvements for AllReduce-shaped and remote-read-shaped traffic while matching byte credits on HBM-dominated MoE traffic. 
+
+## Keywords 
+
+Scale-up fabrics, receiver credits, remote memory access, GPU in-terconnects 
+
+## 1 Introduction 
+
+Scale-up interconnects are becoming the memory-access substrate of tightly coupled GPU and accelerator systems. Their traffic is not a uniform stream of bytes. A large write primarily consumes link and HBM bandwidth; a small Atomic may occupy a serialized exe-cution engine for much longer than its small request would suggest; and a read consumes both target-memory service and reverse-path response-injection capacity. Collective communication, expert ex-change, remote parameter access, synchronization, and completion notification place these operations on the same endpoint. Transport congestion control nevertheless observes the network most easily in bytes. Receiver-driven designs grant a bounded amount of traffic, and host backpressure can reduce a connection’s sending rate. The Ultra Ethernet Transport (UET) specification, for example, defines receiver congestion control around receiver-issued credits and destination backlog [26]. MRC exposes composable host backpressure and bounded-flight primitives [23]. At production scale, Meta uses receiver-driven CTS messages when collective channel buffers become ready [4]. These mechanisms are valuable building blocks, but none by itself specifies how a transport should divide receiver capacity among an HBM partition, an Atomic engine, and response injection. This distinction matters because a byte queue and a service queue answer different questions. A byte queue asks how much data is outstanding. A service queue asks how long the target will remain busy. For streaming HBM traffic the two are nearly equivalent. For a fixed-cost operation they can differ by orders of magnitude. Furthermore, an operation may consume more than one receiver resource in sequence, so placing it in a single receiver queue or traffic class can move rather than eliminate head-of-line blocking. We explore the following hypothesis: receiver admission for a memory-semantic fabric should be denominated in the native occupancy of each target resource, and an operation should reserve all resources on its completion path. SemaCredit realizes this hypothesis with a small demand vector. For operation 𝑖 , the vector may contain HBM-partition occupancy, Atomic-engine service time, and response-injection service time. Admission succeeds only if every required resource remains within its window. Components are returned in phases: Atomic debt when Atomic execution finishes, HBM debt after the memory stage, and response debt after response injection. This lets admission treat a small Read request as costly when its later response will occupy the return pipeline. This paper makes three contributions: 
+
+• It identifies a concrete mismatch between byte-denominated receiver control and the multi-stage service demands of scale-up remote memory operations. 
+
+• It proposes SemaCredit, a resource-selective demand-vector controller with phased credit return and a work-conserving arbitration rule. arXiv:2608.17523v1 [cs.NI] 18 Aug 2026 Fan Yang, Jiaqi Liu, Tao Jiang, and Zhan Wang 
+
+• It evaluates SemaCredit against two strong alternatives—a single normalized service window and a reactive resource-exhaustion policy—and uses ablations and sensitivity sweeps to show when the vector is necessary and when byte-counted control is sufficient. 
+
+## 2 Motivation and Gap 2.1 Motivating traffic patterns 
+
+Scale-up AI workloads combine large tensor transfers with small synchronization, metadata, and completion operations. The latter carry few bytes but often decide when the next computation or communication phase can begin. In an AllReduce-style phase, large tensor chunks stream to remote memory while small reduction or completion Atomics decide when the phase can advance. The chunks dominate bytes, but a burst of small Atomics can still se-rialize at a target Atomic engine. In remote parameter, KV-cache, or metadata access, a small Read request can later create response traffic that must be injected back to the initiator before the Read completes. MoE dispatch gives the complementary case: skewed expert writes primarily stress the HBM partitions that receive the tokens. These examples motivate a receiver controller that accounts for the work an operation creates inside the endpoint, rather than only the bytes that arrive at the link. 
+
+## 2.2 Receiver service beyond receiver bandwidth 
+
+Prior systems have reported receiver-side bottlenecks beyond link bandwidth. RDCA reports production measurements in which re-ceiver memory-bandwidth contention reduces RDMA throughput by roughly 15% and builds queues in the RNIC despite unused net-work capacity [10]. Meta’s distributed-training network similarly exposes GPU channel-buffer readiness to receiver-driven CTS ad-mission and reports a tradeoff between channel count, buffer size, and GPU execution resources [4]. These observations show that a network-only signal can miss the last stage of delivery. Harmonic provides the closest evidence for operation-cost ac-counting: it profiles RDMA verbs and shows that similar packet sizes can impose different RNIC-side processing costs; for example, an ATOMIC costs roughly three times a WRITE [12]. Harmonic motivates normalized operation-cost accounting for RNIC isolation. Scale-up memory endpoints add independently draining HBM parti-tions, Atomic engines, and response-injection paths. The admission question is therefore which completion-path resources a Read or Atomic reserves and when each reservation can be released, not just what total cost the operation carries. Scale-up memory semantics make the last stage more heteroge-neous. Consider three same-sized small requests. A metadata read occupies an HBM partition and produces a response. An Atomic add additionally serializes at an Atomic engine. A notification may require visibility ordering but carry no large response. Their ingress bytes are equal, but their service paths are not. Conversely, a 4-KB write can consume many bytes while remaining a regular stream-ing HBM operation. Treating all four with the same byte window over-throttles the write or under-throttles the Atomic. Recent GPU measurements also establish that Atomic service is neither a byte rate nor a universal constant. Uncontended device Atomics on the measured NVIDIA GPUs take 2.4–3.5 ns, while contended cases expose a roughly 30-ns floor; the measured AMD devices show approximately 85–100 ns under repeated access [13]. We use this range to stress the controller’s sensitivity to per-opcode service estimates; an implementation would calibrate those esti-mates from the target endpoint it controls. 
+
+## 2.3 Why splitting contexts is still incomplete 
+
+A tempting fix is to split traffic into more contexts, for example one credit pool per HBM partition or one class for Atomics. This helps when the work mostly grows with the number of bytes: a hot HBM partition can be protected by its own byte window. The same trick is insufficient for semantic operations. A small Atomic still looks cheap unless the Atomic pool is charged in serialized service time, and a Read admitted by its target HBM pool can still overload the response-injection path. The missing piece is therefore a demand model that names every completion-path resource and charges it in the resource’s native unit. 
+
+Why one normalized cost is insufficient. Consider two in-dependent receiver resources, each with safe window 𝑊 , and two equal-cost operations with vectors (𝑊 , 0) and (0,𝑊 ). A scalar win-dow no larger than 𝑊 is safe for an arbitrary workload, but cannot admit one of each operation concurrently, even though the vector controller can. A scalar window of 2 𝑊 admits that parallel pair, but also admits two operations concentrated on the first resource and violates its safe window. Thus no fixed scalar preserves both per-resource bounds and work conservation for arbitrary mixes; retuning it requires already knowing the active bottleneck. The closest application-level mechanism is Meta’s receiver-driven CTS design [4]. A receiver sends another CTS when a collective channel buffer is ready, and the CTS includes size and memory information. This is a strong precedent for receiver admis-sion informed by endpoint state. Its unit of scheduling, however, is a collective chunk/channel buffer. SemaCredit asks whether the same idea can be generalized into a transport controller for ordinary Read, Write, Atomic, and notification operations that traverse multiple endpoint resources. Receiver-driven transports such as SIRD can implement flexible receiver policies and explicitly schedule traffic to a receiver down-link [20]. Homa likewise demonstrates the value of receiver-driven grants for short messages [16]. SemaCredit is complementary: it supplies a resource-demand policy that such a grant mechanism could enforce after link capacity is no longer the only receiver constraint. 
+
+## 3 SemaCredit Design 3.1 Receiver datapath 
+
+Figure 1 shows the target-side organization. An arriving operation already carries the fields needed by an ordinary remote-memory endpoint: opcode, address, length, response size, and ordering do-main. A demand estimator maps those fields to an HBM partition and to any fixed-cost Atomic or response stage. In parallel, a small resource table supplies the current debt, window, and optional cali-bration multiplier for each selected resource. The admission step performs one all-or-none vector reservation: either every nonzero component is added to its debt counter or no counter changes. Completion-Path Credits: Multi-Resource Control for Scale-Up Fabrics SemaCredit receiver datapath 
+
+> Incoming operation
+> opcode, address, length, response size, order
+> Demand estimator
+> resource ids + native demand
+> Resource table
+> debt, window, calibration
+> Vector admission
+> reserve all required resources together
+> Work-conserving dispatcher
+> latency class, length, order
+> HBM partitions
+> return after memory
+> Atomic engine
+> return after execution
+> Response injection
+> return after injection stage completions return credit
+
+Figure 1: Logical target-side datapath. SemaCredit estimates a demand vector from ordinary operation fields, reserves all required receiver resources before dispatch, and returns each component when the corresponding HBM, Atomic, or response-injection stage completes. 
+
+Once admitted, an operation enters the same work-conserving dispatcher used by every evaluated policy. It then traverses only the stages implied by its semantics. A Write may consume HBM alone; an Atomic consumes an Atomic engine and may also produce a reply; a Read consumes target memory followed by response injec-tion. Each stage reports a local completion signal to the resource table. This organization separates three events that a conventional single completion bit conflates: request acceptance, completion of a target stage, and end-to-end operation completion. SemaCredit operates after the endpoint has performed its ordi-nary opcode, bounds, and address checks. The demand estimate then chooses the admission window for an already-valid operation. An inaccurate estimate can hurt performance by admitting a com-mand too early or too late, but it does not change the command’s legality, decoded address, or operation semantics. 
+
+## 3.2 Demand vector 
+
+Let R be the set of receiver service resources. In the current design, 
+
+R = {HBM 𝑝 } ∪ { Atomic 𝑒 } ∪ { Response 𝑗 }. (1) An operation 𝑖 has demand vector d𝑖 , with zero entries for re-sources it does not use. The concrete estimator is 
+
+𝑑 𝑖, HBM 𝑝 = 𝑏 𝑖 /𝑅 𝑝 , (2) 
+
+𝑑 𝑖, Atomic 𝑒 = ˆ𝑡 atomic (𝑜𝑝 𝑖 ), (3) 
+
+𝑑 𝑖, Response 𝑗 = ˆ𝑡 0,𝑗 + 𝑏 𝑟𝑒𝑠𝑝 𝑖 /𝑅 𝑗 . (4) The implementation retains byte counters for HBM because streaming memory traffic consumes more service as the transfer grows; 𝑏 𝑖 /𝑅 𝑝 is its service-time view. It uses explicit nanosecond debt for Atomic and response injection because those stages include fixed per-operation work. This selective accounting was impor-tant in our experiments: charging every HBM read a fixed service penalty unnecessarily throttled the MoE-shaped workload. The target derives resource identifiers from fields that a remote-memory endpoint already observes. The opcode selects the oper-ation class, address decoding selects the HBM partition, response size selects the response-injection demand, and endpoint configu-ration maps these demands to local resource entries. The resulting resource-scoped credits can be exposed explicitly or carried by existing traffic classes or delivery contexts. Endpoint validation and address decoding remain authoritative; the estimate sets the admission timing for commands that have already passed those checks. 
+
+## 3.3 Admission and phased return 
+
+For each resource 𝑟 , the receiver maintains outstanding debt 𝐷 𝑟 
+
+and window 𝑊 𝑟 . Operation 𝑖 is admissible when 
+
+∀𝑟 with 𝑑 𝑖,𝑟 > 0 : 𝐷 𝑟 + 𝑑 𝑖,𝑟 ≤ 𝑊 𝑟 . (5) When an operation is admitted, SemaCredit reserves every re-source named in its demand vector in one all-or-none step. This prevents partial reservations, such as one command consuming the last HBM credit while another consumes the last response credit and neither has a complete reservation. Credit return follows receiver execution rather than packet arrival. HBM credit returns after the memory access, Atomic credit after Atomic execution, and response credit after the response is injected onto the return path. Opera-tion completion is separate from credit return: a response-bearing operation completes only after the response reaches the initiator, while a write without a response completes after its target-memory stage. This separation prevents two common accounting errors. Return-ing all credit at request arrival ignores target queues. Holding all components until the final response is safe but couples independent resources and reduces pipeline parallelism. Compared with returning the whole vector only at end-to-end completion, phased return releases a resource as soon as that re-source has finished its part of the operation. This can admit later op-erations earlier, because completed HBM work no longer waits for response completion or Atomic execution. It remains safe because unfinished stages keep their reservations. Section 5.2 measures how much this earlier release helps in practice. 
+
+## 3.4 Accounting invariants 
+
+SemaCredit relies on three simple accounting invariants. First, each resource has its own outstanding debt 𝐷 𝑟 and window 𝑊 𝑟 . Admis-sion increases 𝐷 𝑟 only after checking 𝐷 𝑟 + 𝑑 𝑖,𝑟 ≤ 𝑊 𝑟 for every resource named by the operation, and stage completion only sub-tracts the frozen component that was reserved at admission. As a result, a resource’s outstanding work stays within its window as long as credit is returned after the corresponding stage has actually executed. Fan Yang, Jiaqi Liu, Tao Jiang, and Zhan Wang 
+
+Second, phased return is at least as permissive as end-to-end return under the same arrivals, windows, and dispatcher. Before a stage executes, both policies keep its reservation. After the stage executes, phased return frees that component while end return continues to hold it. Arrival-time return is different: it can free response or Atomic debt before the receiver has done the work, which is why it is treated only as an ablation. Third, a single scalar window cannot replace the vector for ar-bitrary mixes. Consider two receiver resources with safe window 
+
+𝑊 and two operations with demands (𝑊 , 0) and (0,𝑊 ). A scalar window of 𝑊 is safe but cannot admit one of each operation concur-rently, even though they use different resources. A scalar window of 2 𝑊 admits that pair, but it also admits two (𝑊 , 0) operations and overloads the first resource. A scalar can still be retuned for a known bottleneck; Section 5.2 tests how far that retuning goes. 
+
+## 3.5 Window sizing and arbitration 
+
+A credit loop cannot keep a resource busy if its window covers less service than the feedback delay. SemaCredit therefore clamps the base window to the measured worst-path RTT. The simulated topology has a 1-𝜇 s worst-path RTT, which becomes the HBM and response base window. A serialized Atomic engine uses four base windows to tolerate delivery variation caused by large requests already queued in the forward fabric. Section 5.4 varies both service latency and requested window; values below RTT are automatically clamped. A hardware implementation should tune the multiplier from measured idle time and credit-turnaround delay rather than fix it permanently. Admission is work-conserving. Unused capacity is not statically reserved for small traffic. Among currently admissible operations, the arbiter selects latency-sensitive operations first, then shorter wire requests, then original submission order. This rule is applied to every evaluated policy, so gains do not come from giving Sema-Credit a uniquely favorable scheduler. 
+
+## 3.6 Protocol mapping and state 
+
+SemaCredit can use the receiver-grant or backpressure signal al-ready provided by the transport. A minimal implementation keeps one debt counter and one window counter per active receiver re-source, plus the transport’s existing per-peer state. With eight HBM partitions, one Atomic engine, and one response engine, the simu-lated controller has ten resource entries. This is comparable to a baseline that tracks each receiver resource with a separate logical admission context. The important change is the meaning of the state: it tracks the HBM, Atomic, and response work created by each admitted operation and returns that work at the stage where it is consumed. Ordering is orthogonal. Writes to overlapping addresses, Atom-ics, fences, and write-then-notify sequences retain the transport’s ordering domain. Credit admission only decides when an opera-tion may enter; the ordering domain still decides which admitted operations may pass one another. Admission can check all selected resources in parallel using one add-and-compare lane per component, followed by an AND reduction and a conditional counter write. The command path therefore does not serialize ten counter checks. Arbitration occurs 
+
+Table 1: Illustrative SemaCredit logical state budget. 
+
+Object Added fields Count Bytes Resource entry debt, window, timestamp, mul-tiplier/flags 10 160 Command ex-tension mask, three frozen compo-nents, phase flags 128 2,048 Total excluding existing transport command state 2,208 after admission and is outside the reservation critical path. The estimator can use table lookup for Atomic opcodes and fixed-point multiply or shift-and-add for response size. Table 1 summarizes the logical state maintained by the controller in the evaluated receiver configuration. It assumes 32-bit debt and window fields, a 48-bit service or feedback timestamp, and 16 bits of multiplier and flags per resource. A command retains its frozen reservation until the corresponding stages return it; rounding the resource mask, three 32-bit components, and phase flags to 16 bytes gives 2 KiB for the simulated 128 admitted commands. Together with ten resource entries, the added logical state is about 2.2 KiB. A hardware-oriented prototype can then replace this logical budget with SRAM, area, frequency, and power measurements. 
+
+## 4 Methodology 4.1 Event model 
+
+We use a deterministic Python event simulator that models four forward and four return paths. The simulator, plotting scripts, and configuration files are prepared for artifact release. We use multiple paths to introduce mild timing heterogeneity while keeping routing orthogonal to the credit policy. Public scale-up fabric descriptions motivate the order of magnitude: UALink 1.0 describes 200G-class lanes, a 100G option, credit-based flow control, direct read/write/Atomic memory operations, and sub-microsecond request-response latency over short accelerator links [24]; NVLink/NVSwitch systems similarly target high-bandwidth, low-latency accelerator scale-up [18]. The simulator therefore uses path rates of 200, 200, 100, and 200 Gb/s and one-way propagation delays of 250, 300, 500, and 350 ns. Requests select the path with the earliest serialization completion. A credit-delayed request enters the network at its actual dispatch time, not its original application submission time. The target endpoint has eight HBM partitions at 512 Gb/s each, one 100-ns serialized Atomic engine, and one 512-Gb/s response-injection engine with a 20-ns per-response overhead. These defaults keep the bottlenecks interpretable while matching the scale of accel-erator endpoints: modern GPUs expose multi-stack HBM systems with terabytes-per-second aggregate bandwidth [17], and public scale-up fabrics expose memory-style Read/Write/Atomic opera-tions over high-rate links [24]. The 100-ns Atomic point follows the upper range of published repeated-access GPU Atomic measure-ments and is swept from 3 to 200 ns [13]. The response engine uses the same order of bandwidth as a high-rate endpoint injection path, and the 20-ns fixed term is swept from 0 to 40 ns to test sensitivity Completion-Path Credits: Multi-Resource Control for Scale-Up Fabrics 
+
+Table 2: Default simulator parameters. Swept values are shown in parentheses. 
+
+Parameter Setting Forward/reverse paths 4 / 4 independent serialization queues Path rates 200, 200, 100, 200 Gb/s One-way propagation 250, 300, 500, 350 ns Target HBM 8 partitions, 512 Gb/s each Atomic engine one serialized engine, 100 ns (3–200 ns) Response injection 512 Gb/s plus 20 ns/response (0–40 ns) Wire request size 80 B small; 4,112 B large Returned read size 272 B small; 4,112 B large Base service window 1 𝜇 s (0.25–2 𝜇 s requested) Endpoint command bound 128 admitted commands (32–256) Application experiments five paired timing/workload pertur-bations to per-response processing. Reads add a 40-ns target-read over-head. Large write requests use 4,112 wire bytes; read commands and other small requests use 80 bytes. Small reads return 272 bytes, large reads return 4,112 bytes, and Atomics return 80 bytes. A Read consumes its returned payload length at HBM rather than only its request-header length. The default endpoint bound is 128 ad-mitted target operations. Each operation progresses through its actual target stages and, when applicable, through the return path before completion. The sensitivity studies sweep credits, service window, Atomic latency, response overhead, and mapping error, so the default point anchors the stress setting while the sweeps show how conclusions change around it. 
+
+## 4.2 Parameterization and validation 
+
+Table 2 consolidates the default configuration. The forward and reverse fabrics are deliberately asymmetric so that path choice and receiver service can disagree. The 1-𝜇 s worst-path RTT is also useful as a conservative base window: smaller requested values are clamped, whereas larger values explicitly test excess buffering. Timing perturbations change serialization completion, application issue time, and bank choice while leaving policy parameters fixed. Every policy in a comparison receives the same command trace and perturbation. We validate the simulator with 23 deterministic tests, which will be packaged with the artifact. The tests cover resource-window bounds, Atomic-chain serialization, delayed dispatch without “ar-rival in the past,” completion of every response-bearing policy, mapping error, reactive retries, release-time ablations, and preser-vation of ordering domains. Every reported run also checks that all commands complete, proactive resource debt never becomes negative, and the simulator terminates with no pending response event. Oracle and composed-policy equivalence tests cover cases where controllers should coincide, helping catch accidental sched-uler advantages. The simulator is deterministic for a fixed trace. We therefore use paired perturbations rather than interpreting repeated deter-ministic runs as independent statistical samples. Main application bars report the mean of five paired traces and the full minimum-to-maximum range. The sensitivity and robustness sweeps report all swept points, including settings where byte or scalar accounting is competitive. 
+
+## 4.3 Baselines 
+
+We compare the following policies; the first six are the principal baselines: 
+
+• Aggregate byte : one bounded destination pool, analogous to a destination/traffic-class receiver credit. 
+
+• Aggregate+class : aggregate control with a small-operation class reserve. 
+
+• Resource byte : a strong composition with a byte window per HBM, Atomic, and response resource and the same work-conserving priority. 
+
+• Primary service : service-time accounting for HBM and Atomic resources at the primary target, but no response-injection reservation. 
+
+• Scalar service : an idealized normalized-operation con-troller that sums all predicted endpoint stages into one scalar cost. We sweep its window across the explored range. 
+
+• Reactive exhaustion : a constructed policy that uses UET-style resource-exhaustion and recovery primitives to dis-able an exhausted semantic resource and retry after feed-back. 
+
+• SemaCredit : selective HBM byte occupancy plus Atomic and response service-time components. 
+
+• Arrival/end return : SemaCredit ablations that return the full vector at target arrival or hold it until end-to-end com-pletion. 
+
+• Adaptive SemaCredit : SemaCredit with an optional ex-ponentially weighted moving average (EWMA) multiplier for systematic prediction error [8]. 
+
+• Oracle : SemaCredit with perfect address-to-resource map-ping. Resource byte gives each modeled target resource its own byte window, making it a stringent composition baseline rather than a simple aggregate-credit controller. Primary service is the principal ablation for the downstream response component. Inspired by Har-monic’s normalized operation-cost accounting [12], scalar service gives the controller operation-level visibility into every modeled endpoint stage but compresses the stages into one cost. 
+
+## 4.4 Workloads and metrics 
+
+The three microbenchmarks isolate HBM hotspot, shared Atomic-engine contention, and response incast. Each includes periodic latency-sensitive operations. We also construct three controlled 
+
+application-shaped mixes derived from common accelerator com-munication phases. The AllReduce-shaped mix represents bulk collective chunks [5, 14, 19] interleaved with small reduction or completion Atomics that decide when a phase can advance. The MoE-shaped mix represents skewed expert traffic and routing meta-data, as in sparse expert models [3, 9, 21]. The remote-read-shaped Fan Yang, Jiaqi Liu, Tao Jiang, and Zhan Wang Microbenchmark tail latency   
+
+> Aggregate byte Resource byte Primary service SemaCredit
+> 0.0 0.2 0.4 0.7 0.9 1.1
+> Normalized small-op P99  1.00 0.81 0.81 0.81
+> HBM hotspot
+> 1.00 1.00 0.48 0.48
+> Atomic contention
+> 1.00 0.22 1.00 0.20
+> Response incast
+
+Figure 2: Small-operation P99 in the three resource-isolation microbenchmarks, normalized to aggregate byte credit. Re-source byte is sufficient for HBM, primary service is sufficient for Atomic contention, and the full vector is required for re-sponse incast. 
+
+mix represents parameter, KV, or metadata fetches, where small requests can generate large or frequent responses. The three mixes provide controlled coverage of Atomic-heavy, HBM-skew-heavy, and response-heavy receiver pressure. Each application experiment uses five seeds that perturb timing and, where applicable, expert or partition choice. The primary metric is P99 latency of the small operations. We also report bulk P99, makespan-derived useful goodput, maximum per-resource queueing delay, maximum target operations in flight, and controller state entries. CSV inputs, simulation code, plotting scripts, and tests accompany the paper. 
+
+## 5 Evaluation 5.1 Does semantic accounting help? 
+
+Figure 2 normalizes small-operation P99 to aggregate byte credit. HBM hotspot is the control case: resource byte, primary service, and SemaCredit all reach approximately 0.81 × aggregate latency. SemaCredit is within 0.1% of resource byte in latency while deliver-ing 3.5% higher goodput across the five timing perturbations. This confirms that a byte controller is already strong when the receiver work mostly grows with the number of bytes. Under Atomic contention, aggregate and per-resource byte con-trol are both 1.0 ×: separating the Atomic resource provides no benefit if its small requests are still budgeted as memory bytes. Primary service and SemaCredit reduce P99 to 0.48 ×, a 52.4% mean improvement over resource byte across five timing perturbations, with identical goodput. Maximum Atomic queueing falls because the controller bounds predicted serialized work rather than packet bytes. Response incast distinguishes primary service from the full vec-tor. Primary service remains at aggregate performance because it releases the operation from target control before accounting for response injection. Resource byte reduces P99 to 0.22 × aggregate Why a completion-path vector is necessary One scalar window cannot fit all resources      
+
+> 012450.5 124816
+> Scalar window / feedback RTT P99 / SemaCredit P99
+> HBM Atomic Response SemaCredit = 1.0
+
+Response-path ablation  
+
+> 012343.59
+> Reactive
+> 2.05
+> Arrival
+> 1.07
+> End
+> 1.00
+> Phased
+> Normalized small-operation P99
+> Top: one scalar setting for all operation classes. Bottom: identical vector and scheduler; only failure/release semantics change.
+
+Figure 3: Top: a single service window is swept across the same workloads; settings that help one bottleneck waste parallelism or overload another. Bottom: response-incast P99 under reactive exhaustion and vector-return ablations, normalized to phased SemaCredit. 
+
+by separating the response resource. SemaCredit further reduces it to 0.20 ×: its mean improvement over the strong resource-byte baseline is 10.2%, with 0.2% higher goodput. The incremental bene-fit comes from the response engine’s per-response overhead; when that overhead is zero, byte and service accounting converge. 
+
+## 5.2 Is a completion-path vector necessary? 
+
+Figure 3 tests two stronger alternatives. Motivated by Harmonic’s normalized operation-cost accounting [12], scalar service sums every predicted stage into one operation cost and sweeps its window from 0.25 to 16 feedback RTTs. Retuning the scalar can improve one workload, but no fixed setting matches the vector. At a scale of four, scalar and SemaCredit have equal goodput in all three microbenchmarks; scalar P99 is 10% lower for Atomic traffic, but 37% higher for HBM and 17% higher for response traffic. At a scale of two it improves Atomic and response P99, but HBM P99 is 1.82 ×
+
+SemaCredit and response goodput is 3.1% lower. The scalar must guess the active bottleneck; the vector names it. Reactive semantic exhaustion waits for a queue to cross its win-dow, disables the resource, and retries after feedback and recovery Completion-Path Credits: Multi-Resource Control for Scale-Up Fabrics Application-shaped traffic   
+
+> Aggregate byte Resource byte Primary service SemaCredit
+> 0.0 0.2 0.4 0.7 0.9 1.1
+> Normalized small-op P99  1.00 1.00 0.42 0.42
+> AllReduce-shaped
+> 1.00 0.77 0.84 0.77
+> MoE-shaped
+> 1.00 0.20 0.58 0.17
+> Remote-read-shaped
+
+Figure 4: Mean normalized small-operation P99 for application-shaped traffic. AllReduce-shaped combines chunk writes with reduction/completion Atomics; MoE-shaped combines skewed expert writes with routing-metadata reads; remote-read-shaped combines large parameter/KV reads with small control reads. Error bars span five timing/workload perturbations. 
+
+using UET-style resource-exhaustion primitives. Relative to this baseline, SemaCredit reduces Atomic and response P99 by 50.1% and 72.1%, avoids 92 and 34 mean retries, and improves goodput by 4.5% and 3.9%. Finally, returning all debt at target arrival makes response P99 2.05 × phased return because downstream work is no longer bounded. Holding the full vector until end-to-end completion is safe but has 6.4% higher P99 and 0.9% lower goodput because completed HBM work remains coupled to response completion. Atomic-only traffic leaves the release variants tied, a useful check that phased return matters when an operation spans multiple receiver stages. Section 5.5 separately examines whether a normalized multiplier can protect against estimator error. 
+
+## 5.3 Application-shaped mixes 
+
+Figure 4 reports the five-seed application-shaped results. For AllReduce-shaped traffic, primary service and SemaCredit reduce P99 by 57.7% relative to both aggregate and resource byte. This mix stresses the serialized Atomic engine. SemaCredit’s useful goodput is 1.9% below resource byte; the small loss points to room for window autotuning. The MoE-shaped workload is dominated by skewed HBM writes. Resource byte and SemaCredit are tied and reduce P99 by 22.8% versus aggregate; goodput is tied. This is a useful control case: after a strong resource-byte controller protects the hot HBM partitions, operation semantics add little extra benefit. Remote-read-shaped traffic stresses response injection. Sema-Credit reduces P99 by 83.3% versus aggregate, 14.5% versus resource byte, and 71.1% versus primary service. Its goodput is within 0.1% of resource byte. The large gap from primary service shows why an operation must reserve downstream resources, not only the resource named by its target address. 
+
+## 5.4 Sensitivity 
+
+The sensitivity sweep varies the two costs that do not simply scale with request bytes. At Atomic latencies of 3, 10, 30, 100, and 200 ns, SemaCredit’s P99 benefit over resource byte is 50.3%, 47.2%, 47.4%, 57.8%, and 72.5%. At 3–30 ns, primary service provides little benefit but the full vector helps because response injection has become the dominant downstream stage. At 100–200 ns, primary service and SemaCredit tie because the Atomic stage dominates. This crossover, rather than Atomic cost alone, motivates completion-path admission. As response fixed overhead rises through 0, 10, 20, and 40 ns, the corresponding benefit is 0%, −1.2%, 12.9%, and 24.2%; the 10-ns point is slightly negative, showing that service accounting becomes most useful once fixed response cost is non-negligible. With 32 total credits, the Atomic microbenchmark is already tightly bounded and SemaCredit ties resource byte. Its Atomic P99 benefit grows to 26.9%, 57.8%, and 61.5% at 64, 128, and 256 cred-its. Response-incast improvement remains 15.3% across those four settings in the smaller sensitivity workload. A requested service window below the 1-𝜇 s feedback RTT is clamped and gives identical results at 250, 500, and 1,000 ns. Expanding the base window to 2,000 ns weakens Atomic isolation, as expected, without reducing goodput. Finally, address-to-HBM mapping error degrades resource-aware control. At 0%, 10%, 25%, and 50% injected error, SemaCredit im-proves P99 over aggregate by 26.9%, 23.9%, 18.8%, and 17.0%, re-spectively. At 25% error it is 5.6% slower than the per-resource byte baseline, showing that partition prediction quality matters for per-formance. Atomic and response resources are opcode-derived in the current model, so this sweep isolates address-to-HBM classification. 
+
+## 5.5 Robustness to model error 
+
+This section asks how much SemaCredit depends on accurate cost estimates. The vector identifies which resource is consumed, but fixed-cost entries such as response overhead and Atomic service still require calibration. Figure 5 separates systematic bias from run-to-run service variation. The static policy freezes the demand recorded at admission. The adaptive policy additionally maintains one multiplier per service resource and updates it at completion us-ing an EWMA, a standard smoothing method in network estimators [8]: 𝑚 ← 0.9375 𝑚 + 0.0625 (𝑡 𝑜𝑏𝑠 /ˆ𝑡 ). Existing command reservations remain frozen, preventing an estimator update from returning a different amount than was admitted. With a 50% systematic underestimate, static SemaCredit is 9.2% worse than resource byte because the response pipeline is admitted too aggressively. Adaptive SemaCredit instead becomes 6.1% better with the same goodput. At the correct estimate both variants are 14.1% better and deliver 0.3% higher goodput. A twofold overesti-mate reduces static P99 by 22.7%, but the lower latency comes from throttling: goodput falls by 8.2%. Adaptation limits the goodput loss to 2.0% while retaining a 16.2% P99 reduction. The lower panel separates persistent model bias from random per-operation variation. Under zero-mean bimodal variability, the static mean-cost controller has lower P99 than the adaptive variant Fan Yang, Jiaqi Liu, Tao Jiang, and Zhan Wang 
+
+at the largest amplitude: 10.8% versus 6.2% below resource byte, with both goodputs within 0.6% of the byte baseline. The EWMA reacts to individual slow samples even though the long-run mean is unchanged. The lesson is to use slow calibration for persistent bias and avoid chasing every random sample with per-operation cost updates. A deployment should separate window autotuning, which responds to persistent idle time, from per-operation cost calibration. 
+
+## 6 Discussion and Limitations 6.1 Deployment and calibration 
+
+SemaCredit can expose resource vectors explicitly or derive them inside the receiver. In an explicit interface, the receiver advertises opaque resource-class credits and the initiator attaches the selected class mask to each command; the receiver treats that mask as an admission hint and computes the final resource entries from its own validation and address decoding. In the implicit interface used in our evaluation, the wire protocol is unchanged: the target classifier maps existing opcode, address, length, and response-size fields to the local resource table before admission. This avoids exposing physical partition identifiers while still giving the receiver resource-scoped control. Feedback need not expose a counter update for every stage com-pletion. The receiver may coalesce newly available debt into the transport’s next grant or backpressure message, just as byte credits are commonly aggregated. Local admission uses the precise counter; Robustness to service-model error   
+
+> Byte Static Adaptive
+
+Systematic response-cost bias      
+
+> 0.70 0.81 0.92 1.04 1.15 0.5 0.75 11.25 1.5 2
+> Estimated / actual response cost P99 / byte P99
+
+Bimodal response-service variability    
+
+> 0.70 0.81 0.92 1.04 1.15 00.25 0.5 0.75
+> Variability amplitude P99 / byte P99
+
+Figure 5: Response-incast robustness, normalized to the per-resource byte baseline. Top: systematic cost-estimation bias. Bottom: stationary bimodal service variability. Lower P99 is better; the byte baseline is normalized independently at every point. 
+
+delayed feedback only postpones remote dispatch and cannot over-subscribe the target. A practical implementation can also quantize nanosecond debt into small service quanta. Quantization rounds demand upward for protection; evaluating its utilization loss is left to a hardware-oriented follow-up. Calibration uses endpoint observations rather than application annotations. HBM demand follows bytes and measured partition rate. Atomic lookup entries can be initialized per opcode, while response cost combines a fixed injection term with returned bytes. Busy/idle cycles and completion timestamps provide the signals needed to update a slow multiplier. The receiver owns these mea-surements and may cap multipliers and windows, preventing a sender from claiming an artificially small demand. Rapid workload phase changes remain a risk: an estimator that reacts too slowly under-admits, while one that reacts to every sample reproduces the stationary-variability penalty in Figure 5. 
+
+Relationship to existing receiver controls. Existing trans-ports already provide receiver-driven grants, byte credits, host backpressure, per-resource contexts, and normalized verb-cost ac-counting [4, 12, 16, 20]. SemaCredit builds on these ideas at a dif-ferent granularity: each remote-memory operation reserves the endpoint stages it will use—such as HBM, Atomic execution, and response injection—and returns each reservation when that stage completes. The scalar-service baseline tests whether preserving this vector and its phased lifetime matters in practice. 
+
+Information source. Opcode and response length are explicit. Address-to-HBM mapping may be known to the endpoint but hid-den from the initiator. A deployment can therefore let the target issue resource-scoped credits without exposing physical partition details. Coarse bank groups or learned conflict classes may be suffi-cient. Our error experiment suggests that the best classifier granu-larity depends on prediction noise. 
+
+Window adaptation. The current prototype clamps to feed-back RTT and uses a four-RTT Atomic window. A hardware design should derive these windows from measured idle time, feedback delay, and target queue occupancy. The optional service estima-tor tracks a normalized multiplier with an EWMA and recovers systematic response-cost underestimation, but static mean costs are better for stationary heavy-tailed service. Window adaptation should be studied separately from cost calibration and compared against a similarly adaptive byte baseline. 
+
+Reliability and ordering. Integrating SemaCredit with relia-bility requires preserving one semantic reservation across retrans-mission and duplicate filtering. A retransmitted command should reuse the original reservation, and a duplicate completion should leave credit unchanged. These rules can use the transport’s opera-tion identifier. Ordering domains for overlapping writes, Atomics, fences, and notifications compose naturally with credit admission because admission only delays when an operation may enter. 
+
+Evaluation scope and next validation step. The deterministic model isolates receiver completion-path accounting as a first step toward hardware validation. It captures operation mixes, endpoint-stage contention, multipath timing, and resource-specific credit lifetimes, while leaving framework scheduling, kernel execution, and product-specific microarchitecture to the next validation stage. The natural follow-up is to replay collected accelerator traces in Completion-Path Credits: Multi-Resource Control for Scale-Up Fabrics 
+
+a packet/network simulator and then validate the controller in an RTL or FPGA receiver model. 
+
+## 7 Future Work 
+
+The present simulator establishes a mechanism-level result: inde-pendently queued receiver stages are better represented as distinct completion-path resources than as one byte or service counter. Turning that result into a deployable scale-up transport requires four follow-on steps. 
+
+Measured traces and resource calibration. We first plan to instrument GPU and AI-accelerator communication paths for collec-tive training, MoE dispatch, parameter/KV reads, and fine-grained synchronization. A trace will record operation type, request and re-sponse length, destination, dependency domain, submission phase, and receiver-stage timestamps. These measurements will replace the current constant HBM, Atomic, and response costs with empir-ical distributions and burst structure. We will retain the synthetic microbenchmarks as controlled diagnoses, but replay collected traces for application claims. The first criterion is predictive fidelity: whether the demand vector forecasts the identity and depth of the measured bottleneck. 
+
+Adaptive control under delayed feedback. Capacity adapta-tion and per-operation cost estimation should be separated. We will study target-owned estimators under phase changes, heavy-tailed service, coalesced grants, and multiple initiators, and derive con-ditions that bound debt despite feedback delay and quantization. Comparisons will include equally adaptive byte and scalar-service controllers as well as static baselines. Beyond latency and goodput, this stage will measure utilization loss, fairness, convergence time, and sensitivity to classification error. 
+
+Protocol and hardware realization. We next plan a cycle-accurate implementation of classification, atomic vector reserva-tion, staged credit return, and grant coalescing, followed by an RTL/FPGA prototype when the interface is stable. Mapping the controller onto UET/MRC-style resource and feedback primitives will determine which changes are endpoint-local and which require wire-visible resource classes. Synthesis and prototype measure-ments will replace the logical state estimate with SRAM, area, fre-quency, power, and feedback-bandwidth costs, including the effects of counter quantization. 
+
+Reliability and end-to-end validation. The controller must reserve semantic work once across loss and retransmission, reject duplicate returns, and compose with fences and Atomic ordering without deadlock. We will extend the model to failures, multiple re-ceivers, and competing tenants before integrating the non-coherent interface with collective and inference runtimes. End-to-end eval-uation will report training-step or token latency, communication overlap, accelerator utilization, and energy, connecting transport-level P99 to application-visible outcomes. These studies will clarify the traffic regimes where completion-path credits provide durable benefit. 
+
+## 8 Related Work 
+
+Scale-up and adjacent memory fabrics expose the context in which SemaCredit would operate. UALink targets accelerator scale-up with direct Read/Write/Atomic memory operations, credit-based flow control, and 100G/200G link options [24]. NVLink/NVSwitch systems show the same pressure toward high-bandwidth, low-latency GPU fabrics [18], while CXL and UCIe illustrate adjacent memory and chiplet fabrics with their own flow-control and trans-action abstractions [2, 25]. Recent transport proposals provide the grant and backpressure mechanisms that could carry resource-aware admission. UET spec-ifies receiver congestion control, packet-delivery contexts, remote memory operations, reliability, and resource-exhaustion recovery [26]. SemaCredit supplies a predictive admission policy for the endpoint stages behind such mechanisms. MRC extends RoCEv2 with multipath, bounded flight, explicit host backpressure, and composable controller primitives [23]. Meta’s production design combines receiver-driven CTS admis-sion with collective channel buffers and GPU-aware scheduling [4]. It is the closest evidence that receiver memory readiness should influence AI transport. Our work generalizes the control object from collective channels to Read/Write/Atomic operation demand vectors. SIRD [20], Homa [16], ExpressPass [1], and NDP [7] demon-strate the value of receiver-driven grants, scheduled traffic, or receiver-link scheduling. SemaCredit focuses on what the receiver should grant when endpoint service resources, rather than only the downlink, are contended. Harmonic monitors BPS, normalized verb-processing rate, PCIe bandwidth, and cache interference, then enforces per-tenant RDMA performance isolation via a rate-control loop [12]. DCQCN, TIMELY, and HPCC address large-scale RDMA or datacenter congestion con-trol from the network-feedback side [11, 15, 28]. SemaCredit targets a different control point: sub-operation admission at the receiver, where one command can simultaneously reserve a target partition and a downstream response engine and release those components separately. We compare with an idealized scalar-service controller that gives the scalar approach direct operation-level visibility. RDCA measures receiver memory contention in production and bypasses DRAM with a cache-resident receiver service [10]. SR-NIC reduces RNIC connection state and supports many performant RDMA connections [27]. These works motivate endpoint bottle-necks and scalable state, respectively. SemaCredit addresses the complementary admission question: which semantic work should enter the existing endpoint pipelines, and when should each re-served stage be released? Multipath RDMA mechanisms such as MP-RDMA address path utilization and reordering [6]. We use multipath serialization queues in the model, but path selection is held constant across policies. Collective and sparse-model systems motivate the application-shaped mixes. NCCL, MSCCL, TACCL, and SwitchML optimize collective communication and aggregation for distributed training [5, 14, 19, 22]. GShard, Switch Transformers, and DeepSpeed-MoE show how sparse expert models create skewed expert dispatch and metadata traffic [3, 9, 21]. SemaCredit uses controlled mixes inspired by these phases to isolate receiver resources. 
+
+## 9 Conclusion 
+
+Byte credits work well when receiver work mainly follows trans-fer size. SemaCredit extends that accounting to operations whose completion path also uses Atomic execution or response injection. Fan Yang, Jiaqi Liu, Tao Jiang, and Zhan Wang 
+
+It associates each remote-memory operation with a vector of HBM, Atomic, and response demands and returns each reservation at the stage that consumes it. Simulation results show that per-resource bytes, one normalized total-service scalar, and reactive resource exhaustion each miss part of this behavior across HBM, Atomic, and response pressure. The strongest case appears when small op-erations gate progress through Atomic or response resources; the next step is to replay measured traces and test the controller in a hardware-realistic receiver. 
+
+## References 
+
+[1] Inho Cho, Keon Jang, and Dongsu Han. 2017. ExpressPass: End-to-End Credit-based Congestion Control for Datacenters. In Proceedings of ACM SIGCOMM .400–412. doi:10.1145/3098822.3098829 [2] Compute Express Link Consortium. 2024. Compute Express Link Specification. https://www.computeexpresslink.org/specification. Specification portal. [3] William Fedus, Barret Zoph, and Noam Shazeer. 2022. Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity. Journal of Machine Learning Research 23, 120 (2022), 1–39. [4] Anurag Gangidi, Rui Miao, Shengbao Zheng, Sai Jayesh Bondu, Giulio Goes, Hany Morsy, Ravi Puri, Mohammad Riftadi, Ashish J. Shetty, Jingjing Yang, Shuqiang Zhang, Miguel J. Fernandez, Sreekanth Gandham, and Hongyi Zeng. 2024. RDMA over Ethernet for Distributed AI Training at Meta Scale. In Proceedings of ACM SIGCOMM . 57–70. doi:10.1145/3651890.3672233 [5] Sagnik Ghosh, Arun Choudhary, Shubho Sengupta, C. K. Anand, Alexan-dros Nikolaos Ziogas, and Torsten Hoefler. 2023. TACCL: Guiding Collective Algorithm Synthesis using Communication Sketches. In Proceedings of the 20th USENIX Symposium on Networked Systems Design and Implementation (NSDI 23) .593–612. [6] Sangjin Han, Norbert Egi, Aurojit Panda, Sylvia Ratnasamy, Guangyu Shi, and Scott Shenker. 2018. MP-RDMA: Enabling RDMA with Multi-Path Transport in Datacenters. In 15th USENIX Symposium on Networked Systems Design and Implementation (NSDI 18) .[7] Mark Handley, Costin Raiciu, Alexandru Agache, Andrei Voinescu, Andrew W. Moore, Gianni Antichi, and Marcin Wojcik. 2017. Re-architecting Datacenter Networks and Stacks for Low Latency and High Performance. In Proceedings of ACM SIGCOMM . 29–42. doi:10.1145/3098822.3098825 [8] Van Jacobson and Michael J. Karels. 1988. Congestion Avoidance and Control. In Proceedings of ACM SIGCOMM . 314–329. doi:10.1145/52324.52356 [9] Dmitry Lepikhin, HyoukJoong Lee, Yuanzhong Xu, Dehao Chen, Orhan Firat, Yanping Huang, Maxim Krikun, Noam Shazeer, and Zhifeng Chen. 2021. GShard: Scaling Giant Models with Conditional Computation and Automatic Sharding. In International Conference on Learning Representations (ICLR) .[10] Qiang Li, Qiao Xiang, Derui Liu, Yuxin Wang, Haonan Qiu, et al. 2023. From RDMA to RDCA: Toward High-Speed Last Mile of Data Center Networks Using Remote Direct Cache Access. In 20th USENIX Symposium on Networked Systems Design and Implementation (NSDI 23) .[11] Yuliang Li, Rui Miao, Hongqiang Harry Liu, Yan Zhuang, Fengyuan Ren, Li-hua Huang, Xinchen Shi, Rui Zhang, Yibo Zhu, Yongqiang Xiong, and Songwu Lu. 2019. HPCC: High Precision Congestion Control. In Proceedings of ACM SIGCOMM . 44–58. doi:10.1145/3341302.3342085 [12] Jiaqi Lou, Xinhao Kong, Jinghan Huang, Wei Bai, Nam Sung Kim, and Danyang Zhuo. 2024. Harmonic: Hardware-assisted RDMA Performance Isolation for Public Clouds. In 21st USENIX Symposium on Networked Systems Design and Implementation (NSDI 24) . 1479–1497. [13] Peter Maucher, Nick Djerfi, Lennard Kittner, Lukas Werling, and Frank Bel-losa. 2025. Are Your GPU Atomics Secretly Contending?. In 13th Work-shop on Programming Languages and Operating Systems (PLOS 25) . 84–92. doi:10.1145/3764860.3768338 [14] Microsoft. 2024. MSCCL: Microsoft Collective Communication Library. https: //github.com/microsoft/msccl. Open-source collective communication library. [15] Radhika Mittal, Vinh The Lam, Nandita Dukkipati, Emily Blem, Hassan Wassel, Monia Ghobadi, Amin Vahdat, Yaogong Wang, David Wetherall, and David Zats. 2015. TIMELY: RTT-based Congestion Control for the Datacenter. In Proceedings of ACM SIGCOMM . 537–550. doi:10.1145/2785956.2787510 [16] Behnam Montazeri, Yilong Li, Mohammad Alizadeh, and John Ousterhout. 2018. Homa: A Receiver-Driven Low-Latency Transport Protocol Using Network Pri-orities. In Proceedings of ACM SIGCOMM . doi:10.1145/3230543.3230564 [17] NVIDIA. 2022. NVIDIA H100 Tensor Core GPU Architecture. https://www. nvidia.com/en-us/data-center/h100/. Architecture white paper and data sheet. [18] NVIDIA. 2024. NVIDIA NVLink: The Scale-Up Network for AI Factories. https: //developer.nvidia.com/nvlink. Technical blog. [19] NVIDIA. 2026. NCCL: NVIDIA Collective Communications Library. https: //developer.nvidia.com/nccl. Developer documentation. [20] Konstantinos Prasopoulos, Ryan Kosta, Edouard Bugnion, and Marios Kogias. 2025. SIRD: A Sender-Informed, Receiver-Driven Datacenter Transport Protocol. In 22nd USENIX Symposium on Networked Systems Design and Implementation (NSDI 25) .[21] Samyam Rajbhandari, Conglong Li, Zhewei Yao, Minjia Zhang, Reza Yazdani Aminabadi, Ammar Ahmad Awan, Jeff Rasley, and Yuxiong He. 2022. DeepSpeed-MoE: Advancing Mixture-of-Experts Inference and Training to Power Next-Generation AI Scale. In Proceedings of the 39th International Conference on Ma-chine Learning . 18332–18346. [22] Amedeo Sapio, Marco Canini, Chen-Yu Ho, Jacob Nelson, Peter Kalnis, Changhoon Kim, Arvind Krishnamurthy, Masoud Moshref, and Dan R. K. Ports. 2021. Scaling Distributed Machine Learning with In-Network Aggregation. In 
+
+18th USENIX Symposium on Networked Systems Design and Implementation (NSDI 21) . 785–808. [23] Rip Sohan, Eric Spada, Eric Davis, Mark Handley, et al. 2026. The Multipath Reliable Connection (MRC) Transport. arXiv preprint arXiv:2606.18170 (2026). [24] UALink Consortium. 2025. UALink 1.0 White Paper. https://ualinkconsortium. org/. Accelerator scale-up interconnect white paper. [25] UCIe Consortium. 2024. Universal Chiplet Interconnect Express Specification. https://www.uciexpress.org/specification. Specification portal. [26] Ultra Ethernet Consortium. 2026. Ultra Ethernet Specification, Version 1.0.3. https://ultraethernet.org/. Transport specification. [27] Zilong Wang, Layong Luo, Qingsong Ning, Chaoliang Zeng, Wenxue Li, Xinchen Wan, et al. 2023. SRNIC: A Scalable Architecture for RDMA NICs. In 20th USENIX Symposium on Networked Systems Design and Implementation (NSDI 23) .[28] Yibo Zhu, Haggai Eran, Daniel Firestone, Chuanxiong Guo, Marina Lipshteyn, Yehonatan Liron, Jitendra Padhye, Shachar Raindel, Mohamad Haj Yahia, and Ming Zhang. 2015. Congestion Control for Large-Scale RDMA Deployments. In 
+
+Proceedings of ACM SIGCOMM . 523–536. doi:10.1145/2785956.2787484
