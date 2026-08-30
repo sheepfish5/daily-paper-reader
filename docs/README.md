@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-24</span>
+      <span class="dpr-home-dashboard-kicker">2026-08-30</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 23 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 34 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>11</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>22</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-24 20:53:27 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-30 23:16:46 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读11篇、速读12篇，焦点集中在模型服务调度与KV缓存优化。</p>
-<p>最值得关注两篇9分工作：动态算子调度提升多租户服务效率，以及全连接跨层KV混合；速读中关系型LLM服务和长上下文预取也具潜力。</p>
-<p>建议优先精读两篇高分论文，再延伸至长上下文预测预取与PIM模拟器方向。</p>
+<p>今日共读34篇论文，精读22篇、速读12篇，核心聚焦LLM推理效率与分布式系统优化。</p>
+<p>最值得关注的两项高分工作：Minima-KV用混合格式分页注意力实现KV缓存压缩，ResiSpec通过残差分布塑造增强多候选投机采样，二者均达满分10分。</p>
+<p>后续可优先深挖KV缓存压缩与投机采样的实际落地效果，再结合分布式推理带宽与通信的速读内容，构建更完整的推理优化视野。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">11 篇</strong>
+    <strong class="dpr-home-dashboard-count">22 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Global Simulation-Guided Dynamic Operator Scheduling for Efficient Multi-Tenant Model Serving">Global Simulation-Guided Dynamic Operator Scheduling for Efficient Multi-Tenant Model Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="WhiteMatter: All-to-All Cross-Layer Connections via KV Mixing">WhiteMatter: All-to-All Cross-Layer Connections via KV Mixing</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Thread-Register Decoupled GPU Execution Model for Efficient Tensor Computation">A Thread-Register Decoupled GPU Execution Model for Efficient Tensor Computation</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Minima-KV: Retention-Preserving KV Cache Compression with Mixed-Format Paged Attention">Minima-KV: Retention-Preserving KV Cache Compression with Mixed-Format Paged Attention</span></li><li><span class="dpr-home-dashboard-paper-title" title="ResiSpec: Enhancing Multi-Candidate Speculative Sampling via Residual Distribution Shaping">ResiSpec: Enhancing Multi-Candidate Speculative Sampling via Residual Distribution Shaping</span></li><li><span class="dpr-home-dashboard-paper-title" title="LLM4LLM: Bridging Kernel Benchmarks and Real Deployment via Closed-Loop Agentic Optimization">LLM4LLM: Bridging Kernel Benchmarks and Real Deployment via Closed-Loop Agentic Optimization</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>11</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>20</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -89,7 +89,7 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Kalypso: Relational LLM Serving">Kalypso: Relational LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="PIMID: A Full-System Simulator with Intricacy and Diversity for Processing-in-Memory">PIMID: A Full-System Simulator with Intricacy and Diversity for Processing-in-Memory</span></li><li><span class="dpr-home-dashboard-paper-title" title="DualDecoder: Accelerate Long Context LLM Inference by Predictive Prefetch">DualDecoder: Accelerate Long Context LLM Inference by Predictive Prefetch</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="When Does Distributed AI Inference Need More Wide-Area Bandwidth? A Co-Design Evaluation of Optical, Packet, and Software Levers">When Does Distributed AI Inference Need More Wide-Area Bandwidth? A Co-Design Evaluation of Optical, Packet, and Software Levers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Collective Communication for Distributed LLM Systems: Planning, Runtime Adaptation, and Computation Coordination">Collective Communication for Distributed LLM Systems: Planning, Runtime Adaptation, and Computation Coordination</span></li><li><span class="dpr-home-dashboard-paper-title" title="LOCAL: Enabling Learning On-device Contiguously for Agent LLMs">LOCAL: Enabling Learning On-device Contiguously for Agent LLMs</span></li></ul>
   </div>
   <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
 </section>

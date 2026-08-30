@@ -1,0 +1,128 @@
+Title: SYNTLOG: FSM Benchmarks Evaluation for FPGA
+
+URL Source: https://arxiv.org/pdf/2608.23288v1
+
+Published Time: Tue, 25 Aug 2026 02:27:23 GMT
+
+Number of Pages: 3
+
+Markdown Content:
+> IEEE EMBEDDED SYSTEMS LETTERS, VOL. XX, NO. X, MONTH 2026 1
+
+# SYNTLOG: FSM Benchmarks Evaluation for FPGA 
+
+Samary Baranov and Danila Gorodecky 
+
+Abstract —We introduce a curated benchmark collection of 101 
+
+FSM descriptions organized into five size classes ( small , medium ,
+
+large , huge , super-huge ), spanning tens to thousands of states and up to hundreds of inputs and outputs. Using these benchmarks we compare an architecture-independent synthesis tool SYNTLOG against Xilinx Vivado at the synthesis (technology-mapping) level, under six optimization strategies. We compare three post-synthesis parameters: number of LUTs, number of logic levels, and runtime. SYNTLOG in area-driven mode uses substantially fewer LUTs than Vivado’s area baseline at every size ( −45% to 
+
+−66% ), and its delay-driven mode is simultaneously shallower in logic depth than Vivado’s default synthesis mode. SYNTLOG synthesis includes embedded functional validation. Runtime of SYNTLOG is faster by one to two orders of magnitude than Vivado synthesis. The proposed tool synthesizes and validates every huge and super-huge circuit in minutes, whereas Vivado fails to terminate on these designs after hours. 
+
+Index Terms —Finite state machine (FSM), algorithmic state machines (ASM), logic synthesis, FPGA, LUT, benchmarks. 
+
+I. I NTRODUCTION 
+
+Finite state machines (FSMs) are the backbone of control logic in digital systems, yet experimental work on their minimiza-tion is thin. Theory on FSM assignment, structural decompo-sition, and ASM-based (Algorithmic State Machine) design is well established [1], [2], and dedicated state-encoding algo-rithms such as NOVA [3] and LUT-oriented FSM synthesis methods [4] have been studied for decades. Yet reproducible empirical evaluation remains constrained by available data. The widely cited suites ITC’99 [5], the MCNC/LGSynth FSM set, and circuits bundled with academic tools such as ABC [6] and SIS [7], contain few examples, most of them small. As a result, claims about synthesis behavior on large, control-dominated designs are rarely supported by measurement. This paper makes two contributions. First, we describe a benchmark collection broader and larger than existing FSM suites, organized into five size classes so that scaling behavior is directly observable. Second, we use it to compare an architecture-independent synthesis tool SYNTLOG with the Xilinx Vivado flow across optimization strategies. Because sizeable FSM benchmarks are scarce, results on such a col-lection are of independent value to other researchers. Section II presents the collection; Section III summarizes the synthesis approach; Section IV details the experimental setup; Section V reports and discusses results; and Section VI concludes. 
+
+S. Baranov is with Holon Institute of Technology, Holon, Israel (e-mail: samarybaranov@gmail.com). D. Gorodecky is with INESC-ID, Instituto Superior T´ ecnico, Universidade de Lisboa, Lisbon, Portugal (e-mail: danila.gorodecky@gmail.com). TABLE I FSM BENCHMARK GROUPS AND AVERAGE PARAMETERS .Group # of benchmarks Average per group Inputs Outputs States Lines Small 41 14.5 24.2 20.2 84 Medium 44 21.8 50.4 58.6 247 Large 6 54.7 58.7 138.3 1 121 Huge 7 64.1 66.1 627.7 24 114 Super-Huge 3 76.7 97.0 2 309.7 206 062 
+
+II. B ENCHMARK COLLECTION 
+
+The benchmarks are drawn from a recent public collection of FSM descriptions [8]. Existing suites are limited in two ways at once: few designs and small designs. The present collection addresses both, with 101 FSM descriptions in HDL grouped by size into five classes. Table I gives, per class, the number of designs and the average number of inputs, outputs, states, and number of conditions in the transition table. The dynamic range of super-huge averages more than 2300 
+
+states and 206 000 transitions. FST compiled from regular-expression rule sets for hardware-based deep packet inspec-tion (DPI) in network intrusion detection systems (NIDS) rou-tinely reach tens of thousands of states [9], [10]. FSMs serve as control units in processors, protocol controllers, digital signal processing (DSP) blocks, and neural-network activation circuits [11]. These designs lie well beyond any classical FSM benchmark and provide a stress test that separates scalable synthesis from heuristic flows that flatten or restructure logic. III. A RCHITECTURE -I NDEPENDENT SYNTHESIS 
+
+SYNTLOG adopts a future-proof view of design. It minimizes FSMs for both ASIC and FPGA targets and is not tied to a fixed device architecture. For FPGAs it generates RTL for look-up tables (LUTs) of an arbitrary input width M , so the same description can be retargeted to new device generations without reengineering, while Xilinx Vivado flows, by contrast, are tightly coupled to today’s 4-, 5-, or 6-input LUTs. Since our reference is the current Xilinx FPGA family, whose logic cell is a 6-input LUT, all results in this letter are reported for 
+
+M = 6 . For ASIC targets the tool realizes the control-unit FSM as a regular matrix structure. SYNTLOG is also flexible in how a machine is specified and encoded. An FSM may be supplied as a state-transition table (a list of transitions), as an ASM, or as an HDL description (VHDL or Verilog), and its states may be encoded either as one-hot (a single asserted bit per state) or in compact binary form (using ⌈log 2 S⌉ flip-flops for S states). Both area- and delay-driven optimization are supported, and beyond arXiv:2608.23288v1 [cs.AR] 24 Aug 2026 IEEE EMBEDDED SYSTEMS LETTERS, VOL. XX, NO. X, MONTH 2026 2
+
+FSMs the same engine also minimizes purely combinational circuits. Throughout this study we use one-hot encoding at 
+
+M = 6 to match the target FPGAs. Rather than flattening the logic, the tool synthesizes structured RTL directly from the control-flow graph, using look-ahead transition logic so that even deeply nested transitions remain compact, following the ASM-based design methodology [1]. This structure is what lets it scale where heuristic, flattening-based tools fail. A distinctive feature is embedded validation. The tool does not only emit RTL, it performs a behavioral simulation that exercises every state and transition of the machine and checks the synthesized circuit’s response against the source FSM, confirming exact functional equivalence rather than sampling a subset of the input space. Every runtime reported below includes this simulation step. The approach scales to very large machines: the largest example in our collection has 2314 states and 351351 transitions, for which fully validated RTL was produced in under a half hour including simulation. IV. E XPERIMENTAL SETUP 
+
+We conducted experiments used Xilinx Vivado 2022.2 on Kintex-7 (xc7k70tfbg484-3 ) and Kintex UltraScale+ (xcku5p-ffvb676-2-e ), both built around 6-input LUTs. Each benchmark was synthesized as a standalone top module. To keep the comparison confined to the LUT/flip-flop, fabric block-RAM inference was disabled, so that FSM logic maps to LUTs and registers only. We compare results at the synthesis (technology-mapping) level, before place-and-route. SYNTLOG emits vendor-neutral RTL rather than a placed-and-routed implementation, and synthesis already fixes the LUT network, register count, and logic depth that we report. The two device families behave almost identically in LUTs, but not in logic levels. Post-synthesis LUT counts differed by less than 1% between Kintex-7 and Kintex US+ across all groups and strategies. The LUT result depends on the LUT inputs M , but not on the specific device, recisely the parameter that the proposed tool targets. Logic depth, however, can differ by as much as 25% for the same optimization strategy, since timing-driven mapping relies on device-specific delay models. Because we do not analyze individual circuits but average each of the four reported metrics (LUT count, logic depth, runtime) over a whole benchmark group, such per-example differences have little effect on the group means. Therefore we report Kintex-7 figures only, and only for the three strategies whose results differ most: Area Default 
+
+(targeting minimal LUT count), Speed 200 MHz Performance 
+
+(a balanced trade-off between LUT count and logic depth), and 
+
+Speed 1 GHz Performance (targeting minimal logic depth). Table II shows 6 Vivado optimization strategies during synthesis 1. Area Default applies no timing constraint and the default flow; Balanced 100 MHz adds a relaxed 
+
+10 ns period; the Speed 200 MHz pair tightens it to 5 ns ,once with the default flow and once with performance-oriented directives (Flow_PerfOptimized_high ,
+
+Performance_Explore ) that trade area for shorter                   
+
+> 1The results for all optimization strategies and for both FPGA families in https://github.com/ZeboZebo702/SYNTLOG Benchmarks FPGA TABLE II SIX APPLIED VIVADO OPTIMIZATION STRATEGIES .BOLDFACE :THE THREE STRATEGIES REPORTED IN SECTION V. Strategy Period Synthesis directive
+> Area Default –Vivado defaults Balanced 100 MHz 10 ns Vivado defaults Speed 200 MHz Default 5 ns Vivado defaults
+> Speed 200 MHz Perf. 5 ns PerfOptimized high Speed 1 GHz Default 1 ns Vivado defaults
+> Speed 1 GHz Perf. 1 ns PerfOptimized high
+
+critical paths; the Speed 1 GHz pair sets an aggressive 1 ns 
+
+period. For SYNTLOG we report results at the matching LUT width M = 6 under both area- and delay-driven optimization. V. R ESULTS AND DISCUSSION 
+
+Table III reports, for every benchmark group, the aver-age LUT count, logic depth (LUT levels), flip-flop (FF) count, and runtime for three Vivado strategies on Kintex-7 Area Default (AD), Speed 200 MHz Performance (200P) and Speed 1 GHz Performance (1GP), and for SYNTLOG at 
+
+M = 6 under area-driven (SLG A) and delay-driven (SLG D) optimization. Vivado completed the small , medium and large 
+
+groups, but did not terminate on any huge or super-huge 
+
+design, those cells are blank. 
+
+A. State encoding 
+
+The FF column is the key to reading the rest of the table. The proposed tool uses one-hot encoding throughout, i.e. FF count equals the number of states exactly, e.g. the super-huge ”hip-popotamus” design has 2314 states and 2314 flip-flops, and is identical for area- and delay-driven optimization. Encoding is thus a fixed structural property of the tool. Vivado, by contrast, changes encoding with the strategy: an FF count cannot change by combinational optimization alone, yet Vivado’s count grows 
+
+2×–7× from Area Default to the performance strategies (e.g. 
+
+10 → 68 on medium and 70 → 148 on large ). Area Default 
+
+uses a compact (binary/sequential) encoding, whereas 200P and 1GP switch to one-hot. The like-for-like comparison to the proposed one-hot tool is therefore Vivado’s performance strategies, which we keep in view alongside the area baseline below. 
+
+B. Mapped area (LUTs) 
+
+The proposed tool is markedly LUT-efficient. Against Vivado’s area baseline ( Area Default , a compact encoding) SYNT-LOG’s area-driven mode uses far fewer LUTs at every size: 
+
+54 vs. 98 on small (−45% ), 123 vs. 288 on medium (−57% ), and 696 vs. 2023 on large (−66% ). That a one-hot design undercuts Vivado’s compact encoding on area is notable: the structured, ASM-derived next-state logic more than compen-sates for the larger state register. At matched one-hot encoding (against 200P) the picture is just as favorable on the larger designs: the tool’s area mode ties on small (54 vs. 56 ), wins on medium (123 vs. 133 ) and wins decisively on large (696 vs. 
+
+1224 , −43% ). The LUT advantage therefore holds across both the area- and the performance-oriented Vivado configurations, and widens with design size. IEEE EMBEDDED SYSTEMS LETTERS, VOL. XX, NO. X, MONTH 2026 3
+
+TABLE III AVERAGE POST -SYNTHESIS RESULTS ON KINTEX -7. V IVADO Area Default (AD ), Speed 200 MHz Performance (200P ), Speed 1 GHz Performance (1GP ). SYNTLOG ( FOR M = 6 ) SLG A IS AREA -DRIVEN AND SLG D IS DELAY -DRIVEN , WHOSE FLIP -FLOPS (FF ) COUNT IS ONE -HOT (= NUMBER OF STATES ) 
+
+> AND IDENTICAL FOR BOTH OBJECTIVES
+
+(SLG ). “–” MARKS DESIGNS VIVADO DID NOT SYNTHESIZE . SYNTLOG RUNTIME INCLUDES FUNCTIONAL VALIDATION ; V IVADO TIMES ARE SYNTHESIS ONLY .                                                                                                                      
+
+> Average LUTs Average logic depth Average FF Average runtim, s
+> Group AD 200P 1GP SLG A SLG D AD 200P 1GP SLG A SLG D AD 200P 1GP SLG AD 200P 1GP SLG A SLG D Small 98 56 63 54 70 5.2 2.3 2.4 5.4 3.9 10 22 23 20 38 45 45 0.3 0.3 Medium 288 133 146 123 165 5.9 2.9 3.1 7.3 5.1 10 64 68 59 43 49 49 0.3 0.4 Large 2023 1224 1304 696 941 8.0 3.2 4.2 10.0 6.7 70 141 148 138 161 86 88 0.6 1.0 Huge –––7585 9949 –––18.0 10.6 –––628 –––40 48 Super-Huge –––32 380 37 718 –––27.0 15.3 –––2310 –––1014 1177
+
+C. Logic depth 
+
+SYNTLOG’s delay-driven mode is shallower than Vi-vado Area Default at every completed size ( 3.9/5.1/6.7 vs. 
+
+5.2/5.9/8.0 levels), and trails only Vivado’s aggressively timing-driven one-hot strategies ( 2.3–3.2 levels), at the same time as using fewer LUTs than either on large . Within the tool, switching from area- to delay-driven optimization lowers depth substantially at the cost of LUTs, while keeping the same FF count. 
+
+D. Runtime 
+
+The runtime difference is the most pronounced. On the groups Vivado completes the proposed tool is faster by roughly two orders of magnitude: 0.3 s vs. 38 s to 45 s on small , 0.3 s vs. 
+
+43 s to 49 s on medium , and 0.6 s to 1.0 s vs. 86 s to 161 s 
+
+on large . The proposed-tool figure already includes functional validation, while the Vivado figure is synthesis only (no place-and-route), so the end-to-end gap is larger still. 
+
+E. Scalability 
+
+The decisive result is qualitative. None of the three super-huge benchmarks, and several huge benchmarks, could be synthesized by Vivado: after tens of hours the process was aborted without a result. The proposed tool synthesized and validated every one of them ( 40 s (area) on average for huge 
+
+and ≈17 min for super-huge ) with the expected one-hot FF counts. 
+
+F. Device and architecture independence 
+
+Because Kintex-7 and Kintex UltraScale+ both implement 6-input LUTs, their post-synthesis LUT counts differ by under 
+
+1% ; the device is immaterial at this level, and the relevant parameter is the LUT width M , which SYNTLOG targets directly. The results above use M = 6 to match the FPGAs, but the same one-hot description can be retargeted to any width without redesign, which is the tool’s principal architectural advantage and the subject of ongoing experiments. VI. C ONCLUSION 
+
+We presented a five-class FSM benchmark collection, larger and broader than existing public suites, and used it to compare the architecture-independent, ASM/FSM-driven tool SYNT-LOG with Xilinx Vivado 2022.2 at the synthesis level. For FPGA, SYNTLOG encodes states as one-hot, so its flip-flop count equals the number of states and is independent of the optimization objective. Vivado switches encoding by strategy (compact for area, one-hot for performance), which is why its register count varies 2×–7×. SYNTLOG is consistently more LUT-efficient: its area-driven mode uses 45% –66% fewer LUTs than Vivado’s area baseline at every size, and at matched one-hot encoding it ties on small and wins on medium and large ( −43% ). Its delay-driven mode is shallower than Vi-vado’s default synthesis at every completed size and trails only Vivado’s aggressively timing-driven strategies. SYNTLOG synthesizes one to two orders of magnitude faster than Vivado while validating each result by full behavioral simulation, and it completes and validates every huge and super-huge design on which Vivado does not terminate. Because post-synthesis area depends on the LUT width M rather than the device, the ability to target an arbitrary M is the relevant degree of freedom for future architectures. REFERENCES [1] S. Baranov, ”Finite State Machines and Algorithmic State Machines: Fast and Simple Design of Complex Finite State Machines”. Amazon, 2016. [2] S. Devadas, Hi-Keung Ma, A. R. Newton and A. Sangiovanni-Vincentelli, ”MUSTANG: state assignment of finite state machines targeting multilevel logic implementations”, in IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems, vol. 7, no. 12, pp. 1290-1300, Dec. 1988. [3] T. Villa and A. Sangiovanni-Vincentelli, ”NOVA: state assignment of finite state machines for optimal two-level logic implementation”, in IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems, vol. 9, no. 9, , Sept. 1990, pp. 905-924. [4] R. Czerwinski and D. Kania, ”Finite State Machine Logic Synthesis for Complex Programmable Logic Devices”, Berlin, Germany: Springer, 2013. [5] F. Corno, M. S. Reorda and G. Squillero, ”RT-level ITC’99 benchmarks and first ATPG results”, in IEEE Design & Test of Computers, vol. 17, no. 3, pp. 44-53, July-Sept. 2000. [6] R. Brayton and A. Mishchenko, ”ABC: An academic industrial-strength verification tool”, 22nd International Conference Computer Aided Ver-ification (CAV), Edinburgh, UK, July 15-19, 2010, pp. 24-40. [7] E. M. Sentovich et al. , ”SIS: A system for sequential circuit synthesis”, Univ. California, Berkeley, Tech. Rep. UCB/ERL M92/41, 1992. [8] HLS and RTL FSM benchmark collection. [Online]. Available: https: //www.synthezza.com/fsm-benchmarks [9] M. Ceˇ ska et al., ”Deep Packet Inspection in FPGAs via Approxi-mate Nondeterministic Automata,” 2019 IEEE 27th Annual Interna-tional Symposium on Field-Programmable Custom Computing Ma-chines (FCCM), San Diego, CA, USA, 2019, pp. 109-117 [10] W. Xu, J. Zhang, Z. Zhou, H. Yang, Sh. Huang, Y. Tang, Y. Jiang, J. Wu, ”On-Demand Regular Expression Matching on FPGAs for Efficient Deep Packet Inspection”, ACM Transactions on Reconfigurable Technology and Systems, Volume 19, Issue 1, Article No.: 1, Pages 1 -32 [11] A. Barkalov, L. Titarenko, J. Bieganowski, and K. Krzywicki, ”Basic Approaches for Reducing Power Consumption in Finite State Machine Circuits—A Review”, Applied Sciences. 2024, Vol. 14, Issue 7.
