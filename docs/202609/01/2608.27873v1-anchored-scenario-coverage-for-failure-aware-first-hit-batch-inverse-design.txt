@@ -1,0 +1,858 @@
+Title: Anchored Scenario Coverage for Failure-Aware First-Hit Batch Inverse Design
+
+URL Source: https://arxiv.org/pdf/2608.27873v1
+
+Published Time: Mon, 31 Aug 2026 00:27:23 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# ANCHORED SCENARIO COVERAGE FOR FAILURE -AWARE FIRST -H IT BATCH INVERSE DESIGN 
+
+Chuhan Yang, Chenxi Wang, Linhan Wu & Yuyang Liu 
+
+DeepVerse 
+
+{chuhan,chenxi,linhan,yuyang }@deepverse.tech 
+
+## ABSTRACT 
+
+Early discovery of at least one valid design satisfying a target requirement is a cen-tral objective in failure-prone closed-loop inverse design. A natural batch base-line ranks candidates by a product-form marginal valid-hit score, but selecting the highest-ranked candidates independently can produce redundant recommen-dations under predictive uncertainty and waste the experiment budget. We intro-duce ARC-SC(Anchored Risk-Constrained Scenario Coverage), a batch acquisi-tion method that preserves strong marginal candidates as anchors and allocates the remaining batch positions by maximizing complementary coverage over predic-tive target scenarios under a risk-support constraint. In frozen-oracle closed-loop simulations on superconductivity and JARVIS materials-property benchmarks, ARC-SC yields a statistically supported improvement in first-hit discovery and remains competitive with directionally favorable first-hit performance on more challenging design space. These results establish ARC-SC as a POF-anchored, scenario-aware batch strategy for improving early valid-target discovery under structured experimental failure. 
+
+## 1 INTRODUCTION 
+
+Closed-loop inverse design refers to an iterative discovery paradigm in which candidate solutions are sequentially proposed by computational models, evaluated through experiments or simulations, and used to update subsequent design decisions(Xue et al., 2016; Kusne et al., 2020; Wu et al., 2026). In many applications, however, the practical objective is not necessarily to identify the global optimum or maximize the terminal best-observed value. The immediate goal is to discover, using as few experimental rounds as possible, at least one valid candidate satisfying a predefined target requirement. This first-hit objective is particularly important when evaluations are expensive, time-consuming, destructive, or performed in parallel batches. A natural failure-aware strategy evaluates each candidate according to two marginal considerations: how likely it is to satisfy the target requirement and how likely it is to yield a valid experimental outcome. Their product provides a marginal valid-hit score. A straightforward batch strategy is therefore to rank candidates independently by this score and select the highest-ranked ones. We refer to this top-B marginal strategy as the POF baseline, retaining the method label used in our companion implementation. 1 If the marginal scores were calibrated valid-hit probabilities and can-didate outcomes were conditionally independent, this strategy would maximize the current-round probability of obtaining at least one successful design. In practice, the independence and calibration assumptions can be unreliable in small-data inverse design at the batch level. Several candidates may receive high marginal scores because they are supported by the same uncertain target-landscape explanation. Selecting all of them can produce a batch with strong individual scores but limited protection against model misspecification: if the shared explanation is incorrect, the entire batch may fail to discover the target. This distinction is particularly consequential for first-hit discovery, for which the value of a batch depends primarily on whether at least one member succeeds rather than on the sum of its marginal candidate utilities. 
+
+> 1
+
+Throughout this paper, POF is used only as the name of the implemented top-B marginal valid-hit baseline. It should not be confused with the conventional probability of feasibility in constrained Bayesian optimization, which corresponds to the validity probability introduced formally in Section 2. 
+
+1arXiv:2608.27873v1 [math.OC] 28 Aug 2026 Related Work and Positioning. Batch Bayesian optimization has long recognized that paral-lel recommendations should not be obtained solely by repeating a sequential acquisition rule, but should account for interactions among batch members. Existing approaches model batch interac-tions through, for example, simulation matching, jointly maximizing information or value of infor-mation, locally penalizing neighborhoods of selected candidates, or explicitly encouraging diversity through determinantal point processes (Azimi et al., 2010; Shah & Ghahramani, 2015; Gonz´ alez et al., 2016; Kathuria et al., 2016; Wu & Frazier, 2016). These methods establish the importance of batch-level complementarity, but they are generally developed for conventional black-box opti-mization objectives and do not specifically address valid-target first-hit discovery under unknown experimental failure. Constrained Bayesian optimization models unknown feasibility and modifies acquisition decisions according to the probability or information value of satisfying the constraints (Gardner et al., 2014; Hern´ andez-Lobato et al., 2015; Bergmann & Graichen, 2020). In scientific experimentation, failed evaluations may instead produce no usable target measurement, introducing a second source of difficulty. Prior work has addressed this setting through pessimistic padding of missing responses, learned feasibility classifiers, explicit exploration of feasible–infeasible boundaries, and models of stochastic observation failure (Wakabayashi et al., 2022; Tian et al., 2024; Hickman et al., 2025; Iwazaki et al., 2025). These methods primarily improve candidate-level feasibility awareness. They do not directly determine whether the valid-hit opportunities represented by simultaneously selected candidates are complementary. The objective of discovering target members is also related to active search, which allocates queries to identify as many members of a valuable class as possible (Garnett et al., 2012; Jiang et al., 2017; Lookman et al., 2019). Related batch active-learning work uses adaptive submodularity to character-ize diminishing returns in parallel information acquisition (Chen & Krause, 2013). ARC-SC differs in both objective and construction: it targets the first valid target hit, preserves a strong marginal-score component, and uses submodular predictive-scenario coverage to diversify only the remaining batch positions under risk-support control. In summary, the resulting gap lies at the intersection of first-hit search, batch complementarity, and failure awareness. A suitable acquisition rule should preserve candidates with a high marginal prob-ability of immediate success, avoid allocating the full batch to candidates supported by overlapping predictive scenarios, and control exposure to candidates with low predicted validity or weak support from the observed design distribution. We address this problem with ARC-SC, an Anchored Risk-Constrained Scenario Coverage method for failure-aware first-hit batch inverse design. ARC-SC constructs each batch in two stages. It first selects a set of anchors using the same marginal valid-hit criterion as the POF baseline, subject to ARC-SC’s risk-admissibility rule. It then fills the remaining batch positions by maximizing a noisy-OR scenario-coverage objective over multiple predictive target scenarios. Candidate responses are modulated by rank-normalized marginal valid-hit, validity, and empirical-support information, while a batch-level risk-support constraint limits unsafe or strongly extrapolative recommendations. Sce-nario completion therefore complements rather than replaces marginal exploitation. We show that the ARC-SC scenario-coverage objective is normalized, monotone, and submodular. Consequently, conditional on fixed anchors and a fixed admissible completion pool, greedy scenario completion obtains the classical approximation guarantee for cardinality-constrained monotone sub-modular maximization. We explicitly separate this fixed-domain result from the full implementation, in which the admissible set changes with the partial batch through a dynamic risk constraint. We evaluate ARC-SC through frozen-oracle closed-loop simulations constructed from the UCI Su-perconductivity and JARVIS CFID materials-property datasets. Across four controlled failure mech-anisms, three invalid-rate levels, three initialization conditions, and paired random seeds, ARC-SC produces more earlier first-hit outcomes than later outcomes relative to ordinary batch POF and in-creases cumulative valid target discoveries. Its clearest gains occur under feature-interaction and low-validity failures, whereas many hybrid and off-manifold configurations result in ties. The ex-periments therefore support ARC-SC as a POF-preserving diversification strategy whose benefit is concentrated in settings where structured failure and predictive redundancy matter. Our contributions are: 21. We formulate failure-aware batch inverse design around the first valid target hit and propose ARC-SC, which combines marginal valid-hit anchoring, predictive scenario coverage, and batch-level risk-support control. 2. We prove that the scenario-coverage objective is normalized, monotone, and submodular, and derive the corresponding fixed-domain greedy-completion guarantee. 3. We evaluate ARC-SC on two frozen-oracle materials benchmarks under controlled failure mechanisms, showing more earlier first-hit wins than losses relative to ordinary batch POF, with the strongest gains under feature-interaction and low-validity failures. 
+
+## 2 METHODOLOGY 
+
+2.1 PROBLEM FORMULATION 
+
+We consider a closed-loop batch inverse-design problem in which experimental evaluations are se-quentially performed to discover a design satisfying predefined target requirements. At iteration 
+
+t, the optimizer has access to an observed dataset Dt = {(xi, y i, v i)}nt
+
+> i=1
+
+, where xi ∈ X denotes a candidate design, vi ∈ { 0, 1} indicates whether the experiment returns a valid measurement, yi
+
+denotes the measured target property when vi = 1 and is unavailable when vi = 0 . In a practical setting, the unavailability of target property could be caused by the candidate not being successfully synthesized, processed, or measured. The objective is to identify, as early as possible, at least one candidate satisfying both validity and target requirements: v(x) = 1 , y (x) ≥ T , for a user-defined target value T . Unlike conventional optimization objectives that maximize the final objective value or cumulative discoveries, our goal is first-hit discovery. Given a batch size B, the optimizer selects Bt = {xt, 1, . . . , x t,B } at each experimental round. ARC-SC is designed to increase the probability of obtaining a valid target hit in the current batch and thereby promote earlier discovery. We use the first-hit round as the primary performance criterion: 
+
+τhit = min {t : ∃x ∈ B t, v (x) = 1 , y (x) ≥ T },
+
+with the convention τhit = ∞ if no valid target hit is observed. Since experiments are conducted in batches, the utility of a candidate cannot be evaluated independently: multiple candidates with high individual acquisition scores may still provide limited probability of discovering a successful design if they represent the same uncertain region of the design space. ARC-SC addresses this issue by explicitly optimizing batch-level complementary coverage under predictive uncertainty. 2.2 ANCHORED RISK -C ONSTRAINED SCENARIO COVERAGE 
+
+ARC-SC decomposes batch construction into two complementary selection stages. The first stage preserves candidates with high marginal POF scores, while the second allocates the remaining batch positions to candidates that cover complementary predictive scenarios. The resulting batch is constructed as Bt = Banchor ∪B cover , where Banchor contains high-confidence candidates selected using POF, and Bcover contains candidates selected according to posterior sce-nario coverage. The overall workflow of ARC-SC is depicted in Fig 1 and the individual components are described below. 2.3 CANDIDATE MODELING AND RISK ESTIMATION 
+
+At each iteration, ARC-SC first constructs a finite candidate pool Ct = {xj }Nj=1 ⊆ X , over which the acquisition procedure is evaluated. All candidate-level quantities and batch-selection decisions described below are computed on Ct. For notational simplicity, we write C when the iteration index is clear from context. The candidate-generation procedure and its experimental configuration are described in Appendix. 3Learn from Previ-ous Experiments 
+
+◦ × ◦ ×
+
+> Valid and failed ex-perimental outcomes Fit the target and valid-ity models and update predictive uncertainty
+
+1
+
+Generate and Score Candidates 
+
+> Construct a finite pool and identify the current high-promise region
+
+2
+
+Keep Strong Marginal Anchors 
+
+> Preserve candidates with strong marginal valid-hit potential
+
+3
+
+Construct Pre-dictive Scenarios 
+
+> Represent alternative plausible locations of the target opportunity
+
+4
+
+Measure Sce-nario Coverage 
+
+> Add candidates representing scenarios not already covered by the anchors
+
+5
+
+Build a Risk-Aware Batch 
+
+> Retain complementary candidates under the validity-support risk budget
+
+6
+
+Evaluate and Update ✓
+
+> Observe valid hits, valid non-hits, and failures, then append the outcomes
+
+7
+
+Candidate Previous valid non-hit × Previous invalid POF anchor selection Scenario-coverage selection Predictive target scenarios Predicted high-risk region ✓ Valid target hit ◦/× Experimental non-hit / invalid outcome 
+
+Figure 1: Integrated schematic overview of ARC-SC. At each closed-loop iteration, target and validity models are updated from previous valid and failed experiments and used to score a finite candidate pool. Strong marginal valid-hit candidates are retained through POF-style risk-admissible anchoring. Multiple predictive target scenarios then expose alternative plausible opportunities, and the remaining batch positions are assigned to complementary candidates under a validity-support risk budget. Experimental evaluation reveals valid target hits, valid non-hits, and invalid outcomes, which are appended to the observed data for the next iteration. The embedded design-space illustra-tions are schematic and do not represent a particular experimental run. 
+
+Target model. The target surrogate is trained using only experimentally valid observations Dyt =
+
+{(xi, y i) : vi = 1 }. For each candidate x, the surrogate provides a predictive distribution over the unknown target property p(y(x)|x, Dt). The probability that a candidate satisfies the target threshold is 
+
+py (x) = P (y(x) ≥ T |x, Dt). (1) This quantity is the surrogate-estimated posterior probability that x satisfies the target threshold. 
+
+Validity model. Failed experiments provide binary information about the unknown feasible re-gion. ARC-SC therefore trains a validity model using both successful and failed evaluations 
+
+Dvt = {(xi, v i)}nt
+
+i=1 . The model estimates 
+
+pv (x) = P (v(x) = 1 |x, Dt). (2) The quantity pv (x) is the predicted validity probability; in the terminology of constrained Bayesian optimization, it corresponds to the probability of feasibility. 
+
+Marginal valid-hit score and POF baseline. A successful discovery requires a candidate to both yield a valid measurement and satisfy the target requirement. We therefore define the product-form marginal valid-hit score 
+
+h(x) = py (x)pv (x). (3) Under conditional independence between target satisfaction and validity, h(x) equals the corre-sponding joint posterior probability; more generally, we use it as a marginal acquisition score. 4Our primary comparison method, denoted POF, constructs a batch by selecting the B candidates with the largest marginal valid-hit scores: 
+
+BPOF = TopB x∈C h(x). (4) Thus, POF is an independent marginal-ranking baseline: each batch position is selected according to h(x) without explicitly accounting for redundancy among simultaneously selected candidates. 
+
+Empirical support estimation. Validity prediction alone may be unreliable in small-data regimes, especially for candidates far outside the observed design distribution. ARC-SC therefore incorpo-rates an empirical support score. Let dkNN (x) denote the average distance between candidate x
+
+and its nearest observed designs in normalized feature space. We define ps(x) = exp( − dkNN (x)2 
+
+> 2τ2
+> s
+
+),where τs controls the decay scale. The support score is high for candidates located near previously observed designs and decreases for extrapolative candidates. 
+
+Risk-support score. A candidate has low risk when it is both predicted to be valid and sufficiently supported by the observed design distribution. We define the candidate-level risk-support score as 
+
+c(x) = 1 − pv (x)ps(x).
+
+For a nonempty partial batch S, ARC-SC evaluates the average batch risk: 
+
+C(S) = 1
+
+|S| 
+
+X
+
+> x∈S
+
+c(x).
+
+During batch construction, ARC-SC enforces C(S) ≤ R whenever a risk-feasible extension exists, and R is a user-defined risk budget. If no feasible extension is available, a penalized fallback rule is used to complete the batch. 2.4 POF-A NCHORED CANDIDATE SELECTION 
+
+A central design choice in ARC-SC is that scenario coverage does not replace marginal exploitation. ARC-SC uses the same marginal valid-hit score h(x) that defines the POF baseline to select its first 
+
+K batch members, while additionally enforcing ARC-SC’s risk-admissibility rule. We refer to these candidates as POF anchors .Specifically, define 
+
+FR(S) = {x ∈ C \ S : C(S ∪ { x}) ≤ R} .
+
+Starting from Sa0 = ∅, ARC-SC select 
+
+ak ∈ arg max  
+
+> x∈F R(Sa
+> k−1)
+
+h(x), Sa 
+
+> k
+
+= Sa 
+
+> k−1
+
+∪ { ak},
+
+for k = 1 , . . . , K , whenever a feasible extension exists. We define Banchor = Sa 
+
+> K
+
+. These anchors preserve candidates with the strongest marginal probability of immediate success. Because anchor selection is subject to the dynamic risk constraint, the POF anchors are not neces-sarily identical to the first K members of BPOF . Rather, they preserve the same marginal selection criterion within the currently risk-admissible set. The motivation is that when the predictive model is reliable, marginal valid-hit ranking may al-ready provide strong first-hit performance. Completely replacing this exploitation component with uncertainty-driven diversification may therefore be counterproductive. POF anchoring preserves strong marginal opportunities while reserving the remaining batch capacity for scenario-based di-versification. 52.5 PREDICTIVE SCENARIO CONSTRUCTION 
+
+After selecting anchors, ARC-SC models uncertainty in the unknown target landscape through mul-tiple predictive scenarios. Ideally, one would sample complete posterior functions f (1) , ..., f (M ) ∼
+
+P (f |D t). For computational scalability, the current implementation constructs marginal posterior-predictive scenarios on the finite candidate pool: 
+
+f (m)(xj ) = μj + σy,j zm,j , zm,j 
+
+> iid
+
+∼ N (0 , 1) , (5) where μj = μ(xj ) and σy,j = σy (xj ) denote the predictive mean and standard deviation returned by the target surrogate for each xj ∈ C . These scenarios preserve the marginal predictive uncer-tainty at each candidate but do not explicitly retain cross-candidate posterior covariance. Further implementation details are provided in Appendix. For scenario m, a candidate’s target response is measured relative to a relaxed threshold 
+
+T relax  
+
+> m
+
+= min 
+
+
+
+T, Q 1−π {f (m)(x) : x ∈ C} 
+
+
+
+,
+
+where Q1−π is the empirical (1 − π)-quantile of sampled target values in scenario m, and π ∈
+
+(0 , 1) . The relaxation avoids degenerate scenarios where no candidate appears promising early in the optimization process. The soft target response is then defined as 
+
+ψm(x) = sigm 
+
+ f (m)(x) − T relax 
+
+> m
+
+τ
+
+
+
+,
+
+where sigm( u) = 11+exp( −u) is the logistic function, and τ > 0.2.6 SCENARIO COVERAGE ACQUISITION 
+
+The central idea of ARC-SC is that a batch should not only contain individually promising candi-dates, but should cover multiple plausible predictive scenarios. For each scenario m, we define a candidate response 2:
+
+rm(x) = gh(x)gv (x)gs(x)ψm(x). (6) To reduce sensitivity to probability miscalibration, we transform the marginal valid-hit, validity, and support scores into percentile-rank gates. Let Rh(x), Rv (x), and Rs(x) denote the percentile ranks of h(x), pv (x), and ps(x) within C, respectively. We define 
+
+gq (x) = [ ϵq + (1 − ϵq )Rq (x)] αq , q ∈ { h, v, s }. (7) The floor ϵq > 0 prevents complete elimination of low-ranked candidates, while αq controls the strength of the corresponding gate. Exact parameter settings are provided in Appendix. For a candidate batch B, ARC-SC defines the scenario coverage objective: 
+
+ASC (B) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+"
+
+1 − Y
+
+> x∈B
+
+(1 − rm(x)) 
+
+#
+
+. (8) For each predictive scenario m, 1 − Q
+
+> x∈B
+
+(1 − rm(x)) measures whether the batch contains at least one candidate with a strong response in that scenario. Consequently, redundant candidates provide diminishing additional value. If a selected candidate already covers scenario m, another candidate   
+
+> 2Although validity and support appear in both the scenario response and the risk score, they play distinct roles: the rank gates attenuate the scenario utility of weak candidates, whereas C(S)controls the aggregate risk exposure of the selected batch.
+
+6Algorithm 1 ARC-SC at closed-loop iteration t
+
+Require: Observed data Dt, candidate pool C, batch size B, number of anchors K, number of scenarios M , risk budget R
+
+Ensure: Recommended batch Bt
+
+1: Fit the target surrogate on Dyt and the validity model on Dvt
+
+2: Compute py (x), pv (x), ps(x), h(x), and c(x) for all x ∈ C 
+
+3: Compute rank gates gh(x), gv (x), and gs(x)
+
+4: Initialize S ← ∅
+
+▷ Stage 1: POF anchors 
+
+5: for k = 1 , . . . , K do 
+
+6: FR(S) ← { x ∈ C \ S : C(S ∪ { x}) ≤ R}
+
+7: Select ak by maximizing h(x) over FR(S); use the risk-penalized fallback if FR(S) = ∅
+
+8: S ← S ∪ { ak}
+
+9: end for 
+
+10: Banchor ← S 
+
+▷ Predictive scenario construction 
+
+11: Generate {f (m)}Mm=1 on C
+
+12: Compute T relax  
+
+> m
+
+, ψm(x), and rm(x) for all m and x ∈ C 
+
+▷ Stage 2: scenario-coverage completion 
+
+13: for ℓ = 1 , . . . , B − K do 
+
+14: Compute ∆SC (x | S ) for all x ∈ C \ S 
+
+15: FR(S) ← { x ∈ C \ S : C(S ∪ { x}) ≤ R}
+
+16: Select x⋆ℓ by maximizing ∆SC (x | S) over FR(S); use the risk-penalized fallback if 
+
+FR(S) = ∅
+
+17: S ← S ∪ { x⋆ℓ }
+
+18: end for 
+
+19: Bcover ← S \ B anchor 
+
+20: return Bt ← B anchor ∪ B cover 
+
+with a similar response contributes little additional coverage. The marginal gain of adding candidate 
+
+x to an existing partial batch S is 
+
+∆SC (x|S ) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+rm(x) Y
+
+> s∈S
+
+(1 − rm(s)) . (9) The marginal-gain expression admits a direct interpretation: rm(x) measures the strength of can-didate x under scenario m, whereas Q 
+
+> s∈S
+
+(1 − rm(s)) is the scenario mass not yet covered by the current partial batch. 2.7 RISK -C ONSTRAINED GREEDY BATCH OPTIMIZATION 
+
+Direct optimization of ASC (B) is combinatorial. ARC-SC therefore constructs the batch greedily: After selecting the anchor set S = Banchor , the remaining candidates are selected sequentially. At each step 3:
+
+x⋆ ∈ arg max  
+
+> x∈F R(S)
+
+∆SC (x | S ).
+
+The selected candidate is added S ← S ∪ { x⋆}. This process continues until |S| = B. Specifically, 
+
+S0 = Banchor . For ℓ = 1 , . . . , B − K, we select x⋆ℓ ∈ arg max x∈F R(Sℓ−1) ∆SC (x | S ℓ−1) and update Sℓ = Sℓ−1 ∪ { x⋆ℓ }. Then we define Bcover = {x⋆
+
+> 1
+
+, . . . , x ⋆B−K }, Bt = SB−K .
+
+The ARC-SC algorithm is summarized as Algorithm 1. 
+
+> 3
+
+If no candidate satisfies the risk budget, ARC-SC invokes the risk-penalized fallback rule defined in Ap-pendix. 
+
+73 THEORETICAL ANALYSIS 
+
+In this section our analysis concerns the one-round batch-selection problem. We analyze ARC-SC at a fixed closed-loop iteration, conditioning on the observed dataset and the finite candidate pool. The predictive scenarios, percentile-rank gates, and candidate responses are therefore treated as fixed during construction of the current batch. In particular, for every candidate x ∈ C and predictive scenario m ∈ { 1, . . . , M }, the scenario response defined in Section 2 satisfies 0 ≤ rm(x) ≤ 1.3.1 FROM MARGINAL VALID -H IT SELECTION TO BATCH SCENARIO COVERAGE 
+
+For a candidate x, let Hx = {v(x) = 1 } ∩ { y(x) ≥ T } denote the event that x is a valid target hit. The ideal current-round utility of a batch B is the posterior probability that at least one member of the batch succeeds: 
+
+F (B) = Pr [
+
+> x∈B
+
+Hx Dt
+
+!
+
+. (10) Suppose that the marginal valid-hit score h(x) = py (x)pv (x) is a calibrated marginal probability of 
+
+Hx and that the hit events are conditionally independent across candidates. Under these assumptions, 
+
+F (B) = 1 − Y
+
+> x∈B
+
+ 1 − h(x). (11) For a fixed batch size B, equation 11 is maximized by selecting the B largest values of h(x), exactly recovering the POF baseline defined in equation 4. In small-data inverse design, however, several candidates with high marginal valid-hit scores may be supported by similar predictive assumptions. Their marginal scores can therefore be large while their batch-level contributions are redundant. ARC-SC addresses this regime through the scenario-coverage surrogate equation 8. Because rm(x) includes a relaxed target response and rank-normalized gates, ASC is not asserted to be a calibrated estimate of F . Rather, it is a bounded batch utility designed to reward coverage of multiple predictive scenarios while discounting repeated cov-erage of the same scenarios. 3.2 SUBMODULARITY OF SCENARIO COVERAGE 
+
+The following proposition gives the central structural property of ARC-SC. 
+
+Proposition 1. The set function 
+
+ASC : 2 C → [0 , 1] 
+
+defined in equation 8 is normalized, monotone, and submodular. Proof. Normalization follows from the empty-product convention ASC (∅) = 0 . For a partial batch 
+
+S ⊆ C and a candidate x ∈ C \ S , the marginal gain is 
+
+∆SC (x | S ) = ASC 
+
+ S ∪ { x} − ASC (S) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+rm(x) Y
+
+> s∈S
+
+ 1 − rm(s). (12) Since all factors in equation 12 are nonnegative, ∆SC (x | S ) ≥ 0, which establishes monotonicity. Now consider S ⊆ T ⊆ C and x ∈ C \ T . Because 1 − rm(s) ∈ [0 , 1] ,
+
+Y
+
+> s∈S
+
+ 1 − rm(s) ≥ Y
+
+> s∈T
+
+ 1 − rm(s).
+
+Multiplying by rm(x) ≥ 0 and averaging over m gives 
+
+∆SC (x | S ) ≥ ∆SC (x | T ),
+
+which is the diminishing-returns condition for submodularity. 8Proposition 1 holds for any fixed response matrix whose entries satisfy rm(x) ∈ [0 , 1] . It therefore does not require the predictive scenarios to be exact samples from a correlated Gaussian-process posterior. The scenario-generation procedure affects the statistical interpretation of the objective, but not its submodular structure. Equation 12 also explains how ARC-SC reduces batch redundancy. Define the uncovered mass of scenario m after selecting S as Um(S) = Q
+
+> s∈S
+
+ 1 − rm(s). Then 
+
+∆SC (x | S ) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+Um(S)rm(x). (13) A candidate receives high marginal value when it responds strongly in scenarios that remain weakly represented by the current batch. Once a scenario has been strongly covered, its uncovered mass becomes small, and additional candidates with a similar response profile provide little further gain. For two candidates x and z, this redundancy discount can be written explicitly as 
+
+ASC ({x, z }) = ¯ r(x) + ¯ r(z) − O(x, z ),
+
+where ¯r(x) = 1
+
+> M
+
+PMm=1 rm(x) and O(x, z ) = 1
+
+> M
+
+PMm=1 rm(x)rm(z). The overlap term O(x, z )
+
+is large when the two candidates respond strongly in the same predictive scenarios. Thus, ARC-SC induces complementarity in predictive-scenario response space without requiring an explicit pairwise geometric-repulsion term between selected candidates. 3.3 GUARANTEE FOR ANCHORED GREEDY COMPLETION 
+
+Let A = Banchor be a fixed set of K POF anchors, and let k = B − K be the number of remaining batch positions. Conditional on A, define the residual coverage utility 
+
+GA(S) = ASC (A ∪ S ) − ASC (A). (14) The subtraction ensures that GA(∅) = 0 .
+
+Proposition 2. For any fixed anchor set A, the residual objective GA is normalized, monotone, and submodular with respect to S.Proof. Adding the same fixed set A to every argument preserves both monotonicity and diminish-ing marginal returns of ASC . Subtracting the constant ASC (A) establishes normalization without changing any marginal gain. Consider a fixed admissible completion pool F ⊆ C \ A , and assume that 1 ≤ k = B − K ≤ |F| .
+
+Let Sgreedy denote the set of k candidates obtained by repeatedly selecting an exact maximum-marginal-gain candidate from F. Let S⋆ ∈ arg max S⊆F |S|≤ k
+
+GA(S) be an optimal completion of the same anchor set over the same fixed candidate pool. 
+
+Corollary 1 (Greedy anchored completion) . For fixed anchors and a fixed admissible completion pool, 
+
+GA(Sgreedy ) ≥
+
+"
+
+1 −
+
+
+
+1 − 1
+
+k
+
+k#
+
+GA(S⋆) ≥
+
+
+
+1 − 1
+
+e
+
+
+
+GA(S⋆). (15) 
+
+Proof. By Proposition 2, GA is a normalized, monotone, submodular set function. The result fol-lows from the classical greedy approximation guarantee for monotone submodular maximization under a cardinality constraint (Nemhauser et al., 1978). A complete derivation is provided in Ap-pendix. Corollary 1 gives a conditional interpretation of the two-stage ARC-SC construction. Once the POF anchors are fixed, greedy scenario completion approximates the optimal residual scenario coverage achievable by the remaining B − K positions over the same fixed completion pool. The anchors preserve strong marginal opportunities, whereas the completion stage reduces scenario-response redundancy conditional on those anchors. 9Table 1: Summary of the frozen-oracle benchmark environments. The JARVIS response is negative formation energy per atom, such that larger values are preferred.                  
+
+> DATASET SAMPLES FEATURES THRESHOLD ORACLE R2SPEARMAN ρ
+> Superconductivity 21,263 580.0 0.913 0.956 JARVIS CFID 55,723 15 1.539 0.838 0.912
+
+The guarantee is conditional on a fixed admissible completion pool. In the implemented ARC-SC procedure, the admissible set changes with the current partial batch through the average risk-support constraint, and a penalized fallback is used when no risk-feasible extension exists. Consequently, Corollary 1 does not constitute a global approximation guarantee for the full dynamically risk-filtered algorithm. Further analysis is provided in Appendix. 
+
+## 4 EXPERIMENTS AND RESULTS 
+
+4.1 EXPERIMENTAL SETUP 
+
+Materials benchmarks and frozen oracles. We evaluate ARC-SC on two materials-property benchmarks: the UCI Superconductivity dataset (Hamidieh, 2018) and the JARVIS CFID dataset (Choudhary et al., 2020). The superconductivity task searches for designs with high critical tem-perature, whereas the JARVIS task searches for low formation energy per atom. For JARVIS, we negate the formation energy so that larger response values are preferred in both benchmarks. Because closed-loop optimization can recommend candidates that are not rows of the original datasets, we construct a deterministic frozen response oracle for each benchmark. Original dataset labels are used only for oracle construction and validation; all subsequent closed-loop evaluations, including newly generated candidates, use the frozen oracle response. Table 1 summarizes the benchmark environments. Data preprocessing, descriptor selection, oracle training, and held-out validation are detailed in Appendix A.3. The superconductivity oracle is an Extra-Trees regressor trained on five selected composition de-scriptors and achieves R2 = 0 .913 and Spearman ρ = 0 .956 on held-out data. The JARVIS oracle is a random-forest regressor trained on 15 selected CFID descriptors and achieves R2 = 0 .838 and 
+
+ρ = 0 .912 . The superconductivity target corresponds to the upper 15% of the frozen-oracle re-sponse distribution. For JARVIS, the upper-25% threshold is used because more extreme thresholds produce an almost entirely no-hit benchmark. 
+
+Failure mechanisms. We augment each frozen oracle with four controlled invalid-output mecha-nisms: feature interaction, smoothly varying low validity, off-manifold failure, and a hybrid mech-anism combining multiple sources of invalidity. Each mechanism is calibrated to nominal invalid rates of 0.2, 0.3, and 0.4. Exact definitions and calibration procedures are given in Appendix A.4. 
+
+Closed-loop protocol. Each run begins with n0 = 50 observations drawn from the bottom 65% ,
+
+75% , or 85% of the corresponding frozen-oracle response distribution. We then perform five closed-loop rounds with batch size B = 5 , yielding a total budget of 25 newly evaluated candidates. ARC-SC and the POF baseline use identical target-surrogate and validity-model classes under the same experimental configuration. POF selects all B = 5 candidates by descending marginal valid-hit score h(x) = py (x)pv (x). ARC-SC uses the same score to select K = 3 risk-admissible POF anchors and allocates the remaining two batch positions through scenario-coverage optimization. To assess stochastic variability, we use ten held-out seed IDs ( 5–14 ). For each benchmark, we evaluate four failure mechanisms, three invalid-rate levels, and three initialization settings, yielding 
+
+4 × 3 × 3 × 10 = 360 paired evaluation cases. Uniform sampling over descriptor bounds is used for all superconductivity experiments and for the JARVIS feature-interaction and low-validity mecha-nisms 4. For the standard uniform-pool protocol, a single candidate pool of N = 10 ,000 designs is 
+
+> 4In the 15-dimensional JARVIS descriptor space, combining global box sampling with the off-manifold and hybrid failure mechanisms creates a nearly degenerate search regime, we therefore use a closed-loop empirical trust-region generator. See detailed explain in Appendix
+
+10 Table 2: First-hit comparison against the POF baseline using ten seeds per condition. W/T/L denotes earlier-hit wins, ties, and later-hit losses. The conditional win fraction is computed over discordant pairs only. ∆eτhit < 0 favor ARC-SC. Intervals are 95% confidence intervals. 
+
+Dataset W/T/L Cond. win frac. Sign p ∆eτhit 
+
+Superconductivity 70/251/39 0.642 [0 .545 , 0.732] 0.004 −0.269 [ −0.539 , −0.025] 
+
+JARVIS CFID 49/272/39 0.557 [0 .447 , 0.663] 0.337 −0.117 [ −0.297 , 0.053] 
+
+generated for each configuration and round and supplied to both ARC-SC and POF, ensuring that differences arise solely from the acquisition strategy. 
+
+Evaluation and statistical analysis. Our primary metric is the first closed-loop round containing a newly queried valid target hit. Runs without a hit during the five-round horizon are assigned a censored value of six, 
+
+eτhit =
+
+τhit , if a hit is found ,
+
+6, otherwise . (16) We report the paired difference 
+
+∆eτhit = eτ ARC -SC hit − eτ POF hit , (17) for which negative values favor ARC-SC. A paired case is counted as a win, tie, or loss according to whether this difference is negative, zero, or positive. To quantify uncertainty, we report two complementary statistics. First, an exact two-sided sign test is applied to discordant first-hit pairs, testing whether ARC-SC wins and losses occur with equal probability. Second, we construct 95% confidence intervals for paired effects using 10 ,000 
+
+hierarchical bootstrap replicates that resample experimental-condition cells and then seed-level pairs within each sampled cell. As secondary endpoints, we report cumulative valid target hits and the invalid-evaluation rate. 4.2 OVERALL FIRST -H IT PERFORMANCE 
+
+Table 2 summarizes the aggregate paired results. On superconductivity, ARC-SC obtains 70 earlier first-hit outcomes, 251 ties, and 39 later outcomes. Among the 109 discordant pairs, ARC-SC wins 
+
+64 .2% of the comparisons, with an exact 95% confidence interval of [54 .5% , 73 .2%] and a two-sided sign-test value of p = 0 .004 . The mean paired censored first-hit effect is ∆eτhit = −0.269 , with hierarchical-bootstrap 95% confidence interval [−0.539 , −0.025] . Thus, both the win–loss imbal-ance and the average first-hit effect favor ARC-SC. The superconductivity improvement arises through both forms of first-hit advantage. ARC-SC finds a target when POF fails to find one within the budget in 41 cases, compared with 23 cases in the opposite direction; when both methods eventually succeed but in different rounds, ARC-SC is earlier in 29 cases and later in 16. ARC-SC also reduces the invalid-evaluation rate by an average of 5.9 percentage points, with a bootstrap interval entirely below zero. The cumulative number of valid target hits increases by 102 over the full grid, corresponding to a mean paired increase of 0.283 hits per run; its 95% interval [−0.064 , 0.667] includes zero, indicating that the clearest supported benefit is first-hit timing rather than cumulative discovery yield. On the mixed-pool JARVIS benchmark, ARC-SC obtains 49 earlier first-hit outcomes, 272 ties, and 39 later outcomes. The corresponding mean first-hit effect, ∆eτhit = −0.117 , 95% CI = [−0.297 , 0.053] , is directionally favorable but statistically inconclusive. Likewise, the exact sign test does not reject equal win and loss probabilities. ARC-SC nevertheless remains competitive across the 360 cases, producing 18 additional valid target hits in aggregate and a small mean reduction in invalid evaluations; both secondary-effect intervals include zero. We therefore interpret JARVIS as evidence of robustness rather than statistically established superiority. 11 4.3 DISCOVERY PROBABILITY ACROSS EXPERIMENTAL ROUNDS 
+
+Figure 2 shows the probability that a run has obtained at least one newly queried valid target hit by each experimental round. This visualization directly reflects the first-hit objective rather than cumulative optimization performance. 1 2 3 4 5Experimental round 0.0 0.1 0.2 0.3 0.4 0.5 0.6 First-hit probability      
+
+> Superconductivity
+> 12345Experimental round
+> JARVIS CFID
+> ARC-SC Ordinary POF
+
+Figure 2: First-hit probability as a function of experimental round. Lines show ARC-SC and POF baseline; shaded regions denote hierarchical-bootstrap 95% confidence intervals. Left: supercon-ductivity with shared uniform candidate pools. Right: JARVIS with the mixed candidate-pool pro-tocol. The results show that ARC-SC improves early target discovery on superconductivity with statistically significant gains in first-hit performance. On JARVIS, ARC-SC remains competitive. Although it does not achieve statistically significant superiority, it demonstrates robustness in the more challenging high-dimensional design space. For superconductivity, ARC-SC separates from POF immediately: the round-1 discovery probabili-ties are 15 .3% and 10 .0% , respectively, and by round 2 they are 23 .1% and 16 .4% . The correspond-ing paired differences are +5 .3 and +6 .7 percentage points, with bootstrap intervals excluding zero. The ARC-SC curve remains numerically above POF throughout the five-round horizon, reaching 
+
+35 .6% compared with 30 .6% at round 5. The JARVIS curves are closer. ARC-SC reaches a first-hit probability of 48 .1% by round 5, com-pared with 44 .4% for POF. The differences become progressively positive after the first round but their confidence intervals include zero. Importantly, the mixed candidate-pool protocol substan-tially reduces the degenerate no-hit behavior observed with global box sampling, allowing the off-manifold and hybrid mechanisms to contribute meaningful closed-loop comparisons rather than de-terministic ties. 4.4 BEHAVIOR ACROSS FAILURE MECHANISMS 
+
+The experiments also reveal that the value of scenario coverage depends on the failure structure. On superconductivity, the clearest advantage occurs under feature-interaction failures: ARC-SC records 37 wins, 33 ties, and 20 losses across 90 paired cases, while producing 98 additional valid target hits and reducing the invalid rate by 13.5 percentage points on average. Under low-validity failures, ARC-SC retains a favorable first-hit balance of 26/45/19 and again reduces invalid evaluations, although cumulative-hit performance is essentially unchanged. Hybrid and off-manifold conditions are dominated by ties, indicating that the benefit of scenario completion is concentrated in regimes where multiple plausible target opportunities remain accessible. For JARVIS, the mixed candidate-pool experiment produces nondegenerate comparisons across all four mechanisms. Under the trust-region protocol, ARC-SC obtains 10/73/7 first-hit W/T/L under off-manifold failure and 7/75/8 under the hybrid mechanism, while reducing invalid evaluations by approximately 10.1 and 5.2 percentage points, respectively. Under the shared uniform pool, 12 feature-interaction and low-validity mechanisms yield 15/62/13 and 17/62/11 first-hit W/T/L. These mechanism-level results are descriptive rather than individually powered hypothesis tests. 
+
+## 5 CONCLUSION 
+
+We introduced ARC-SC, an anchored risk-constrained scenario-coverage method for first-hit batch inverse design under experimental failure. Rather than constructing a batch solely from marginal candidate scores, ARC-SC uses the same marginal valid-hit criterion as the POF baseline to re-tain strong risk-admissible anchors, then allocates the remaining batch capacity to complementary predictive target scenarios. This construction preserves marginal exploitation while reducing redun-dancy when predictive uncertainty admits multiple plausible opportunities for target discovery. We showed that the ARC-SC scenario-coverage objective is normalized, monotone, and submodular. Consequently, for fixed anchors and a fixed admissible completion pool, greedy scenario completion inherits the classical approximation guarantee for cardinality-constrained submodular maximization. The result formalizes the diminishing-return structure underlying scenario coverage: candidates are valuable when they respond strongly in predictive scenarios that remain insufficiently represented by the current batch. Holdout-seed experiments on frozen-oracle superconductivity and JARVIS materials benchmarks provide complementary evidence for the proposed approach. On superconductivity, ARC-SC achieves a statistically supported reduction in censored first-hit round relative to the POF base-line, and simultaneously reduces invalid evaluations, reproducing the favorable behavior observed during development on multiple independent runs. On the higher-dimensional JARVIS benchmark, ARC-SC remains competitive and directionally favorable in first-hit performance, but less statisti-cally significant. Overall, these results support ARC-SC as a POF-preserving diversification strategy whose clearest benefit arises when meaningful alternative target opportunities remain accessible un-der predictive uncertainty, rather than as a uniformly superior replacement for marginal acquisition. Several directions follow naturally from these results. First, batch diversification may be better treated as an adaptive decision rather than a fixed design choice. More faithful posterior-scenario modeling, together with adaptive control of the anchor count and risk budget, could allow the degree of diversification to respond to model confidence and estimated redundancy among high-scoring candidates. This direction also connects to a broader view of scientific modeling in which uncer-tainty should be propagated coherently across interacting components rather than treated locally within individual predictions (Wang et al., 2024). For closed-loop discovery, this suggests jointly reasoning over target uncertainty, experimental validity, empirical support, and batch composition when deciding how much exploration is warranted. Second, the JARVIS experiments indicate that candidate generation and acquisition should not be viewed as independent components: when a high-dimensional proposal space is dominated by unsupported designs, candidate reachability can become more limiting than the acquisition rule itself. This observation connects scenario-aware se-lection with adaptive local and subspace-search methods (Eriksson et al., 2019; Papenmeier et al., 2022), and motivates policies that jointly adapt the reachable search region, risk allocation, and batch composition. Finally, the first-hit formulation points toward a broader objective for autonomous experimentation: optimizing the scientific discovery process under finite budgets, experimental fail-ures, and parallel capacity, rather than only the terminal objective value (Garnett et al., 2012; Volk & Abolhasani, 2024; Tom et al., 2024). Broader baseline comparisons and real closed-loop studies will be important for determining when such adaptive discovery policies provide the greatest practical benefit. 
+
+## REFERENCES 
+
+Javad Azimi, Alan Fern, and Xiaoli Fern. Batch bayesian optimization via simulation matching. 
+
+Advances in neural information processing systems , 23, 2010. Daniel Bergmann and Knut Graichen. Safe bayesian optimization under unknown constraints. In 
+
+2020 59th IEEE Conference on Decision and Control (CDC) , pp. 3592–3597. IEEE, 2020. Yuxin Chen and Andreas Krause. Near-optimal batch mode active learning and adaptive submodular optimization. In International Conference on Machine Learning , pp. 160–168. PMLR, 2013. 13 Kamal Choudhary, Kevin F Garrity, Andrew CE Reid, Brian DeCost, Adam J Biacchi, Angela R Hight Walker, Zachary Trautt, Jason Hattrick-Simpers, A Gilad Kusne, Andrea Centrone, et al. The joint automated repository for various integrated simulations (jarvis) for data-driven materials design. npj computational materials , 6(1):173, 2020. David Eriksson, Michael Pearce, Jacob Gardner, Ryan D Turner, and Matthias Poloczek. Scalable global optimization via local bayesian optimization. Advances in neural information processing systems , 32, 2019. Jacob R Gardner, Matt J Kusner, Zhixiang Eddie Xu, Kilian Q Weinberger, and John P Cunningham. Bayesian optimization with inequality constraints. In ICML , volume 2014, pp. 937–945, 2014. Roman Garnett, Yamuna Krishnamurthy, Xuehan Xiong, Jeff Schneider, and Richard Mann. Bayesian optimal active search and surveying. In Proceedings of the 29th International Coference on International Conference on Machine Learning , pp. 843–850, 2012. Javier Gonz´ alez, Zhenwen Dai, Philipp Hennig, and Neil Lawrence. Batch bayesian optimization via local penalization. In Artificial intelligence and statistics , pp. 648–657. PMLR, 2016. Kam Hamidieh. Superconductivty Data. UCI Machine Learning Repository, 2018. DOI: https://doi.org/10.24432/C53P47. Jos´ e Miguel Hern´ andez-Lobato, Michael Gelbart, Matthew Hoffman, Ryan Adams, and Zoubin Ghahramani. Predictive entropy search for bayesian optimization with unknown constraints. In 
+
+International conference on machine learning , pp. 1699–1707. PMLR, 2015. Riley J Hickman, Gary Tom, Yunheng Zou, Matteo Aldeghi, and Al´ an Aspuru-Guzik. Anubis: Bayesian optimization with unknown feasibility constraints for scientific experimentation. Digital Discovery , 4(8):2104–2122, 2025. Shogo Iwazaki, Tomohiko Tanabe, Mitsuru Irie, Shion Takeno, Kota Matsui, and Yu Inatsu. No-regret bayesian optimization with stochastic observation failures. In International Conference on Artificial Intelligence and Statistics , pp. 415–423. PMLR, 2025. Shali Jiang, Gustavo Malkomes, Geoff Converse, Alyssa Shofner, Benjamin Moseley, and Roman Garnett. Efficient nonmyopic active search. In International Conference on Machine Learning ,pp. 1714–1723. PMLR, 2017. Tarun Kathuria, Amit Deshpande, and Pushmeet Kohli. Batched gaussian process bandit optimiza-tion via determinantal point processes. Advances in neural information processing systems , 29, 2016. A Gilad Kusne, Heshan Yu, Changming Wu, Huairuo Zhang, Jason Hattrick-Simpers, Brian DeCost, Suchismita Sarker, Corey Oses, Cormac Toher, Stefano Curtarolo, et al. On-the-fly closed-loop materials discovery via bayesian active learning. Nature communications , 11(1):5966, 2020. Turab Lookman, Prasanna V Balachandran, Dezhen Xue, and Ruihao Yuan. Active learning in materials science with emphasis on adaptive sampling using uncertainties for targeted design. npj Computational Materials , 5(1):21, 2019. George L Nemhauser, Laurence A Wolsey, and Marshall L Fisher. An analysis of approximations for maximizing submodular set functions—i. Mathematical programming , 14(1):265–294, 1978. Leonard Papenmeier, Luigi Nardi, and Matthias Poloczek. Increasing the scope as you learn: Adap-tive bayesian optimization in nested subspaces. Advances in Neural Information Processing Sys-tems , 35:11586–11601, 2022. Amar Shah and Zoubin Ghahramani. Parallel predictive entropy search for batch global optimization of expensive objective functions. Advances in neural information processing systems , 28, 2015. Yunsheng Tian, Ane Zuniga, Xinwei Zhang, Johannes P D¨ urholt, Payel Das, Jie Chen, Wojciech Matusik, and Mina Konakovi´ c Lukovi´ c. Boundary exploration for bayesian optimization with unknown physical constraints. In Proceedings of the 41st International Conference on Machine Learning , pp. 48295–48320, 2024. 14 Gary Tom, Stefan P Schmid, Sterling G Baird, Yang Cao, Kourosh Darvish, Han Hao, Stanley Lo, Sergio Pablo-Garc´ ıa, Ella M Rajaonson, Marta Skreta, et al. Self-driving laboratories for chemistry and materials science. Chemical Reviews , 124(16):9633, 2024. Amanda A Volk and Milad Abolhasani. Performance metrics to unleash the power of self-driving labs in chemistry and materials science. Nature communications , 15(1):1378, 2024. Yuki K Wakabayashi, Takuma Otsuka, Yoshiharu Krockenberger, Hiroshi Sawada, Yoshitaka Taniyasu, and Hideki Yamamoto. Bayesian optimization with experimental failure for high-throughput materials growth. npj Computational Materials , 8(1):180, 2022. Chenxi Wang, Jihui Zhao, Jingjing Zheng, Barak Raveh, Xuming He, and Liping Sun. Bayesian occam’s razor to optimize metamodeling for complex biological systems. bioRxiv , pp. 2024–05, 2024. Jian Wu and Peter Frazier. The parallel knowledge gradient method for batch bayesian optimization. 
+
+Advances in neural information processing systems , 29, 2016. Linhan Wu, Chenxi Wang, Chuhan Yang, Zhengwei Yang, and Yuyang Liu. Matformbench: A benchmarking evaluation framework for target-driven materials formulation. arXiv preprint arXiv:2605.26741 , 2026. Dezhen Xue, Prasanna V Balachandran, John Hogden, James Theiler, Deqing Xue, and Turab Look-man. Accelerated search for materials with targeted properties by adaptive design. Nature com-munications , 7(1):11241, 2016. 
+
+## A APPENDIX 
+
+A.1 IMPLEMENTATION AND REPRODUCIBILITY 
+
+This section gives the implementation details needed to reproduce the acquisition rules used in Sec-tion 4. We distinguish the shared predictive infrastructure from the batch-selection rules. ARC-SC and the POF baseline use the same target surrogate, validity model, observed data, target threshold, and—for the uniform-pool experiments—the same finite candidate pool. The POF baseline is the method defined in equation 4: it selects the B largest marginal valid-hit scores h(x) = py (x)pv (x)
+
+and does not apply ARC-SC’s support-based risk filter. ARC-SC instead uses h(x) for risk-admissible anchoring and uses scenario coverage for the remaining positions. A.1.1 UNIFORM CANDIDATE -P OOL CONSTRUCTION 
+
+For the uniform-pool experiments, bounds are inferred independently for every selected descriptor from the complete benchmark reference feature matrix. If ℓj and uj are the observed minimum and maximum of descriptor j, the padded search interval is 
+
+[ℓj − ρb(uj − ℓj ), u j + ρb(uj − ℓj )] , ρb = 0 .05 . (18) At every round, N = 10 ,000 candidates are sampled independently and uniformly from this axis-aligned box. In a paired uniform-pool case, the pool is sampled once using the condition- and round-specific seed and is supplied unchanged to ARC-SC and POF. Thus, the two methods are compared on exactly the same candidates. This uniform protocol is used for all superconductivity experiments and for the JARVIS feature-interaction and low-validity mechanisms. A.1.2 CLOSED -L OOP JARVIS T RUST -R EGION CANDIDATE POOL 
+
+In the 15-dimensional JARVIS descriptor space, global uniform sampling becomes strongly domi-nated by unsupported candidates under the off-manifold and hybrid failure mechanisms. For these two mechanisms in the main mixed-pool JARVIS experiment, we therefore generate candidates from a closed-loop empirical trust region. At the start of each round, let Ot denote the rows observed by the current method and let Ovt ⊆Ot denote its valid rows. Candidate anchors are sampled uniformly with replacement from Ovt
+
+15 whenever at least one valid row is available; otherwise all observed rows are used. For descriptor j,let IQR t,j be the interquartile range among the currently observed designs. The local perturbation scale is 
+
+st,j = 0 .05 gIQR t,j , (19) where a degenerate observed IQR is replaced first by the corresponding IQR of the benchmark reference features and, if necessary, by 10 −3 times the full reference range. Given a sampled anchor 
+
+a, a candidate is generated as 
+
+xj = aj + ϵj , ϵj ∼ N (0 , s 2 
+
+> t,j
+
+), (20) then clipped to the unpadded minimum and maximum of the benchmark reference features. Dupli-cate candidate rows are removed. The trust-region pool uses only feature values and observed validity outcomes available to that method at the start of the round. It does not use held-out target labels, oracle values for unqueried candidates, future observations, or observations generated by the competing method. Consequently, the trust-region pools are trajectory dependent and need not be identical between ARC-SC and POF. These cases therefore compare complete closed-loop policies rather than two acquisition rules on a fixed common pool. This distinction is explicit in our interpretation of the JARVIS results. A.1.3 TARGET AND VALIDITY MODELS 
+
+At every round, the target surrogate is refitted using only valid observations. The reported experi-ments use a Gaussian-process regressor after standardizing the input descriptors. Its kernel is 
+
+k(x, x ′) = C k Mat´ ern ,ν =5 /2(x, x ′) + kwhite (x, x ′), (21) where the constant-kernel amplitude has bounds [10 −3, 10 3], the initial Mat´ ern length scale is one, and the white-noise level is initialized at 10 −3. The regressor normalizes the target internally and uses two optimizer restarts. Predictive means and standard deviations are denoted by μ(x) and 
+
+σy (x).The validity model is fitted to all observed valid/invalid labels. The experiments use a random-forest classifier with 300 trees, square-root feature subsampling, balanced-subsample class weighting, and the condition-specific random seed. If only one validity class has been observed, the implementation uses a constant-probability model until both classes are available. ARC-SC and POF use the same model classes and model seeds within each paired case. A.1.4 EMPIRICAL -S UPPORT SCORE 
+
+Let ex denote a candidate after standardizing each descriptor using the mean and standard deviation of the currently observed designs. Let Nk(x) be its k nearest observed designs in Euclidean distance. With k = 5 ,
+
+dkNN (x) = 1
+
+k
+
+X 
+
+> xi∈N k(x)
+
+∥ex − exi∥2. (22) The scale τs is recomputed at each round as the empirical 75 th percentile of the corresponding five-neighbor distances evaluated on the observed designs, with a numerical lower bound of 10 −6. The support score is 
+
+ps(x) = exp 
+
+
+
+− dkNN (x)2
+
+2τ 2
+
+> s
+
+
+
+. (23) This is a relative empirical-support score rather than a calibrated probability. A.1.5 PREDICTIVE SCENARIOS , R ANK GATES , AND RISK FALLBACK 
+
+The implementation can draw correlated Gaussian-process samples for small candidate pools. Auto-matic correlated sampling is enabled only when the candidate pool contains at most 256 candidates. Since all reported experiments use N = 10 ,000 , they use independent marginal draws 
+
+f (m)(xj ) = μ(xj ) + σy (xj )zm,j , zm,j 
+
+> iid
+
+∼ N (0 , 1) , (24) 16 Table 3: Algorithm and evaluation settings. Dataset-specific entries are shown explicitly. Quantity Superconductivity JARVIS CFID Initial observations n0 50 50 Batch size B / rounds 5 / 5 5 / 5 POF anchors K 3 3Candidate-pool size N 10,000 10,000 Predictive scenarios M 64 64 Target quantile 0.85 0.75 Risk budget R 0.40 0.80 Uniform bounds padding ρb 0.05 0.05 Support neighbors k 5 5Support-scale quantile 0.75 0.75 Relaxation fraction π 0.05 0.05 Effective temperature τ 0.05 0.05 Rank floors (ϵh, ϵ v , ϵ s) (.05 , . 05 , . 05) (.05 , . 05 , . 05) 
+
+Rank exponents (αh, α v , α s) (1 , . 5, . 5) (1 , . 5, . 5) 
+
+Fallback coefficient λR 10 10 Correlated-sampling limit 256 256 Seed IDs 5–14 5–14 Main candidate pools uniform mixed; see Appendix A.1.2 Trust-region noise scale – 0.05 × observed IQR for m = 1 , . . . , M and j = 1 , . . . , N . These samples preserve candidate-wise predictive means and variances but not cross-candidate posterior covariance. For the greater-than targets used here, 
+
+T relax  
+
+> m
+
+= min 
+
+n
+
+T, Q 1−π
+
+ {f (m)(x) : x ∈ C} o
+
+, π = 0 .05 , (25) and 
+
+ψm(x) = sigm 
+
+ f (m)(x) − T relax 
+
+> m
+
+τ
+
+
+
+. (26) The effective soft-response temperature in all reported runs is τ = 0 .05 .For a score vector q(x) over a pool of size N , average ranks are used for ties, the best candidate receives rank percentile one, and the worst receives 1/N . The gates are 
+
+gq (x) = [ ϵq + (1 − ϵq )Rq (x)] αq , q ∈ { h, v, s }, (27) with 
+
+ϵh = ϵv = ϵs = 0 .05 , αh = 1 , αv = 0 .5, αs = 0 .5. (28) For a partial batch S and candidate x, define the risk violation 
+
+VR(x | S ) = [ C(S ∪ { x}) − R]+ . (29) If a risk-feasible extension exists, ARC-SC maximizes the stage-specific desirability over the feasi-ble extensions: h(x) for POF anchoring and ∆SC (x | S ) for scenario completion. If none exists, it selects 
+
+x⋆ ∈ arg max  
+
+> x∈C\S
+
+{D(x | S ) − λRVR(x | S )} , λR = 10 . (30) The fallback ensures that a full batch can always be returned, but it means that R is enforced when-ever a feasible extension exists rather than as an unconditional terminal-batch guarantee. A.1.6 HYPERPARAMETERS USED IN THE EXPERIMENTS 
+
+The JARVIS risk budget R = 0 .80 is a dataset-specific operating setting held fixed across the reported JARVIS grids. 17 A.2 PROOF OF GREEDY -C OMPLETION GUARANTEE 
+
+Throughout this section, the observed dataset, finite candidate pool, predictive scenarios, and re-sponse matrix are conditioned upon and treated as fixed. A.2.1 GREEDY -A PPROXIMATION DERIVATION 
+
+Let A be a fixed anchor set and let k = B − K ≥ 1. Over a fixed admissible completion pool 
+
+F ⊆ C \ A , define 
+
+GA(S) = ASC (A ∪ S ) − ASC (A). (31) As established in Proposition 2, GA is normalized, monotone, and submodular. Let Si be the greedy completion after i selections, with S0 = ∅, and let 
+
+S⋆ ∈ arg max 
+
+> S⊆F |S|≤ k
+
+GA(S) (32) be an optimal completion. At step i, monotonicity and submodularity imply 
+
+GA(S⋆) − GA(Si−1) ≤ GA(S⋆ ∪ S i−1) − GA(Si−1) (33) 
+
+≤ X
+
+> x∈S ⋆\S i−1
+
+∆A(x | S i−1), (34) where ∆A is the marginal gain of the residual objective. Since |S ⋆| ≤ k, at least one candidate in the sum has marginal gain no smaller than 
+
+GA(S⋆) − GA(Si−1)
+
+k . (35) The exact greedy candidate has at least this marginal gain, and hence 
+
+GA(Si) − GA(Si−1) ≥ GA(S⋆) − GA(Si−1)
+
+k . (36) Define the remaining gap 
+
+Ei = GA(S⋆) − GA(Si). (37) Equation equation 36 gives 
+
+Ei ≤
+
+
+
+1 − 1
+
+k
+
+
+
+Ei−1. (38) Recursing for k steps and using GA(∅) = 0 yields 
+
+Ek ≤
+
+
+
+1 − 1
+
+k
+
+k
+
+GA(S⋆). (39) Therefore, 
+
+GA(Sk) ≥
+
+"
+
+1 −
+
+
+
+1 − 1
+
+k
+
+k#
+
+GA(S⋆) ≥
+
+
+
+1 − 1
+
+e
+
+
+
+GA(S⋆), (40) which is the guarantee stated in Corollary 1. This result compares greedy completion only with the optimal completion of the same fixed anchors over the same fixed admissible pool. A.3 FROZEN -O RACLE BENCHMARK CONSTRUCTION 
+
+The frozen-oracle protocol separates response-surface construction from closed-loop acquisition evaluation. Original dataset labels are used to select descriptors, train candidate regression mod-els, and assess held-out quality. Once an oracle is selected, its predictions are frozen and used as the benchmark response for both existing reference rows and newly generated candidates. The closed-loop algorithms never alternate between original labels and oracle predictions. 18 Table 4: Held-out superconductivity oracle performance. Model R2 RMSE MAE Spearman ρ
+
+Extra Trees 0.9128 10.0184 5.6564 0.9556 Random forest 0.9095 10.2057 5.8667 0.9535 Hist. gradient boosting 0.8932 11.0899 6.8611 0.9352 A.3.1 UCI S UPERCONDUCTIVITY BENCHMARK 
+
+The source table contains 21,263 rows, 81 numerical composition descriptors, and the critical-temperature target. Rows containing missing numerical values are removed; no rows were removed in the downloaded table. An 80/20 split with random seed 42 is formed before descriptor selection. Each descriptor is scored using three training-only statistics: absolute Spearman correlation with the target, mutual information, and Extra-Trees feature importance. Each statistic is converted to a percentile rank and the three ranks are averaged. The selector prioritizes a prespecified list of physically interpretable descriptors and excludes a candidate if its absolute Spearman correlation with any already selected descriptor exceeds 0.95. The selected five descriptors are 1. wtd mean Valence ,2. wtd std ThermalConductivity ,3. wtd std atomic radius ,4. wtd entropy atomic mass , and 5. wtd std fie .Three oracle candidates are trained on the selected descriptors: a random forest with 800 trees, an Extra-Trees regressor with 800 trees, and histogram gradient boosting with 800 iterations, learning rate 0.04, and 31 leaf nodes. Models are ordered primarily by held-out Spearman correlation and secondarily by R2. Table 4 reports the held-out metrics. Extra Trees is selected as the frozen oracle. The superconductivity discovery threshold is the 0.85 quantile of the frozen-oracle predictions over the reference dataset, which equals T = 80 .0 in the reported benchmark. A.3.2 JARVIS CFID B ENCHMARK 
+
+The JARVIS CFID table contains 55,723 rows. Expanding the stored CFID vectors produces 1,543 candidate numerical descriptor columns. The original formation energy per atom is transformed as 
+
+y = −formation energy per atom , (41) so that both benchmarks use a greater-than target. The data are divided into an 80/20 train/test split with random seed 42. Missing descriptor values are handled by median imputation inside the oracle pipelines. Descriptor scores again average percentile ranks of absolute Spearman correlation, mutual infor-mation, and Extra-Trees importance. To control feature-selection cost, scoring uses at most 20,000 training rows. The 250 highest-scoring descriptors are considered sequentially, and candidates with absolute Spearman correlation greater than 0.98 with an already selected descriptor are excluded. The selected descriptors are             
+
+> cfid 0048 ,cfid 0124 ,cfid 0240 ,cfid 0168 ,cfid 0075 ,cfid 0384 ,
+> cfid 0405 ,cfid 0324 ,cfid 0236 ,cfid 0189 ,cfid 0345 ,cfid 0134 ,
+> cfid 0361 ,cfid 0505 , and cfid 0183 .
+
+The candidate oracles are a 700-tree Extra-Trees regressor, a 500-tree random forest, and histogram gradient boosting with 700 iterations, learning rate 0.04, and 31 leaf nodes. Each pipeline uses median imputation. Table 5 reports the held-out metrics. The random forest is selected as the frozen JARVIS oracle. 19 Table 5: Held-out JARVIS oracle performance. Model R2 RMSE MAE Spearman ρ
+
+Random forest 0.8375 0.4320 0.2518 0.9121 Extra Trees 0.8311 0.4404 0.2531 0.9088 Hist. gradient boosting 0.8239 0.4498 0.2828 0.9002 A.4 SYNTHETIC FAILURE MECHANISMS 
+
+The source datasets provide target properties but not controlled experimental-failure labels. We therefore apply a deterministic synthetic failure mask to the frozen-oracle response. All mechanisms are target independent: they depend on descriptor-space geometry and hidden feature interactions, while the frozen oracle separately determines the raw target value. Let x be robustly standardized using the component-wise median and interquartile range of the full reference feature matrix. If an interquartile range is numerically zero, the standard deviation is used, followed by a fallback scale of one. Denote the standardized vector by ¯x ∈ Rd. For every experimental condition, three random unit vectors w1, w 2, w 3 are generated from its deterministic seed, and 
+
+zj = ¯ x⊤wj , j = 1 , 2, 3. (42) A.4.1 OFF -M ANIFOLD FAILURE 
+
+A ten-nearest-neighbor model is fitted to the robustly standardized reference data, and dman (x) is the mean neighbor distance. Let d0.8 be the 80 th percentile and sd the standard deviation of reference distances. The off-manifold risk is 
+
+rdist (x) = sigm 
+
+ dman (x) − d0.8
+
+sd
+
+
+
+. (43) A.4.2 LOW -V ALIDITY -P ROBABILITY FAILURE 
+
+The smoothly varying nonlinear risk is 
+
+rnonlin (x) = sigm 
+
+
+
+0.7 sin z1 + 0 .3 cos z2 + 0 .15 z1z2
+
+√d
+
+
+
+. (44) This mechanism creates a hidden validity landscape that is not reducible to distance from the refer-ence manifold. A.4.3 FEATURE -I NTERACTION FAILURE 
+
+The interaction mechanism uses 
+
+rint (x) = sigm 
+
+
+
+0.70 z1z2
+
+√d + 0 .20 |z3| + 0 .10 max {z1 − z2, 0}
+
+
+
+. (45) It represents a hidden process window governed by combinations of descriptor directions rather than by a single coordinate. A.4.4 HYBRID FAILURE 
+
+The hybrid risk is the weighted average 
+
+rhyb (x) = 0 .60 rdist (x) + 0 .25 rnonlin (x) + 0 .15 rint (x). (46) The weights sum to one. 20 A.4.5 CALIBRATION TO A NOMINAL INVALID RATE 
+
+For any selected risk function r(x) and nominal invalid rate ρ ∈ { 0.2, 0.3, 0.4}, the deterministic threshold is 
+
+θρ = Q1−ρ
+
+ {r(x) : x ∈ X ref }. (47) A queried candidate is invalid when r(x) ≥ θρ. Its raw frozen-oracle response is retained for diagnostics, but the observed target is set to missing and the validity label is set to zero. Calibration is performed separately for every dataset, mechanism, nominal invalid rate, and seed. Because empirical quantiles can contain ties, the achieved reference invalid rate is approximately, rather than necessarily exactly, ρ.The four synthetic failure mechanisms represent qualitatively different sources of experimental in-validity. Low-validity failure creates nonlinear regions of design space in which experiments are intrinsically less likely to succeed. Feature-interaction failure represents hidden process constraints that arise from combinations of otherwise individually plausible descriptors. Off-manifold failure penalizes extrapolative candidates that lie far from the empirical distribution of known designs. Fi-nally, the hybrid mechanism combines these effects to represent experimental environments in which invalidity may arise from multiple causes. Together, these mechanisms test whether an acquisition strategy remains robust to local feasibility structure, variable interactions, extrapolation risk, and their combination. A.5 EXPERIMENTAL PROTOCOL AND STATISTICAL ANALYSIS 
+
+A.5.1 HOLDOUT -S EED EVALUATION GRID 
+
+The results reported in the main paper use the seed IDs 5, . . . , 14 ; Each dataset combines four failure mechanisms, three nominal invalid rates, three initialization quantiles, and ten seed IDs, 4 × 3 × 3 ×
+
+10 = 360 paired evaluation cases. Each run begins with n0 = 50 reference designs sampled without replacement from rows whose frozen-oracle response lies below the specified initialization quantile (0.65 , 0.75 , or 0.85 ), followed by five closed-loop rounds of batch size five. For the shared uniform-pool protocol, ARC-SC and POF receive the same initial data, frozen oracle, failure mechanism, target threshold, candidate pool, and model seeds. The candidate pool at round t
+
+is generated once from the common condition seed and then passed to both methods. For the JARVIS trust-region mechanisms, the initial condition and failure environment remain paired, but candidate pools are generated from each method’s own observed trajectory as described in Appendix A.1.2. The first-hit metric is computed only over newly queried rounds 1–5. Initial target-level observa-tions, when present, are recorded diagnostically but do not count as a closed-loop first hit. This matters for JARVIS when the initialization quantile is 0.85 while the target quantile is 0.75 .A.5.2 PRIMARY AND SECONDARY ENDPOINTS 
+
+Let H = 5 denote the closed-loop horizon. The censored first-hit round is 
+
+eτhit =
+
+τhit , if a newly queried hit is found ,H + 1 = 6 , otherwise . (48) The paired first-hit effect is 
+
+∆eτhit = eτ ARC -SC hit − eτ POF hit , (49) so negative values favor ARC-SC. A paired run is an earlier-hit win, tie, or later-hit loss according to whether this difference is negative, zero, or positive. Secondary effects are 
+
+∆Nhit = N ARC -SC hit − N POF hit , (50) and 
+
+∆rinvalid = rARC -SC invalid − rPOF invalid , (51) where positive ∆Nhit and negative ∆rinvalid favor ARC-SC. 21 A.5.3 EXACT SIGN TEST AND HIERARCHICAL BOOTSTRAP 
+
+For the sign test, ties are removed and the number of ARC-SC wins among the discordant pairs is tested against a Binomial( W + L, 0.5) null model. The main paper reports a two-sided exact 
+
+p-value and an exact 95% confidence interval for the conditional win fraction W/ (W + L).To quantify effect-size uncertainty while respecting the factorial design, we use a two-level hierar-chical bootstrap with 10,000 replicates. The 36 experimental-condition cells are defined by failure mechanism, nominal invalid rate, and initialization quantile. Each bootstrap replicate (i) samples 36 condition cells with replacement and then (ii) resamples the ten paired seed-level observations with replacement within each sampled cell. The statistic is computed within each resampled cell and then averaged across the sampled cells. This procedure is used for the paired first-hit, cumulative-hit, invalid-rate, and discovery-by-round intervals. It therefore reflects variation over both the prespec-ified condition grid and stochastic repeats rather than treating all 360 rows as homogeneous IID observations. 22

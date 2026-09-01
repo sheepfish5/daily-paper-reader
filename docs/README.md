@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-30</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-01</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 34 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 24 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>22</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>12</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-30 23:16:46 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-01 22:25:31 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,10 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共读34篇论文，精读22篇、速读12篇，核心聚焦LLM推理效率与分布式系统优化。</p>
-<p>最值得关注的两项高分工作：Minima-KV用混合格式分页注意力实现KV缓存压缩，ResiSpec通过残差分布塑造增强多候选投机采样，二者均达满分10分。</p>
-<p>后续可优先深挖KV缓存压缩与投机采样的实际落地效果，再结合分布式推理带宽与通信的速读内容，构建更完整的推理优化视野。</p>
+<p>今日共生成 24 篇推荐（精读 12 篇，速读 12 篇）</p>
+<p>精读：《Spicing up Genetic Netlist Generation with LLMs》（9.0/10）, 《FABRICA: Agentic CUDA-to-CSL Translation and Optimization for Wafer-Scale Systems》（9.0/10）</p>
+<p>速读：《ATLAS: Scaffold-Free Algorithm Synthesis by LLMs via Embedding-Guided Quality-Diversity Search》（8.0/10）, 《When Entropy Is Not Enough: Reclaiming Lost Semantics in LLM Output Length Prediction》（8.0/10）, 《DB-SpMSpV: Dual-View Blocked Sparse Matrix-Sparse Vector Multiplication for Dynamic GPU Workloads》（8.0/10）</p>
+<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +74,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">22 篇</strong>
+    <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Minima-KV: Retention-Preserving KV Cache Compression with Mixed-Format Paged Attention">Minima-KV: Retention-Preserving KV Cache Compression with Mixed-Format Paged Attention</span></li><li><span class="dpr-home-dashboard-paper-title" title="ResiSpec: Enhancing Multi-Candidate Speculative Sampling via Residual Distribution Shaping">ResiSpec: Enhancing Multi-Candidate Speculative Sampling via Residual Distribution Shaping</span></li><li><span class="dpr-home-dashboard-paper-title" title="LLM4LLM: Bridging Kernel Benchmarks and Real Deployment via Closed-Loop Agentic Optimization">LLM4LLM: Bridging Kernel Benchmarks and Real Deployment via Closed-Loop Agentic Optimization</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Spicing up Genetic Netlist Generation with LLMs">Spicing up Genetic Netlist Generation with LLMs</span></li><li><span class="dpr-home-dashboard-paper-title" title="FABRICA: Agentic CUDA-to-CSL Translation and Optimization for Wafer-Scale Systems">FABRICA: Agentic CUDA-to-CSL Translation and Optimization for Wafer-Scale Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Trajectory-Level Speculative Decoding for Diffusion Language Models">Trajectory-Level Speculative Decoding for Diffusion Language Models</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>20</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -89,9 +90,9 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="When Does Distributed AI Inference Need More Wide-Area Bandwidth? A Co-Design Evaluation of Optical, Packet, and Software Levers">When Does Distributed AI Inference Need More Wide-Area Bandwidth? A Co-Design Evaluation of Optical, Packet, and Software Levers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Collective Communication for Distributed LLM Systems: Planning, Runtime Adaptation, and Computation Coordination">Collective Communication for Distributed LLM Systems: Planning, Runtime Adaptation, and Computation Coordination</span></li><li><span class="dpr-home-dashboard-paper-title" title="LOCAL: Enabling Learning On-device Contiguously for Agent LLMs">LOCAL: Enabling Learning On-device Contiguously for Agent LLMs</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ATLAS: Scaffold-Free Algorithm Synthesis by LLMs via Embedding-Guided Quality-Diversity Search">ATLAS: Scaffold-Free Algorithm Synthesis by LLMs via Embedding-Guided Quality-Diversity Search</span></li><li><span class="dpr-home-dashboard-paper-title" title="When Entropy Is Not Enough: Reclaiming Lost Semantics in LLM Output Length Prediction">When Entropy Is Not Enough: Reclaiming Lost Semantics in LLM Output Length Prediction</span></li><li><span class="dpr-home-dashboard-paper-title" title="DB-SpMSpV: Dual-View Blocked Sparse Matrix-Sparse Vector Multiplication for Dynamic GPU Workloads">DB-SpMSpV: Dual-View Blocked Sparse Matrix-Sparse Vector Multiplication for Dynamic GPU Workloads</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">dse <strong>6</strong></span><span class="dpr-home-dashboard-tag">li <strong>6</strong></span></div>
 </section>
 </div>
 

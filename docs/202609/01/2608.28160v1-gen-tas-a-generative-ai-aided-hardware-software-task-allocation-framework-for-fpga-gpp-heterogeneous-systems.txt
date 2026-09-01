@@ -1,0 +1,214 @@
+Title: Gen-TAS: A Generative AI-Aided Hardware-Software Task Allocation Framework for FPGA-GPP Heterogeneous Systems
+
+URL Source: https://arxiv.org/pdf/2608.28160v1
+
+Published Time: Mon, 31 Aug 2026 00:48:25 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+1
+
+# Gen-TAS: A Generative AI-Aided Hardware-Software Task Allocation Framework for FPGA-GPP Heterogeneous Systems 
+
+Mary Kong † , Student Member, IEEE , Yuqin Zhao † , Semih Vazgecen ,Cristian Sestito , Member, IEEE , and Themis Prodromakis , Senior Member, IEEE 
+
+Abstract —FPGA-GPP heterogeneous systems combine soft-ware flexibility with the performance and energy efficiency of reconfigurable hardware. However, determining which appli-cation tasks should execute on the GPP or FPGA requires extensive expertise and design-space exploration, particularly when user objectives vary across latency, communication, re-source utilisation, and power. This paper proposes Gen-TAS, a knowledge-grounded LLM framework for user-specific FPGA-GPP task allocation. By combining task-graph analysis with RAG, Gen-TAS grounds LLM reasoning in historical implemen-tation knowledge and generates multiple explainable strategies tailored to the specified objectives. Human-in-the-loop selection and a deterministic backend connect LLM-generated decisions to reproducible FPGA SoC implementations. Experiments on CNN and SDR workloads across multiple LLMs demonstrate stable, requirement-driven allocation. Under latency-oriented ob-jectives, implementations following the selected strategies achieve speedups of up to 2.45 × and 92.53 ×, respectively, relative to the corresponding all-GPP baselines while other objectives select strategies that trade some acceleration performance for FPGA-GPP communication, resource utilisation, or FPGA power. 
+
+Index Terms —Field-programmable gate arrays, agentic AI, hardware-software co-design, large language models, retrieval-augmented generation. 
+
+I. I NTRODUCTION 
+
+# HETEROGENEOUS field-programmable gate array (FPGA)-general-purpose processor (GPP) systems combine the programmability of software execution with the performance and energy efficiency of reconfigurable hardware. This complementary architecture is well suited to embedded acceleration, allowing control-oriented tasks to execute on the GPP while latency-, throughput-, and power-critical functions are mapped to FPGA-based custom datapaths [1]. FPGA acceleration has demonstrated substantial benefits for Deep Neural Network (DNN) and Convolutional Neural Network (CNN) [2], [4], sparse and resource-aware neural architectures [5], and software-defined radio (SDR) workloads [20]. However, identifying an effective allocation 
+
+> †
+
+Yuqin Zhao and Mary Kong contributed equally to this work. Correspond-ing author: Yuqin Zhao (email:yzhao8@ed.ac.uk) 
+
+This work was supported by the UKRI-EPSRC APRIL AI Hub (EP/Y029763/1) and the 2026 Google DeepMind Research Ready Scheme (GDMRR-2526-2-107), supported by Google DeepMind, The Hg Foundation, DSIT, and the Royal Academy of Engineering. The authors are with the Centre for Electronics Frontiers, Institute for Integrated Micro and Nano Systems, School of Engineering, University of Edinburgh, UK. TABLE I COMPARISON WITH FPGA AND FPGA-GPP PARTITIONING METHODS .
+
+Method Platform / Scope AI / Knowledge Limitation or differentiator 
+
+EcoSys [15] FPGA-GPP/ DNN video analytics None/ profiling and analytical models Application-specific and profiling-based; limited requirement interpretation StreamBlocks [16] FPGA-GPP/ streaming tasks None/ execution profiles Profile-guided task parallelism; restricted to streaming applications CariPy [6] FPGA/ accelerator generation Generative AI/ knowledge base Hardware-generation focused; no HW/SW boundary reasoning or heterogeneous deployment SECDA-DSE [8] FPGA/ HLS accelerator DSE Generative AI/ KB and RAG Accelerator-template DSE; no general HW/SW task allocation 
+
+Gen-TAS (This Work) 
+
+FPGA-GPP/ function-level allocation Agentic AI/ KB and RAG Requirement-driven; explainable allocation and deterministic implementation 
+
+of application tasks between the GPP and FPGA remains a significant design challenge. Hardware-software partitioning directly affects latency, re-source utilisation, memory access, communication overhead, interface design, and system-level performance. Prior codesign studies show that mapping and scheduling decisions strongly influence the quality of heterogeneous implementations [9], [10]. In practice, designers must analyse source code, identify computation stages and dependencies, estimate hardware and software costs, explore different mappings, and repeatedly interact with FPGA implementation tools [11]. This process becomes more difficult when user requirements vary, since latency-oriented, resource-constrained, and power-aware de-signs may require different allocation strategies. Existing approaches have addressed related parts of this problem, but not the complete requirement-driven FPGA-GPP allocation flow. FPGA-GPP works such as EcoSys and Stream-Blocks explore hardware-software partitioning using profiling, analytical models, or task-parallel execution information [15], [16]. FPGA accelerator frameworks, including Agamotto and SECDA-DSE, focus on accelerator optimisation or design-space exploration for specific FPGA-oriented implementations [3], [8]. Recent LLM-assisted EDA methods further show the potential of generative AI for hardware design generation, EDA automation, and FPGA accelerator exploration [6], [7], [13], [14], [17]. Nevertheless, Table I shows that existing state-of-the-art methods remain application-specific, FPGA-centric, or focused on design generation rather than general FPGA-GPP task allocation. In this work, we propose Gen-TAS, an LLM-assisted frame-work for requirement-driven, function-level task allocation across FPGA and GPP execution domains. As shown in arXiv:2608.28160v1 [cs.AR] 28 Aug 2026 2Inputs 
+
+User Requirements 
+
+Application HLS C/C++ Source 
+
+Knowledge Base 
+
+Agentic AI Strategy Generation 
+
+Task & Dataflow Analysis RAG Retrieval 
+
+> LLM
+
+Candidate Allocation Strategies P1 
+
+GGFFG 
+
+P2 
+
+GGFFF 
+
+Pn 
+
+FFGGG 
+
+…
+
+> (F: FPGA; G: GPP )
+
+User’s Selection 
+
+Automated Deterministic Build 
+
+Bitstream Vitis HLS & Vivado TCL Generation TCL 
+
+Deployment 
+
+Hardware Orchestration by PYNQ  
+
+> FPGA GPP
+
+## +
+
+Implementation Metrics Monitoring 
+
+> Latency, Area, and Power
+
+a) b) c) d) 
+
+Fig. 1. Gen-TAS workflow: (a) design-context construction from user requirements, HLS code, and implementation knowledge; (b) agentic AI with task/dataflow analysis and RAG for FPGA–GPP partition generation and user selection; (c) deterministic Vitis HLS/Vivado implementation of the selected strategy; and (d) PYNQ-based execution and measurement of latency, resources, and power. Inputs User Requirements HLS C/C++ Source Knowledge Base Agentic AI Strategy Generation User Design's Task and Dataflow Information LLM-Suggested Partitions P1 - Rank 1  
+
+> FPGA: S3 | S4 GPP: S1 | S2 | S5 Minimise total estimated power first and end-to-end latency second, targeting at least a 1% total power reduction and a 10% LUT reduction relative to the all-FPGA base-line. The resulting LUT/power targets are 7466/3.470W for CNNImageProc. void cnn_imageproc_fashionmnist( data_t a[IMG_SIZE], data_t b[NUM_CLASSES]) { conv1_feature_extract(a, conv1_out); relu_pool1(conv1_out, pool1_out); conv2_feature_extract(pool1_out, conv2_out); relu_pool2(conv2_out, pool2_out); dense_classifier(pool2_out, b); } "primary_goal": "power" Input image → S1 conv1_feature_extract → S2 relu_pool1 → S3 conv2_feature_extract → S4 relu_pool2 → S5 dense_classifier → Logits
+> RAG Retrieval from Knowledge Base
+> { "design_name": "lightcnn:task:A", "task_type": "convolution", "operation_count": 324, "retrieval_similarity_score": 0.604363} { "partition_id": "AB_FPGA_C_GPP", "latency_ms_mean": 0.46990335, "clb_luts": 3906, "ff": 5347, "bram18_equiv": 2, "dsp": 0, "power_w": 3.365}
+> a) b) Rank 1 LLM Justification: P1 selects a single contiguous FPGA island for the second convolution/pooling block. S3 is compute-intensive, and S4 immediately consumes S3's conv2_out. Keeping S3 and S4 fused avoids transferring the 12544-byte conv2_out buffer across the HW/SW boundary. The first feature block and dense classifier remain on the GPP, reducing programmable-logic footprint for the power-prioritising objective.
+> P2 - Rank 2
+> FPGA: S3 | S4 | S5 GPP: S1 | S2
+> P3 - Rank 3
+> FPGA: S1 | S2 GPP: S3 | S4 | S5
+> Example of User’s Selection
+
+Fig. 2. Requirement- and retrieval-driven FPGA-GPP task allocation in Gen-TAS: (a) design-context construction from natural-language requirements, HLS C/C++ code, and retrieved implementation knowledge; and (b) agentic AI combining task/dataflow analysis, RAG, and an LLM to generate, justify, and rank candidate partitions for user selection before deterministic imple-mentation and hardware validation. 
+
+Table I, Gen-TAS advances beyond prior methods by integrat-ing source-code task-graph extraction, knowledge-base (KB) retrieval, retrieval-augmented generation (RAG) -grounded al-location reasoning, explainable strategy generation, human-in-the-loop selection, and deterministic Vivado/Vitis HLS and PYNQ implementation. Evaluation across two work-loads, four design objectives, and three LLMs demonstrates requirements-oriented, stable, and reproducible allocation gen-eration, achieving speedups of up to 2.45 × for ImageProc and 92.53 × for CAMC. Source code and supplementary materials are available at https://github.com/aprilaihub/Gen-TAS II. G EN -TAS M ETHODOLOGY 
+
+A. System Model and Overall Framework 
+
+Gen-TAS performs function-level task allocation for hetero-geneous FPGA-GPP systems, where each computational func-tion or processing stage identified in the high-level synthesis (HLS) C/C++ source code is assigned to either GPP execution or FPGA acceleration. As shown in Fig. 1, the user provides the application source code and a natural-language design objective, while Gen-TAS accesses an internal knowledge base (KB) containing previously characterised implementations to support allocation decisions. The application is represented as an ordered task graph G = ( T , E), where T = {T1, . . . , T M }
+
+contains the M partitionable sub-functions and E their data dependencies. Here, Ti denotes the i-th task. A candidate par-tition Pj represents one possible hardware-software allocation, assigning each application task Ti to either the GPP or FPGA, i.e., Pj (Ti) ∈ { GPP , FPGA }. For hardware generation, the current backend maps a contiguous group of FPGA-assigned tasks to a single hardware region, while the remaining tasks ex-ecute on the GPP. Design objectives may target latency, power, FPGA resources, communication overhead, or a balance of these metrics. The Gen-TAS workflow comprises source analysis, knowl-edge retrieval, allocation generation, and deterministic imple-mentation, followed by on-board deployment and evaluation. Source analysis constructs the task-level design descriptors, which are used to retrieve relevant implementation evidence from the KB. The task information, retrieved evidence, plat-form constraints, and design objectives are supplied to a LLM to generate and rank candidate FPGA-GPP allocations. Valid candidates are presented to the designer for selection, after which a deterministic backend generates the corresponding hardware-software implementation. The LLM therefore sug-gests allocations, while implementation is deterministic. 
+
+B. Task Analysis and Allocation Generation 
+
+Fig. 2 shows more details on the allocation procedure. Gen-TAS identifies the sub-functions called by the application top function as partitionable tasks. Task dependencies are derived from the call sequence and inter-task data flow. For each Ti,the extracted descriptor records operation type, input and out-put dimensions, numerical precision, buffer sizes. Communi-cation volume is derived from buffer size and data precision. A hardware-software communication boundary occurs when two dependent tasks are assigned to different execution domains, requiring intermediate data transfer between the processing system and programmable logic (PS-PL). 3
+
+The KB contains task characterisations and measured partition-level implementations. Records include computation and communication characteristics, FPGA-GPP placement, latency, look-up table (LUT), flip-flop (FF), digital signal processor (DSP), and block random-access memory (BRAM) utilisation, timing, power, communication boundaries, and, where available, measured transfer latency. Resource and timing data are obtained from Vitis HLS and Vivado reports, while execution and transfer latencies are obtained from on-board measurements. These records support allocation deci-sions through prior implementation evidence, while target-workload performance is determined through implementation and measurement. During knowledge retrieval, Gen-TAS forms a query from the user request, parsed requirements, and extracted task characteristics. All KB records are scored against this query using token-based cosine similarity, and the 12 highest-scoring records are provided to the LLM as context. No minimum similarity threshold is imposed. When useful historical evi-dence is unavailable, allocation relies on the source-derived task characteristics and platform constraints. The LLM prompt combines the task graph, task descriptors, retrieved records, platform constraints, and design objective. The LLM returns a configurable number N of ranked candi-dates P = P1, . . . , P N , where P denotes the candidate set, 
+
+Pj its j-th partition, and N is set to three by default. Each candidate specifies the FPGA and GPP task sets, resulting communication boundaries, and a rationale based on the supplied source and KB evidence. Both acceleration potential and boundary communication are considered, since FPGA offloading can increase end-to-end latency when transfer and execution overheads exceed the computational benefit. 
+
+C. Partition Validation and Deterministic Implementation 
+
+Before user selection, the generated partitions are determin-istically validated: all task identifiers must be valid, every task must be assigned exactly once, the FPGA and GPP sets must be disjoint, and FPGA-assigned tasks must form a contiguous group in the original execution order. Duplicate partitions are removed while preserving the task sequence. The LLM-generated ranking is retained, but compliance with hard constraints is confirmed only through implementation and measurement. The validated candidates, retrieved evidence, and allocation rationales are presented to the designer for selection. The selected partition is encoded in a machine-readable represen-tation containing the FPGA and GPP task sets, hardware-boundary input/output (I/O), required source files, and im-plementation configuration. From this fixed representation, the deterministic backend generates the HLS top-level design and testbench, I/O mappings, Vitis HLS and Vivado Tool Command Language (Tcl) scripts, and Python Productivity for Zynq (PYNQ) software. A generation manifest records the selected knowledge-grounded allocation and verifies its source artefacts. The same implementation flow is applied to every validated partition, connecting RAG-assisted LLM reasoning with reproducible hardware generation and on-board evaluation. III. E XPERIMENTAL EVALUATION 
+
+A. Experimental Setup 
+
+Experiments are conducted on an AMD ZCU104 platform equipped with an XCZU7EV-2FFVC1156 Zynq UltraScale+ MPSoC [18], [19]. Gen-TAS automatically generates the Tcl scripts required by Vitis HLS 2024.1 and Vivado 2024.1 to synthesise the hardware IP, construct and implement the SoC design, produce implementation reports, and generate the bitstream. The automatically generated PYNQ software then controls data transfer, accelerator execution, and on-board evaluation. The CNNImageProc and Chessboard Automatic Modulation Classification (CAMC) workloads are evaluated under four latency-, communication-, power-, and resource-oriented ob-jectives using OpenAI GPT-5.6 Sol, Google Gemini 3.6 Flash, Anthropic Claude Fable 5. All models receive identical source code, task graphs, requirements, retrieved knowledge, and gen-eration settings. Each workload-objective-LLM configuration is evaluated in five independent sessions. Gen-TAS is evaluated in terms of allocation validity, re-quirement satisfaction, consistency, LLM runtime, and imple-mentation performance. A run is successful when it produces a valid allocation and the generated design passes FPGA implementation and on-board functional validation. LUT, FF, DSP, BRAM, maximum frequency, and estimated power are obtained from Vivado post-implementation reports. End-to-end latency, including data transfer, accelerator control, and hardware execution, is measured on the ZCU104 through PYNQ, with outputs verified against the reference software using identical inputs. 
+
+B. Case Studies 
+
+Two representative workloads are used solely to validate Gen-TAS across different task structures. 
+
+CNNImageProc: The Fashion-MNIST CNN processes 1 ×
+
+28 × 28 grayscale images and is decomposed into five tasks: 
+
+conv1_feature_extract (16 × 28 × 28 ), relu_pool1 
+
+(16 × 14 × 14 ), conv2_feature_extract (32 × 14 ×
+
+14 ), relu_pool2 (32 × 7 × 7), and dense_classifier 
+
+(10 output classes). These stages expose distinct computational and data-transfer characteristics, making the CNN suitable for fine-grained FPGA-GPP task-allocation evaluation. 
+
+CAMC: The SDR case study uses CAMC [20], de-composed into three tasks: axis_initialisation for SDR I/Q data preprocessing, matrix_generation for constellation graph-based chessboard-matrix construction, and 
+
+array_product for matrix production, template matching and score comparison. These tasks cover control, memory-access, and matrix-operation behaviours, making the design suitable for evaluating FPGA-GPP task allocation. 
+
+C. User-Defined Design Objectives 
+
+User-defined objectives are a primary input to Gen-TAS and directly influence the generated FPGA-GPP allocation strategies. The framework is evaluated under four objective directions: constrained latency, communication-aware alloca-tion, power prioritisation, and strict resource utilisation. The 4
+
+TABLE II GEN -TAS RANK -1 PARTITIONING , IMPLEMENTATION COST , AND HARDWARE -COST REDUCTION ACROSS DESIGN OBJECTIVES AND LLM S (FIVE RUNS PER CONFIGURATION ).                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+
+> Workload Objective LLM Rank-1 Consistency Latency (ms) Speedup Implementation Metrics LLM Time (s) LUT FF DSP BRAM FPGA P. (W) GPP P. (W) Total P. (W) CNNImageProc
+> Constrained Latency GPT-5.6 Sol FFFFG 5/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 70 .293 ±5.169
+> Gemini 3.6 Flash FFFFG 5/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 35 .994 ±8.547
+> Claude Fable 5 FFFFG 3/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 85 .202 ±3.240
+> Communication-Aware GPT-5.6 Sol FFFFG 5/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 66 .908 ±4.870
+> Gemini 3.6 Flash FFFFG 4/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 30 .467 ±0.947
+> Claude Fable 5 FFFFG 5/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 86 .874 ±4.136
+> Prioritise Power GPT-5.6 Sol GGFFG 5/5 49 .202 ±0.026 0.770 ±0.000 ×4012 (51.7%) 4830 (29.9%) 2 (92.0%) 26 (55.2%) 0.645 (15.9%) 2.737 3.383 71 .699 ±8.215
+> Gemini 3.6 Flash FFFFG 4/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 27 .253 ±1.443
+> Claude Fable 5 GGFFG 5/5 49 .202 ±0.026 0.770 ±0.000 ×4012 (51.7%) 4830 (29.9%) 2 (92.0%) 26 (55.2%) 0.645 (15.9%) 2.737 3.383 98 .271 ±12 .570
+> Strict Resource GPT-5.6 Sol GGFFG 3/5 49 .202 ±0.026 0.770 ±0.000 ×4012 (51.7%) 4830 (29.9%) 2 (92.0%) 26 (55.2%) 0.645 (15.9%) 2.737 3.383 67 .728 ±5.397
+> Gemini 3.6 Flash FFFFG 5/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 34 .362 ±11 .411
+> Claude Fable 5 FFFFG 5/5 15 .494 ±0.003 2.445 ±0.001 ×6763 (18.7%) 6189 (10.2%) 8 (68.0%) 42 (27.6%) 0.714 (6.9%) 2.738 3.451 103 .820 ±19 .449
+> CAMC
+> Constrained Latency GPT-5.6 Sol GFF 5/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 58 .913 ±3.129
+> Gemini 3.6 Flash GFF 5/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 22 .161 ±2.675
+> Claude Fable 5 GFF 4/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 83 .743 ±3.393
+> Communication-Aware GPT-5.6 Sol GFF 5/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 62 .735 ±4.117
+> Gemini 3.6 Flash FFF 4/5 0.351 ±0.007 92 .531 ±1.757 ×6102 (0.0%) 6724 (1.6%) 29 (0.0%) 33 (0.0%) 0.666 (0.0%) 2.737 3.404 23 .792 ±2.037
+> Claude Fable 5 GFF 5/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 76 .910 ±9.819
+> Prioritise Power GPT-5.6 Sol GFF 4/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 63 .629 ±4.788
+> Gemini 3.6 Flash GFF 5/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 24 .093 ±1.963
+> Claude Fable 5 GFF 4/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 86 .306 ±2.950
+> Strict Resource GPT-5.6 Sol FGG 4/5 23 .553 ±0.015 1.378 ±0.001 ×4481 (26.6%) 5447 (20.3%) 8 (72.4%) 2 (93.9%) 0.630 (5.4%) 2.737 3.367 65 .645 ±6.248
+> Gemini 3.6 Flash GFF 5/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 27 .453 ±4.208
+> Claude Fable 5 GFF 5/5 9.173 ±0.052 3.537 ±0.020 ×5052 (17.2%) 5930 (13.2%) 21 (27.6%) 32 (3.0%) 0.654 (1.8%) 2.737 3.392 82 .463 ±4.900
+
+Note: F and G denote FPGA and GPP task placement, respectively. Consistency gives the number of five LLM runs producing the dominant rank-1 partition. Latency and speedup are reported as mean ± standard deviation over five hardware deployment runs for each partition. Speedup is relative to the corresponding all-GPP implementation. For LUT, FF, DSP, and BRAM, values in parentheses give the percentage reduction relative to the maximum characterised resource value for the corresponding workload. For FPGA power, values in parentheses give the percentage reduction relative to the corresponding all-FPGA implementation (0.767 W for CNNImageProc and 0.666 W for CAMC). FPGA, GPP, and total power are post-implementation estimates. LLM time is reported as mean ± standard deviation over five LLM runs. 
+
+detailed requirements and constraint thresholds are defined according to each workload. For CNNImageProc, the all-GPP and all-FPGA latencies are 37.877 and 14.685 ms, respec-tively, while the all-FPGA implementation uses 8295 LUTs with a total estimated power of 3.505 W. For CAMC, the corresponding latencies are 32.445 and 0.356 ms, with the all-FPGA implementation using 6102 LUTs and a total estimated power of 3.404 W. These measurements establish workload-specific design bounds, from which equivalent percentage-based constraints are derived to ensure comparable objective severity across both case studies. Detailed hardware constraints for the CNNImageProc and CAMC designs are available at https://github.com/aprilaihub/Gen-TAS. The following examples specify the detailed requirements for each objective: 
+
+Constrained Latency: Minimise end-to-end latency while targeting at least a 15% reduction in LUT utilisation and a 0.3% reduction in total estimated power relative to the all-FPGA baseline, while avoiding communication-dominated partitions. The resulting LUT/ power limits are 7051/3.494 W for CNNImageProc and 5187/3.394 W for CAMC. These constraints exclude the all-FPGA endpoint while retaining feasible accelerated partitions in both workloads. 
+
+Communication-Aware: Minimise end-to-end latency while preferring mixed FPGA-GPP placement when the expected computational benefit exceeds data-transfer, cache-coherency, and control overhead. LUT utilisation and total estimated power should not exceed the corresponding all-FPGA val-ues of 8295 LUTs/3.505 W for CNNImageProc and 6102 LUTs/3.404 W for CAMC. This objective tests whether alloca-tion decisions account for hardware-software communication rather than considering acceleration in isolation. 
+
+Prioritise Power: Minimise total estimated power first and end-to-end latency second, targeting at least a 1% total power reduction and a 10% LUT reduction relative to the all-FPGA baseline. The resulting LUT/total power targets are 7466/3.470 W for CNNImageProc and 5492/3.370 W for CAMC. This objective tests whether Gen-TAS favours lower-power and lower-resource allocations while preserving useful acceleration. 
+
+Strict Resource: Apply a restrictive budget requiring at least a 25% LUT reduction and a 5% total power reduction relative to the all-FPGA baseline, while minimising latency among mixed partitions. The corresponding limits are 6221 LUTs/3.330 W for CNNImageProc and 4577 LUTs/3.234 W for CAMC. These limits are intentionally outside the char-acterised feasible power region and therefore serve as an infeasibility stress test. When no candidate satisfies both limits, Gen-TAS is instructed to return the three least violating candidates rather than report the constraints as satisfied. The resulting allocations are evaluated against these objec-tives in Table II. 
+
+D. Quantitative Results 
+
+Table II demonstrates that Gen-TAS generates requirement-driven allocations rather than applying a fixed partition across objectives. For CNNImageProc, constrained-latency and communication-aware objectives consistently favour 
+
+FFFFG , achieving a 2.45 × speedup while reducing LUT, FF, DSP, and BRAM usage by 18.7%, 10.2%, 68.0%, and 27.6%, respectively. Under the power-prioritisation objective, GPT and Claude select GGFFG , reducing FPGA power by 15.9% and LUT, FF, DSP, and BRAM usage by 51.7%, 29.9%, 92.0%, and 55.2%, respectively, at the cost of increased latency. These results illustrate the workload-specific trade-off between acceleration and implementation cost. For CAMC, GFF is selected for most objectives, pro-viding a 3.53 × speedup with reductions of 17.2% LUTs, 13.2% FFs, 27.6% DSPs, and 1.8% FPGA power. Under the communication-aware objective, Gemini selects the all-520 40 60 80 100   
+
+> Objective Success a)
+> Token Efficiency LLM Latency Efficiency
+> CNNImageProc
+> 20 40 60 80 100
+> Objective Success b)
+> Token Efficiency LLM Latency Efficiency
+> CAMC
+> GPT-5.6 Sol Gemini 3.6 Flash Claude Fable 5
+
+Fig. 3. LLM comparison for (a) CNNImageProc and (b) CAMC across objective satisfaction, token efficiency, and LLM latency efficiency. Results aggregate five independent runs across four Gen-TAS design objectives for each LLM. Higher values indicate better performance. 
+
+FPGA FFF partition, achieving the highest speedup of 92.53 ×.Conversely, GPT selects FGG for the strict-resource objec-tive, reducing LUT, FF, DSP, and BRAM usage by 26.6%, 20.3%, 72.4%, and 93.9%, respectively, while retaining a 1.38 × speedup and reducing FPGA power by 5.4%. This confirms that Gen-TAS can adapt task allocation to latency, communication, power, and resource requirements, although the selected trade-offs vary across LLMs. The repeated experiments also demonstrate stable allocation generation under the RAG-grounded prompting flow. Of the 24 workload-objective-LLM configurations, 22 reproduce the dominant partition in at least four of five runs, including 15 with complete five-of-five consistency. Fig. 3 complements the implementation results by comparing objective satisfac-tion, token efficiency, and LLM latency efficiency. Gemini generally achieves the highest latency efficiency, with mean generation times of 22.161-35.994s, compared with 58.913-71.699s for GPT and 76.910-103.820s for Claude. Overall, the results demonstrate the model-agnostic capability of Gen-TAS to generate stable, reproducible, and user-requirement-driven FPGA-GPP allocations across different LLMs. IV. C ONCLUSION 
+
+This work proposed Gen-TAS, an LLM-assisted frame-work that integrates RAG and implementation knowledge for requirement-driven task allocation in FPGA-GPP hetero-geneous systems. Evaluations across multiple LLMs, user-defined objectives, and application domains demonstrate successful, stable, and reproducible generation of practical hardware-software allocations. Gen-TAS therefore bridges natural-language design requirements and executable hetero-geneous implementations while reducing manual exploration and the expertise barrier to FPGA-GPP design. Future work will expand the knowledge base and incorpo-rate implementation feedback to improve retrieval quality and allocation robustness. Further directions include finer-grained partitioning, multi-accelerator generation, more heterogeneous platforms, and enhanced LLM prompting and retrieval. ACKNOWLEDGMENT 
+
+The authors thank the AMD University Programme for Vitis/Vivado licenses and FPGA boards donation. REFERENCES [1] W. F. Samayoa, C. Cuesta, M. Castillo, and J. L. Bosque, “A survey on FPGA-based heterogeneous clusters: The architectural perspective,” IEEE Access , vol. 11, pp. 63956–63991, 2023. [2] L. Bai, Y. Zhao, and X. Huang, “A CNN accelerator on FPGA using depthwise separable convolution,” IEEE Trans. Circuits Syst. II, Exp. Briefs , vol. 65, no. 10, pp. 1415–1419, Oct. 2018. [3] D. Kim, S. Jeong, and J.-Y. Kim, “Agamotto: A performance optimization framework for CNN accelerator with row stationary dataflow,” IEEE Trans. Circuits Syst. I, Reg. Papers , vol. 70, no. 6, pp. 2487–2496, Jun. 2023. [4] W. Cheng, I. Lin, and Y. Shih, “An efficient implementation of convolu-tional neural network with CLIP-Q quantization on FPGA,” IEEE Trans. Circuits Syst. I, Reg. Papers , vol. 69, no. 10, pp. 4093–4102, Oct. 2022. [5] J. Lu, D. Liu, X. Cheng, L. Wei, A. Hu, et al., “An efficient unstructured sparse convolutional neural network accelerator for wearable ECG clas-sification device,” IEEE Trans. Circuits Syst. I, Reg. Papers , vol. 69, no. 11, pp. 4572–4582, Nov. 2022. [6] Y. Zhao, Y. Sun, L. Ye, X. Zhao, L. Seed, and T. Deng, “ChatGPT-aided VeriPy (CariPy): A generative-AI-assisted HLS tool for unrolled and pipelined hardware generation,” Cambridge Open Engage , 2026, doi: 10.33774/coe-2026-36m87. [7] C. Sestito, P. Kontou, P. Verma, A. Dixit, A. D. Keros, M. O’Boyle, C.-S. Bouganis, and T. Prodromakis, “A flexible language model-assisted elec-tronic design automation framework,” arXiv preprint arXiv:2601.14098 ,2026. [8] V. Sharma, X. Fu, J. Haris, and J. Cano, “Towards autonomous ac-celerator design: FPGA accelerator generation with SECDA,” in Proc. Machine Learning for Architecture and Systems Workshop (MLArchSys), co-located with ISCA , 2026, arXiv:2606.11117. [9] J. Teich, “Hardware/software codesign: The past, the present, and pre-dicting the future,” Proc. IEEE , vol. 100, no. Special Centennial Issue, pp. 1411–1430, May 2012. [10] P. Arato, S. Juhasz, Z. Mann, A. Orban, and D. Papp, “Hardware-software partitioning in embedded system design,” in Proc. IEEE Int. Symp. Intell. Signal Process. , 2003, pp. 197–202. [11] S. A. A. Shah, S. A. Horsinka, B. Farkas, and R. Meyer, “Automatic exploration of hardware/software partitioning,” in Proc. Design and Verification Conf. (DVCon) , 2018. [12] D. Lau, J. Blackburn, and J. A. Seely, “The use of hardware acceleration in SDR waveforms,” in Proc. Software Defined Radio Technical Conf. ,2005. [13] J. Pan, G. Zhou, C.-C. Chang, I. Jacobson, J. Hu, and Y. Chen, “A survey of research in large language models for electronic design automation,” 
+
+ACM Trans. Design Autom. Electron. Syst. , vol. 30, no. 3, pp. 1–21, 2025. [14] M. Abdollahi, X. Wang, S. Vinco, and S. Yang, “Hardware design and verification with large language models: A survey,” Electronics , vol. 14, no. 1, Art. no. 120, 2025. [15] X. Zhang, Y. Ma, J. Xiong, W.-M. W. Hwu, V. Kindratenko, and D. Chen, “Exploring HW/SW co-design for video analysis on CPU– FPGA heterogeneous systems,” IEEE Trans. Comput.-Aided Design In-tegr. Circuits Syst. , vol. 41, no. 6, pp. 1606–1619, Jun. 2022, doi: 10.1109/TCAD.2021.3093398. [16] M. Emami, E. Bezati, J. W. Janneck, and J. R. Larus, “Auto-partitioning heterogeneous task-parallel programs with StreamBlocks,” in Proc. Int. Conf. Parallel Architectures and Compilation Techniques (PACT) , 2022, pp. 398–411, doi: 10.1145/3559009.3569659. [17] H. Wu, Z. He, X. Zhang, X. Yao, S. Zheng, H. Zheng, and B. Yu, “ChatEDA: A large language model powered autonomous agent for EDA,” IEEE Trans. Comput.-Aided Design Integr. Circuits Syst. , vol. 43, no. 10, pp. 3184–3197, Oct. 2024, doi: 10.1109/TCAD.2024.3374249. [18] AMD, “Zynq UltraScale+ MPSoC ZCU104 evaluation kit,” 2026. [Online]. Available: https://www.amd.com/en/products/ adaptive-socs-and-fpgas/evaluation-boards/zcu104.html [19] AMD, “Zynq UltraScale+ MPSoCs: Product selection guide,” XMP104, ver. 2.8, 2025. [Online]. Available: https://docs.amd.com/api/khub/ documents/2rKzwvn3YbmuIyp BKxBGA/content [20] Y. Zhao, T. Deng, B. Gavin, E. A. Ball, and L. Seed, “An ultra-low cost and accurate AMC algorithm and its hardware implementation,” IEEE Open J. Comput. Soc. , 2024, doi: 10.1109/OJCS.2024.3381827.

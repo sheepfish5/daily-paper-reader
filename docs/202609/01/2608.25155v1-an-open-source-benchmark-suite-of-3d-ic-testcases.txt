@@ -1,0 +1,116 @@
+Title: An Open-Source Benchmark Suite of 3D-IC Testcases
+
+URL Source: https://arxiv.org/pdf/2608.25155v1
+
+Published Time: Thu, 27 Aug 2026 00:14:11 GMT
+
+Number of Pages: 4
+
+Markdown Content:
+# An Open-Source Benchmark Suite of 3D-IC Testcases 
+
+Rohan Soni, Jooyeon Jeong, Alexander Graening, Anthony Foo, Richard Chen, Puneet Gupta 
+
+Department of Electrical and Computer Engineering University of California, Los Angeles Los Angeles, CA, USA 
+
+{sonir, jooyeon37, agraening, anthonyfoo, chenr4731, puneetg }@ucla.edu 
+
+Abstract —The physical design community has benefited from standardized, publicly available benchmark suites, which have enabled reproducible evaluation and driven significant advances in 2D place-and-route algorithms over the past three decades. However, the emergence of 3D heterogeneous integration tech-nologies, including through-silicon vias (TSVs), hybrid bonding, and chiplet-based architectures, has introduced new physical design challenges that are not captured by existing planar benchmarks. Although several 3D-IC design examples have been reported, publicly accessible and scalable benchmark suites that enable reproducible evaluation across different 3D physical design problems remain limited. In this paper, we present an open-source suite of 3D-IC benchmark testcases derived from representative chiplet-based case studies in CATCH [1], an open-source framework for estimating the cost of heterogeneous integration architectures. The proposed benchmark suite pro-vides reusable virtual chiplet models covering compute, memory, I/O, analog, and substrate components. Each testcase captures essential physical design characteristics of 3D systems, includ-ing heterogeneous die integration, inter-die connectivity, and technology-dependent design constraints. By publicly releasing these benchmarks, we aim to establish a common evaluation platform and accelerate community-wide research progress in 3D heterogeneous integration. 
+
+Index Terms —3D-IC, heterogeneous integration, chiplet, open source, testcase, benchmark 
+
+I. I NTRODUCTION 
+
+Open benchmark suites have played a central role in advanc-ing VLSI physical design by providing common, reproducible targets for algorithm evaluation. The ISPD98 benchmark suite established a widely adopted foundation for placement re-search, while the ISPD2005 and ISPD2006 placement con-tests expanded benchmark scale and stimulated advances in congestion-aware and mixed-size placement [2]–[4]. Similarly, the ISPD global-routing benchmarks and ICCAD CAD Con-test benchmarks have provided shared evaluation platforms for routing and optimization research [5], [6]. These experiences demonstrate that representative and openly accessible bench-marks are essential for progress in EDA research. The history of 2D physical design demonstrates a clear les-son: open and representative benchmarks provide the common evaluation infrastructure required for algorithmic innovation. Without such benchmarks, comparing emerging methodolo-gies becomes difficult. The 3D-IC design community is in-creasingly facing a similar challenge. 3D heterogeneous integration is rapidly becoming an impor-tant technology for continued system scaling, with commercial platforms including AMD 3D V-Cache, NVIDIA GPU–HBM integration, Intel Foveros, TSMC SoIC/CoWoS, and Samsung X-Cube [7]–[11] demonstrating different forms of advanced die-to-die and 3D integration. These technologies combine vertically stacked dies, high-density interfaces, interposers, and heterogeneous chiplets, creating design problems that are substantially different from conventional planar physical design. II. M OTIVATION 
+
+Despite these rapidly increasing design complexities, pub-licly available benchmark resources for 3D heterogeneous inte-gration remain limited. Existing examples are often specialized for individual studies, restricted by industrial confidential-ity. Consequently, the community lacks a reproducible open benchmark infrastructure that can support fair comparison of emerging 3D physical design methodologies. Although significant progress has been made toward open-source 3D design methodologies, benchmark resources re-main limited. Recent studies have proposed algorithms for monolithic and heterogeneous 3D placement, floorplanning, and routing using representative industrial or academic de-signs [12]–[16]. The ICCAD CAD Contest has also introduced contest benchmarks for specific 3D placement problems [17]. More recently, Open3DBench [18] and RosettaStone 2.0 [19] have established open-source backend implementation flows for 3D physical design based on the OpenROAD ecosystem, enabling reproducible studies of placement, routing, RC ex-traction, timing, and thermal analysis. However, these efforts primarily focus on validating phys-ical design methodologies within specific implementation flows. They do not provide a reusable benchmark infrastructure that systematically spans the broad design space encountered in heterogeneous integration, including variations in chiplet composition, die counts, packaging technologies, and cost-driven architectural configurations. As a result, evaluating emerging methodologies across diverse 3D system architec-tures remains challenging, and fair comparison between com-peting approaches is often difficult. We introduce an open-source benchmark suite for hetero-geneous 2.5D/3D physical design. The benchmark instances arXiv:2608.25155v1 [cs.AR] 25 Aug 2026 are generated using the open-source CATCH framework [1], which provides a convenient representation of heterogeneous chiplet systems and their packaging configurations. The main contributions of this paper are summarized as follows.  
+
+> •
+
+We develop an open-source 2.5D/3D benchmark in-frastructure comprising (i) a reusable virtual chiplet library for systematic benchmark generation, (ii) an auto-mated benchmark conversion framework that translates CATCH designs into an industry-standard benchmark representation, and (iii) a suite of 20 heterogeneous 2.5D/3D benchmark designs organized into four cate-gories of increasing complexity. The benchmarks are re-leased as standardized 3Dblox descriptions [20] to enable reproducible evaluation and future benchmark extensions. The remainder of the paper is structured as follows. Sec-tion III describes the benchmark methodology. Section IV concludes and discusses future use cases. III. M ETHODOLOGY 
+
+A. Benchmark Generation Framework 
+
+Our benchmark suite is constructed in a two-phase process: first, we define a reusable chiplet library (Phase 1); second, we compose the library elements into a graded suite of system-in-package designs (Phase 2). All designs are expressed using the CATCH XML schema, which supports arbitrary stack hier-archies, face/back-side connectivity, TSV pass-through signal-ing, buried dies, and substrate-level routing constraints. This section describes the design intent and structural organization of each benchmark. 
+
+1) (Phase 1) Chiplet Library: 
+
+Active Dies 
+
+We define five virtual active-die templates, each character-ized by its CATCH parameters:  
+
+> •
+
+Compute Small (CS): A small CPU-core analog with a core area of approximately 20 mm 2 and a logic fraction of 1.0.  
+
+> •
+
+Compute Large (CL): Representing a large GPU or accelerator die, this template has a core area of approxi-mately 250 mm 2 and a logic fraction of 1.0.  
+
+> •
+
+Memory DRAM (MEM): A DRAM die designed for vertical stacking, with a core area of approximately 50 mm 2 and a memory fraction of 1.0.  
+
+> •
+
+IO Controller (IOC): An I/O-pad-dominated chiplet with a core area of approximately 10 mm 2 and a high connection count in the netlist.  
+
+> •
+
+Analog Chiplet (ANA): An analog component template with a core area of approximately 15 mm 2 and an analog fraction of 1.0. It is included to represent the heteroge-neous technology nodes commonly found in wireless SoC disaggregation scenarios. 
+
+Passive Substrates 
+
+Two substrate templates are defined:  
+
+> •
+
+Substrate Organic (SO): A standard, low-cost organic laminate substrate with a large bonding pitch of approxi-mately 110 μm. It is used in cost-sensitive designs where I/O density requirements are moderate.  
+
+> •
+
+Substrate Silicon (SSi): A high-density silicon inter-poser with a fine bonding pitch of approximately 45 μm, corresponding to advanced CoWoS-style packaging. It enables high-bandwidth die-to-die communication but at a significant area and cost premium. 
+
+Specialty Die  
+
+> •
+
+TSV Interconnect Die: A pass-through signaling die defined with connections on both its face and back sides. It is used as the base logic die in HBM-style stacks and to test double-sided stacking configurations. 
+
+2) (Phase 2) Benchmark Design Suite: Using the chiplet library, we construct 20 benchmark designs organized into four categories. Table I summarizes the full suite. 
+
+Category 1 D1–D4 establish foundational 2.5D configu-rations, ranging from a simple heterogeneous pair to multi-chiplet, heterogeneous, and I/O-dominated systems. 
+
+Category 2 D0, D5–D8 introduce vertical integration through simple stacking, deep TSV-based stacks, double-sided connectivity, and 3D partitioning. 
+
+Category 3 D9–D13 combine these constructs into more complex heterogeneous systems, including HBM-style stacks, multiple independent stacks, non-uniform hierarchies, buried bridges, and full-system integration. 
+
+Category 4 D14–D19 deliberately perturb selected de-sign parameters to exercise congestion, NRE amortization, assembly-process selection, placement regularity, and chiplet-count scaling. 
+
+B. Open-Source Benchmark Package 
+
+The 3Dblox repository is organized to provide not only testcase descriptions but also the supporting artifacts required to reproduce and extend them. The complete set of benchmark designs is publicly available through the Dryad repository (DOI: 10.5061/dryad.76hdr7tb6). IV. C ONCLUSION 
+
+In this paper, we have presented the open-source benchmark suite explicitly designed for 2.5D/3D heterogeneous integra-tion research in physical design. Our suite provides 20 designs spanning foundational 2.5D configurations, basic 3D stacking topologies, complex hybrid architectures, and targeted stress-test variants. The benchmark suite provides a common set of heterogeneous 2.5D/3D structures that can be extended as new integration technologies and design problems emerge. By releasing the designs in 3Dblox together with supporting open-source physical-design collateral, we hope to enable reproducible comparison across academic and commercial 3D design methodologies. REFERENCES [1] A. Graening, J. Talukdar, S. Pal, K. Chakrabarty, and P. Gupta, “CATCH: A cost analysis tool for co-optimization of chiplet-based heterogeneous systems,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems, pp. 1091–1104, 2026. [2] C. J. Alpert, “The ISPD98 circuit benchmark suite,” in Proc. ACM/IEEE Int. Symp. Physical Design (ISPD) , 1998, pp. 80–85. Fig. 1. Visualization of testcases. A legend of chiplets is provided on the left. TABLE I SUMMARY OF THE 3D-IC B ENCHMARK DESIGN SUITE 
+
+ID Name Chiplet Composition Primary Stress 
+
+Category 1 — Foundational 2.5D Designs 
+
+D1 Simple Heterogeneous Pair CS + MEM on SSi Basic 2.5D placement D2 Homogeneous Compute Array 4×CL on SO Multi-chiplet assembly cost scaling D3 Full SoC on Interposer 2×CS + IOC + ANA on SSi Complex heterogeneous mix D4 IO-Bound Stress Test 8×IOC on SSi Apads dominance 
+
+Category 2 — Foundational 3D Designs 
+
+D0 CATCH Reference Design CPU + MEM (stack) + GPU on interposer Baseline from original CATCH files D5 Simple CPU + Memory Stack MEM stacked on CS Basic 3D stacking D6 HBM-Style Memory Stack 4×MEM stacked on TSV Deep vertical stack depth D7 Double-Sided Stacking CS on face + MEM on back of TSV Face/back connectivity D8 3D Partitioned SoC CL stacked on CL 3D partitioning benefits 
+
+Category 3 — Complex Hybrid Architectures 
+
+D9 Classic Accelerator SSi + CL + 2 ×(4 ×MEM/TSV) Realistic GPU+HBM topology D10 Multi-Stack System SO + [CS+MEM] + [ANA] Multiple independent stacks D11 Pyramid Architecture CL on SO, 2 ×CS stacked on CL Inverted pyramid stacking D12 Buried Bridge Chip 2×CL on SO + buried SSi bridge EMIB-like interconnect D13 Full System Integration Mixed multi-stack with all templates Maximum heterogeneity 
+
+Category 4 — Model Stress-Test Variants 
+
+D14 Routing Congestion Failure D3 variant, SSi with 1 routing layer Congestion check D15 NRE Cost Dominance D10 variant, CS at 10K qty vs. others at 10M NRE amortization D16 Assembly Process Comparison D2 run with individual vs. simultaneous bonding Assembly cost model D17 2.5D Memory-Compute Grid 4×MEM + 4 ×CS on interposer Square tiling arrangement D18 4× Analog on Interposer 4×ANA on SSi Small-count analog stacking cost D19 64 × Analog on Interposer 64 ×ANA on SSi Large-count analog cost scaling [3] G.-J. Nam, C. J. Alpert, P. Villarrubia, B. Winter, and M. Yildiz, “The ISPD2005 placement contest and benchmark suite,” in Proc. ACM/IEEE Int. Symp. Physical Design (ISPD) , 2005, pp. 216–220. [4] G.-J. Nam, “ISPD 2006 placement contest: Benchmark suite and re-sults,” in Proc. ACM/IEEE Int. Symp. Physical Design (ISPD) , 2006, pp. 167–167. [5] G.-J. Nam, C. Sze, and M. Yildiz, “The ISPD global routing benchmark suite,” in Proc. ACM Int. Symp. Physical Design (ISPD) , 2008, pp. 156– 159. [6] M.-C. Kim, J. Hu, J. Li, and N. Viswanathan, “ICCAD-2015 CAD contest in incremental timing-driven placement and benchmark suite,” in Proc. IEEE/ACM Int. Conf. Computer-Aided Design (ICCAD) , 2015. [7] AMD, “AMD 3D V-Cache Technology,” AMD Technical Overview, 2024. [8] NVIDIA Corporation, “Nvidia h100 tensor core gpu architecture,” NVIDIA Corporation, Tech. Rep., Mar. 2022. [Online]. Available: https://resources.nvidia.com/en-us-tensor-core [9] Intel Corporation, “Intel Foveros Advanced Packaging Technology,” Intel Technology Brief, 2020. [10] TSMC, “TSMC-SoIC: 3D Fabric System Integration Technology,” TSMC Technology Overview, 2024. [11] Samsung Electronics, “Samsung X-Cube 3D IC Packaging Technology,” Samsung Semiconductor Technology Overview, 2024. [12] S. S. K. Pentapati, K. Chang, V. Gerousis, R. Sengupta, and S. K. Lim, “Pin-3D: A physical synthesis and post-layout optimization flow for heterogeneous monolithic 3D ICs,” in Proc. IEEE/ACM Int. Conf. Computer-Aided Design (ICCAD) , 2020, pp. 1–9. [13] S. Pentapati, K. Chang, and S. K. Lim, “Pin-3D: Effective physical design methodology for multidie co-optimization in monolithic 3D ICs,” 
+
+IEEE Trans. Computer-Aided Design of Integrated Circuits and Systems (TCAD) , vol. 43, no. 4, pp. 1009–1022, 2024. [14] B. W. Ku, K. Chang, and S. K. Lim, “Compact-2D: A physical design methodology to build commercial-quality face-to-face-bonded 3D ICs,” in Proc. ACM/IEEE Int. Symp. Physical Design (ISPD) , 2018, pp. 90– 97. [15] P. Liao, Y. Zhao, D. Guo, Y. Lin, and B. Yu, “Analytical die-to-die 3D placement with bistratal wirelength model and GPU acceleration,” 
+
+IEEE Trans. Computer-Aided Design of Integrated Circuits and Systems (TCAD) , vol. 43, no. 6, pp. 1624–1637, 2024. [16] Y. Zhao, P. Liao, S. Liu, J. Jiang, Y. Lin, and B. Yu, “Analytical heterogeneous die-to-die 3D placement with macros,” IEEE Trans. Computer-Aided Design of Integrated Circuits and Systems (TCAD) ,vol. 44, no. 2, pp. 402–415, 2025. [17] Y. Zhao, L. Zou, and B. Yu, “Invited: Physical design for advanced 3D ICs: Challenges and solutions,” in Proc. ACM/IEEE Int. Symp. Physical Design (ISPD) , 2025. [18] Y. Shi, C. Gao, W. Ren, P. Xie, S. Xu, K. Xue, M. Yuan, C. Qian, and Z.-H. Zhou, “Open3DBench: Open-source benchmark for 3D-IC backend implementation and PPA evaluation,” in arXiv preprint arXiv:2503.12946 , 2025. [19] L. Jiang, A. B. Kahng, Z. Wang, and Z. Zheng, “Invited: Toward sustainable and transparent benchmarking for academic physical design research,” in Proc. ACM/IEEE Int. Symp. Physical Design (ISPD) , 2026. [20] IEEE Standards Association, “Standard for 3dblox–chiplet connectivity and physical properties description language,” 2025, iEEE P3537 Working Group. [Online]. Available: https://sagroups.ieee.org/3537/
