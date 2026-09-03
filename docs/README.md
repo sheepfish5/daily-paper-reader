@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-01</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-03</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 24 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 23 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>12</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>11</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-01 22:25:31 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-03 23:05:19 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,10 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共生成 24 篇推荐（精读 12 篇，速读 12 篇）</p>
-<p>精读：《Spicing up Genetic Netlist Generation with LLMs》（9.0/10）, 《FABRICA: Agentic CUDA-to-CSL Translation and Optimization for Wafer-Scale Systems》（9.0/10）</p>
-<p>速读：《ATLAS: Scaffold-Free Algorithm Synthesis by LLMs via Embedding-Guided Quality-Diversity Search》（8.0/10）, 《When Entropy Is Not Enough: Reclaiming Lost Semantics in LLM Output Length Prediction》（8.0/10）, 《DB-SpMSpV: Dual-View Blocked Sparse Matrix-Sparse Vector Multiplication for Dynamic GPU Workloads》（8.0/10）</p>
-<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
+<p>今日完成23篇论文扫描，精读11篇、速读12篇，聚焦芯片设计与大模型系统两大前沿。</p>
+<p>最值得关注：AutoDRI以9.0分领跑，用CP-SAT解决多图案化单元合成中的语义鸿沟；Tail-Replay同样9.0分，为混合大模型前缀缓存突破线性注意力瓶颈，双双代表EDA与LLM基础设施的自动化新范式。</p>
+<p>建议普通读者优先精读这两篇高星论文，结合8.0分的SSDi8量化方案，快速把握“设计自动化+推理优化”的当前技术脉搏。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -74,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">12 篇</strong>
+    <strong class="dpr-home-dashboard-count">11 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Spicing up Genetic Netlist Generation with LLMs">Spicing up Genetic Netlist Generation with LLMs</span></li><li><span class="dpr-home-dashboard-paper-title" title="FABRICA: Agentic CUDA-to-CSL Translation and Optimization for Wafer-Scale Systems">FABRICA: Agentic CUDA-to-CSL Translation and Optimization for Wafer-Scale Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Trajectory-Level Speculative Decoding for Diffusion Language Models">Trajectory-Level Speculative Decoding for Diffusion Language Models</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="AutoDRI: Bridging the Semantic Gap for Automated Design Rule Integration in CP-SAT-Based Cell Synthesis under Multi-Patterning">AutoDRI: Bridging the Semantic Gap for Automated Design Rule Integration in CP-SAT-Based Cell Synthesis under Multi-Patterning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Tail-Replay: Escaping the Curse of Linear Attention in Prefix Caching for Hybrid LLMs">Tail-Replay: Escaping the Curse of Linear Attention in Prefix Caching for Hybrid LLMs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Event-Driven Language Models with Sparse Neural Activity for Neuromorphic Hardware">Event-Driven Language Models with Sparse Neural Activity for Neuromorphic Hardware</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>10</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -90,9 +89,9 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ATLAS: Scaffold-Free Algorithm Synthesis by LLMs via Embedding-Guided Quality-Diversity Search">ATLAS: Scaffold-Free Algorithm Synthesis by LLMs via Embedding-Guided Quality-Diversity Search</span></li><li><span class="dpr-home-dashboard-paper-title" title="When Entropy Is Not Enough: Reclaiming Lost Semantics in LLM Output Length Prediction">When Entropy Is Not Enough: Reclaiming Lost Semantics in LLM Output Length Prediction</span></li><li><span class="dpr-home-dashboard-paper-title" title="DB-SpMSpV: Dual-View Blocked Sparse Matrix-Sparse Vector Multiplication for Dynamic GPU Workloads">DB-SpMSpV: Dual-View Blocked Sparse Matrix-Sparse Vector Multiplication for Dynamic GPU Workloads</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PowerSlider: Exploiting Phase Asymmetry for LLM Serving under Demand Response">PowerSlider: Exploiting Phase Asymmetry for LLM Serving under Demand Response</span></li><li><span class="dpr-home-dashboard-paper-title" title="SSDi8: Accurate and Efficient 8-bit Quantization for State Space Duality">SSDi8: Accurate and Efficient 8-bit Quantization for State Space Duality</span></li><li><span class="dpr-home-dashboard-paper-title" title="Precision-Aware Variable Bit Processing Elements for Hardware-Efficient Systolic Array Designs">Precision-Aware Variable Bit Processing Elements for Hardware-Efficient Systolic Array Designs</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">dse <strong>6</strong></span><span class="dpr-home-dashboard-tag">li <strong>6</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>8</strong></span><span class="dpr-home-dashboard-tag">dse <strong>4</strong></span></div>
 </section>
 </div>
 

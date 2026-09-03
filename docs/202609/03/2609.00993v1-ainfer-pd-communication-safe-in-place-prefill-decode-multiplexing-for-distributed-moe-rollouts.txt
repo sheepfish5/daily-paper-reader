@@ -1,0 +1,447 @@
+Title: AInfer-PD: Communication-Safe In-Place Prefill-Decode Multiplexing for Distributed MoE Rollouts
+
+URL Source: https://arxiv.org/pdf/2609.00993v1
+
+Published Time: Wed, 02 Sep 2026 01:05:44 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# AInfer-PD: Communication-Safe In-Place Prefill–Decode Multiplexing for Distributed MoE Rollouts 
+
+## Guowei Wang 
+
+Ant Group China 
+
+## Chaokun Yang 
+
+Ant Group China 
+
+## Zhenxuan Pan 
+
+Ant Group China 
+
+## Yuhong Guo 
+
+Ant Group China 
+
+## Minghua Zhu 
+
+Ant Group China 
+
+## Zhechuan Zhang 
+
+Ant Group China 
+
+## Shuo Wan 
+
+Ant Group China 
+
+## Xiaowei Zhu 
+
+Ant Group China 
+
+## Abstract 
+
+Rollout inference often dominates the wall-clock time of large-scale reinforcement learning (RL). In agentic RL, each trajectory alternates between model generation and environ-ment interaction over multiple turns. Asynchronous trajecto-ries consequently introduce new prefill (P) work while other trajectories remain in decode (D), making P/D coexistence a persistent property of the rollout rather than a one-time prompt-ingestion event. On shared accelerators, persistent P/D coexistence can make prefill interfere with latency-sensitive decode and pro-long rollout completion. P/D disaggregation avoids this co-location but requires separate device pools and KV-cache transfers. In-place multiplexing retains shared devices and KV state, but existing designs lack the communication isola-tion needed for large MoE deployments that combine atten-tion TP/DP with distributed expert execution. In practical implementations, P and D can issue intersecting collectives in inconsistent cross-rank orders; DeepEP’s P and D paths also share mutable protocol state. We present AInfer-PD, which extends in-place P/D multi-plexing to distributed MoE rollouts. AInfer-PD coordinates P/D collective order across ranks and gives the two DeepEP paths independent communication state, making crossed ADP/ATP and DeepEP paths safe for concurrent P/D execu-tion. The design retains shared model weights and KV stor-age while coordinating P and D on the same devices. Across repeated single-node prefill-intensive workloads, AInfer-PD reduces fixed-workload rollout completion time by 7.1–22.5% relative to the same AInfer engine with P/D multiplexing dis-abled and by 24.8–32.9% relative to SGLang. On two nodes, the reductions are 18.0–35.3% and 18.3–31.8%, respectively. In a same-engine ablation, fine-grained boundaries reduce completion time by a further 8.6–19.8% over whole-epoch asynchronous enqueue. 
+
+## 1 Introduction 
+
+Rollout generation—the inference stage that produces trajec-tories for optimization—often accounts for a large fraction of reinforcement-learning (RL) training time [6, 8, 17]. Agentic RL tasks such as software engineering, web navigation, and interactive tool use make this workload markedly different from conventional single-turn serving. An agent decodes an action, waits for a tool or environment response, appends the observation, and prefills the expanded context before continuing generation. Because trajectories differ in tool la-tency, generation length, and termination time, continuation prefills recur while other trajectories are still decoding. The systems objective is therefore to finish a fixed col-lection of dependent trajectories quickly. Delaying decode postpones the environment interaction that releases the next turn; delaying a returned prefill postpones that turn’s de-code. When the phases share accelerators, long and variable P batches also compete with latency-sensitive D for compute and communication, increasing rollout completion time. Two broad approaches address this interference. P/D dis-aggregation uses separate worker pools but requires addi-tional capacity and KV transfer [15, 16, 21]. In-place mul-tiplexing shares devices, weights, and KV state, and limits local interference through scheduling or resource partition-ing [1, 2, 5, 10, 11]. Its communication isolation, however, does not cover important large-MoE execution paths. Large MoE deployments combine attention data paral-lelism, optional tensor parallelism within each attention replica, and expert communication across a wider group [3]. In common serving paths, P uses a model-wide TP AllReduce while graph-replayed D uses a DP-attention ReduceScat-ter/AllGather. Intersecting groups and phase-skewed repli-cas can then form a distributed progress cycle despite valid local stream orders. DeepEP creates a second requirement: its normal P path and low-latency D path [4] share protocol state not designed for concurrent execution. We present AInfer-PD for communication-safe in-place P/D multiplexing in distributed MoE rollout engines. It or-ders intersecting ADP/ATP collectives across ranks, while safe communication boundaries let successive D iterations advance through a long P execution. It also extends DeepEP with phase-owned buffers, counters, workspaces, events, and queue-pair ranges so normal-P and low-latency-D commu-nication can coexist within one runtime. These mechanisms             
+
+> 1arXiv:2609.00993v1 [cs.DC] 1 Sep 2026 Wang, Yang, et al. Disaggregated Prior in-place AInfer-PD PD
+> KV separate pools P stream D stream shared GPU / TP
+> PD
+> turn attention TP×DP intersecting P/D collectives Published execution contract model / KV replicated shared shared parallel scope separate GPU / TP crossed groups phase order KV transfer stream-local distributed turnstile
+
+Figure 1. P/D execution choices. Disaggregation separates model instances and transfers KV state. In-place systems share model and KV state. AInfer-PD adds cross-rank col-lective ordering and phase-owned expert-communication state to the in-place design. Crossed groups 0 12 3      
+
+> attention TP DP-attn peers
+> Opposite enqueue orders
+> ranks 0--1 ranks 2--3
+> DPPD
+> cycle D: DP-attn collective P: full-group AllReduce
+> ADP/ATP repair
+> all ranks D collective P AllReduce other P work P compute remains concurrent
+
+Figure 2. A crossed collective-order failure in an ADP/ATP path. Attention replicas expose the P full-group collective and D DP-attention collective in opposite orders, forming a device progress cycle. AInfer-PD orders the conflicting P collective after D on every rank; P computation and nonin-tersecting communication continue asynchronously. work with in-place P/D scheduling to support concurrent execution on the crossed ADP/ATP and DeepEP paths while retaining one model and KV state. We evaluate AInfer-PD using anonymized internal RL traces on one- and two-node H20-3E deployments. Across the repeated single-node prefill-intensive profiles in Figure 7, AInfer-PD reduces fixed-workload rollout completion time by 7.1–22.5% relative to the same AInfer engine with P/D multiplexing disabled and by 24.8–32.9% relative to SGLang. A two-node campaign yields reductions of 18.0–35.3% and 18.3–31.8%, respectively, with a TTFT trade-off. Table 5 re-ports a same-engine ablation in which fine-grained ordering improves completion by 8.6–19.8% over whole-epoch asyn-chronous enqueue. This paper makes three contributions: 
+
+• We identify a distributed ordering problem that arises when phase-skewed attention replicas use intersect-ing P and D collective paths, and define the ordering required to remove the observed progress cycle. 
+
+• We design a rank-aligned segment turnstile and ex-tend DeepEP with phase-owned mutable state, en-abling concurrent normal-P and low-latency-D com-munication while weights and KV storage remain shared. 
+
+• We integrate the mechanisms into an MoE rollout engine and evaluate their end-to-end effects across parallel topologies, precisions, MTP modes, rollout pressure, and one- and two-node deployments. 
+
+## 2 Background and Motivation 
+
+2.1 Agentic Rollouts 
+
+An agentic trajectory alternates between generation and en-vironment responses. Each response adds context that must be prefilled before generation resumes, so asynchronous tra-jectories release continuation prefills at different times. We use P and D for prefill and decode and treat the full trajectory set as the unit of rollout work. For a dependent continuation 𝑖 , the interval before the next P release is 
+
+𝑔 idle  
+
+> 𝑖
+
+= max (0, 𝑡 release  
+
+> 𝑃,𝑖 +1
+
+− 𝑡 complete  
+
+> 𝐷,𝑖
+
+).
+
+This interval includes environment latency and client-side response handling. Short gaps increase recurrent P pressure; long gaps leave more D-only execution. 
+
+2.2 Parallel Organization of MoE Inference 
+
+Large MoE inference commonly combines attention data parallelism (DP), tensor parallelism (TP) within an attention replica, and expert communication across a wider group [3]. Each attention-DP replica owns disjoint sequences and KV state and schedules its own ready work. The replicas can therefore enter P and D at different times even though model or expert communication crosses replica boundaries. For world size 𝑔 , let 𝑑 and 𝑒 denote the attention data-parallel (ADP) and expert-parallel (EP) widths. The corre-sponding attention and expert tensor-parallel widths are 𝑔 /𝑑 
+
+(ATP) and 𝑔 /𝑒 (ETP). Unless stated otherwise, ETP is one; we therefore abbreviate a deployment by its nontrivial EP and ADP dimensions. For example, EP8/ADP2 denotes eight-way EP with two attention-DP replicas and ATP4.      
+
+> 2AInfer-PD : Communication-Safe P/D Multiplexing rank-shared plan one P execution spans multiple D iterations turnstile
+> nDn
+> enqueue P segment
+> n
+> boundary
+> bn+ 1
+> turnstile
+> n+1 Dn+ 1
+> enqueue P segment
+> n+1
+> one round: rank-aligned D enqueue, then one P segment
+> D iteration
+> CUDA Graph replay DP-attn RS + AG owned DeepEP low-latency state
+> collective order at turnstile rank-consistent host enqueue + edge for registered pair P segment
+> eager background compute full-TP AllReduce owned DeepEP normal-path state shared model weights · KV cache · GPU pool · DeepEP/NVSHMEM runtime
+
+Figure 3. AInfer-PD execution and communication paths. A P execution is split across multiple turnstile rounds. Each round establishes a rank-consistent order for one D iteration and then admits one P segment up to the next communication boundary. The phase cards illustrate the crossed ADP/ATP path: D uses graph replay and DP-attention collectives, while P includes the full-TP collective. D and P independently own low-latency and normal-path DeepEP state, respectively, while retaining the same model, KV cache, GPU pool, and process-level communication runtime. In practical MoE serving implementations, P and D may follow different collective paths. This mapping is not re-quired by ADP: it lets variable-length P use an eager model-wide TP AllReduce while padded D replays a DP-attention ReduceScatter/AllGather. Both SGLang [20] and AInfer use this mapping in paths that combine ADP and ATP with either MoE TP or the original EP backend. Because these process groups intersect, independently scheduled attention replicas can enqueue the collectives in different cross-rank orders, creating the distributed progress cycle in Figure 2. When multiple communicators share a device, NCCL re-quires their collectives to be launched in a consistent or-der across ranks; CUDA Graph launches follow the same rule [14]. Separate P/D communicators alone do not establish this cross-communicator order. DeepEP has become a widely used communication sub-strate for large-scale MoE expert parallelism [4]. Its nor-mal mode targets throughput-oriented dispatch, while its low-latency mode targets latency-sensitive dispatch. These modes are well suited to large P batches and small D batches, respectively, but were designed as alternative execution modes rather than concurrent tenants: their mutable pro-tocol and transport state is shared. When P and D coexist, execution therefore falls back to the normal mode, making D communication slower than on the low-latency path. 
+
+2.3 P/D Execution Choices 
+
+P/D disaggregation removes colocated interference through separate worker pools, at the cost of additional devices, cross-pool KV transfer, and coordination [15, 16, 21]; in multi-turn rollouts, this handoff can recur every turn. In-place multiplex-ing instead shares devices, weights, and KV storage while managing contention through admission control, chunked prefill, or resource partitioning [1, 2, 5, 10, 11]. As Figure 1 summarizes, existing designs isolate much of P/D execu-tion but cover neither the intersecting ADP/ATP paths nor concurrent DeepEP modes. AInfer-PD adds both forms of communication isolation to in-place multiplexing. 
+
+## 3 Design Overview 
+
+AInfer-PD extends in-place P/D multiplexing within one distributed MoE model. As Figure 3 shows, P and D share weights, KV cache, and devices. A rank-shared scheduler controls phase admission, while the communication layer orders intersecting ADP/ATP collectives and separates the mutable state of DeepEP’s normal and low-latency paths. 
+
+3.1 In-Place P/D Execution 
+
+At each engine iteration, a rank-shared planner admits ready D first and uses the remaining batch and KV capacity for P. Both phases execute against the same model weights, KV cache, and GPU pool. A single P execution typically spans the duration of several D iterations. AInfer-PD therefore divides P into segments delimited by backend-provided communication boundaries. In each turnstile round, all ranks first enqueue one D iter-ation in a consistent order and then admit one P segment. The segment runs until the next boundary, while previously submitted P GPU work continues asynchronously. Repeating the round interleaves a long P execution with successive D 
+
+> 3Wang, Yang, et al.
+
+iterations; the segment policy controls how much P each round admits. 
+
+3.2 Ordering ADP/ATP Collectives 
+
+For the ADP/ATP paths described in Section 2, separate P and D communicators do not by themselves define the order between a P full-TP AllReduce and D’s ReduceScat-ter/AllGather sequence. At the relevant boundaries, the dis-tributed turnstile establishes the same host-enqueue order on every participating rank. A selective stream route supplies the matching device-order edge, placing the conflicting P collective after D. Other P computation and nonintersecting communication remain asynchronous. Because P is divided into segments, D advances at successive boundaries rather than waiting for the full P execution. Paths without the P full-group AllReduce do not install this route and retain their original stream-level concurrency. Section 4 defines the protocol and its progress argument. 
+
+3.3 Concurrent DeepEP Communication 
+
+DeepEP introduces a separate state-ownership problem. Its normal and low-latency paths were designed for dif-ferent traffic regimes, but their mutable buffers, counters, workspaces, events, and QP ranges cannot be shared by concurrent P and D operations. AInfer-PD retains one process-level DeepEP runtime but assigns each phase its own communication state: P uses the normal path and D keeps the low-latency path while P is active. Splitting normal dispatch after expert notification also exposes a boundary before P submits routed data movement, allowing D to proceed without discarding already-enqueued P work. Sec-tion 5 details this design; Section 6 covers request lifecycle management, CUDA Graph replay, and MTP. 
+
+## 4 Ordering Phase-Specific Collectives 
+
+For each registered pair of intersecting P/D collectives, AInfer-PD establishes one cross-rank order. It orders only the conflicting pair, while segment releases let D advance through a long P execution. 
+
+4.1 Crossed-Group Ordering Problem 
+
+Separate communicators isolate sequence state but do not order operations between them. In Figure 2’s ATP2/ADP2 case, graph-replayed D reaches a DP-attention AllGather over peers {0,2} (and symmetrically {1,3}), while P reaches a full-group AllReduce over {0,1,2,3}. If different ranks make different kernels resident first, each can wait for peers occu-pied by the other, closing a global cycle despite valid local streams. Avoiding this outcome requires rank-consistent host en-queue and a compatible device order for the conflicting ker-nels. AInfer-PD builds this order in three steps: ranks expose communication-safe P boundaries, a distributed turnstile uses each boundary to establish a common host-enqueue phase for D, and a selective stream route realizes that order for the conflicting device kernels. Two process-wide controls can also remove the observed conflict: NCCL implicit cross-communicator ordering and restricting CUDA submission to one device connection. In the graph-replayed execution path considered here, however, both eliminate P/D communication overlap along with the conflict. AInfer-PD instead constrains only the intersecting path; other P computation and nonintersecting communica-tion remain on their background routes. 
+
+4.2 Rank-Aligned Segment Boundaries 
+
+To interleave D with a long P execution, ranks need points at which P can stop issuing new communication without draining work already submitted to the GPU. Each P epoch 
+
+𝑒 therefore contains monotone safe boundary identifiers 
+
+𝑖 = 0, 1, . . . . Exactly one backend publishes them: the non-DeepEP path at registered layer boundaries, or DeepEP after notification in split-phase normal dispatch. The controller stores the largest reached boundary 𝑟 (ini-tially −1), permitted endpoint 𝑝 , positive span 𝐾 , and task state. P stops at 𝑖 = 𝑝 ; after the post-D phase, active ranks set 𝑝 ← 𝑝 + 𝐾 , while completed ranks follow the matched control path. Initially, 𝑝 = 0 orders ready D before P en-ters CUDA; if D is already enqueued, P starts with 𝑝 = 𝐾 .The final segment reports completion. The controller rejects stale or duplicate epochs, missing producers, nonmonotone boundary publication, and endpoints beyond the current permit. 
+
+4.3 Distributed Segment Turnstile 
+
+Safe boundaries define where D may enter; the turnstile coordinates when that insertion occurs across ranks. Figure 4 and the following pseudocode show one overlapped decode iteration. PreDRendezvous and PostDRendezvous name two all-rank CPU control phases; the underlying rendezvous carries no endpoint value and enqueues no GPU collective.                              
+
+> Turnstile step for P epoch 𝑒 at permitted endpoint 𝑝
+> Action P1 If 𝑝 =0, wait before CUDA. Publish (𝑒, 𝑖 )at backend hooks; report TaskDone (𝑒 )after the final segment. P2 After publishing 𝑖 , wait while 𝑖 ≥𝑝 . DeepEP data movement also requires receive counts. D1 If 𝑝 >0, wait for 𝑟 ≥𝑝 or TaskDone (𝑒 ); target 0 needs no publication. Enter PreDRendezvous. D2 Enqueue the registered D calls. D3 After those launch APIs return, enter PostDRendezvous. D4 Active ranks set 𝑝 ←𝑝 +𝐾 and release the next P segment. Do not wait for P GPU completion.
+
+The rendezvous delimit common host phases: every rank reaches the P boundary before D enqueue and the post-D phase before the next P release. Idle ranks issue matched no-work calls. Neither phase waits for CUDA events, stream                 
+
+> 4AInfer-PD : Communication-Safe P/D Multiplexing foreground
+> Decode
+> background
+> Prefill
+> sync birendezvous 1enqueue D rendezvous 2 (ACK) grant iteration n+1
+> publish bireceive-count progress permit dispatch + expert bi+ 1
+> bipermit bi+ 1
+> ACK orders enqueue; no P completion fence logical time
+
+Figure 4. Rank-aligned segment turnstile. 𝑏 𝑖 and 𝑏 𝑖 +1 are policy-selected endpoints and may span multiple backend boundaries. D iteration 𝑛 waits for P to reach 𝑏 𝑖 , aligns all ranks, enqueues its registered communication, and admits the next segment. The control phases order host enqueue rather than P GPU completion. DeepEP receive-count progress may continue in the background, but P data movement requires both counts and the next permit. synchronization, or collective completion; submitted P work continues. 
+
+4.4 Selective Device Ordering and Progress 
+
+Host agreement alone does not order independent streams. At each crossed-path boundary, AInfer-PD places the reg-istered P full-TP AllReduce on D’s graph-launch stream. Stream FIFO orders D before the following P collective lo-cally, and the turnstile aligns this order across ranks. The pair does not overlap, but other P work remains on its back-ground route. Repeating the order lets D advance throughout P; paths without the registered collective keep their original stream route. Consider an interior turnstile step 𝑗 in epoch 𝑒 . Let 𝐺 𝑟 𝑒,𝑗 be rank 𝑟 ’s D graph launch, and let 𝑅 𝑟, − 
+
+> 𝑒,𝑗
+
+and 𝑅 𝑟, + 
+
+> 𝑒,𝑗
+
+be the routed P calls immediately before the endpoint wait and after the next permit. Let ≺𝑟 denote enqueue order on the shared stream and therefore execution order under CUDA stream FIFO. For every participating rank 𝑟 , the protocol establishes 
+
+𝑅 𝑟, − 
+
+> 𝑒,𝑗
+
+≺𝑟 𝐺 𝑟 𝑒,𝑗 ≺𝑟 𝑅 𝑟, +
+
+> 𝑒,𝑗
+
+The initial endpoint has no preceding P call, and a completed epoch has no following P call; each requires only the appli-cable half-order. 
+
+Why the cycle is removed. The turnstile places every participant in the same host phase before D enqueue; rout-ing D and the following P AllReduce through one stream establishes the same 𝐷 → 𝑃 order under CUDA stream FIFO [12, 13]. Because Figure 2’s cycle requires opposite cross-rank orders, it cannot close. This argument removes the observed cycle for the collective pair covered by the pro-tocol under matched participation and backend progress; it does not establish deadlock freedom for arbitrary collectives. Applying a consistent device order to intersecting collectives 
+
+Table 1. Ownership in the concurrent DeepEP runtime.        
+
+> Ownership Objects Shared Runtime initialization, rank topology, physical links, model weights, KV storage P-owned Normal buffer, counters, workspace, stream, events, QP range D-owned Low-latency buffer, counters, workspace, stream, events, double-buffer index, QP range
+
+at safe boundaries can also guide extensions to more complex parallel topologies. 
+
+## 5 DeepEP Communication-State Isolation 
+
+DeepEP provides a normal path for large P batches and a low-latency path for small D batches [4]. Each advances mutable protocol state not originally partitioned by phase. AInfer-PD adds phase-owned communication domains within one process-level runtime. 
+
+5.1 Phase-Owned State 
+
+P and D share NVSHMEM initialization, rank topology, phys-ical links, model weights, and KV storage, but not objects modified by communication kernels. Table 1 summarizes the phase-owned state. Phase identity selects state explicitly. D retains stable CUDA Graph addresses, while P uses separate eager inputs and cannot reset D metadata. NIC bandwidth, caches, and unreserved SM capacity remain shared. 
+
+5.2 Exposing a Safe Prefill Boundary 
+
+Normal DeepEP dispatch combines expert notification, receive-count exchange, tensor allocation, and routed data movement. AInfer-PD splits it after notification, when peers    
+
+> 5Wang, Yang, et al. one process-level NVSHMEM runtime Prefill buffer
+> normal dispatch QP [s, 2 s)
+> private counters
+> Decode buffer
+> low-latency path QP [0, s)
+> stable graph address disjoint buffers · workspaces · counters · QPs
+
+Figure 5. DeepEP communication-state ownership. Normal-P and low-latency-D dispatch share one process-level run-time but own disjoint buffers, workspaces, counters, events, and QP ranges. know the dispatch shape but before P submits data move-ment. P then obtains receive counts in the background and submits data only after both counts and turnstile permission are available; D proceeds on its low-latency state. Figure 4 places this boundary in the turnstile sequence. The pending P dispatch retains the tensors and stream state needed to finish; its host-side count wait does not block D. At most one dispatch is pending per P buffer, and ex-plicit transitions prevent cancellation from reusing partially advanced state. 
+
+5.3 Network and Lifetime Isolation 
+
+Both phase-owned buffers use one global-rank NVSHMEM space but register disjoint per-peer QP intervals, preventing one phase from advancing the other’s transport state. Con-struction validates peer mappings before communication, and buffer-local synchronization avoids cross-phase fences. Because device-initiated communication cannot be re-tracted after notification, an abandoned operation retires its buffer until a quiescent cleanup point. Shared initializa-tion remains live while either phase or a captured graph can access it. Separate communication-SM budgets bound cooperative kernels; their configured footprint is reported in Section 7. 
+
+## 6 End-to-End Integration 
+
+AInfer-PD carries phase identity from scheduling into at-tention and expert communication. This identity selects the collective route and DeepEP state; it is not inferred from a host thread or CUDA stream. 
+
+6.1 Scheduling, KV, and Graph State 
+
+At each scheduling step, the engine commits D rows, graph state, and optional MTP lookahead before admitting P into the remaining batch and KV capacity. The rank-shared plan protects D’s KV slots and prevents local ready queues from selecting incompatible phase paths. Each admitted P request reserves KV storage until its prefill result is either promoted to D or cancelled. P writes directly into this reservation, and tensor-parallel workers verify that it still belongs to the request before promotion. Results from an earlier request lifetime are discarded; cancel-lation waits for submitted P work to drain before the storage is reused. D graph capture binds phase-owned inputs, metadata, stream routes, and stable low-latency DeepEP state. Back-ground P uses disjoint eager inputs, so the same D graph can be replayed whether P is active or idle. MTP drafting and verification form one D iteration and finish enqueue before the post-D rendezvous releases P. 
+
+6.2 Prefill Policy Interface 
+
+The scheduler receives an ordered sequence of safe P bound-aries. Non-DeepEP execution uses registered model points, whereas DeepEP uses the post-notification point from Sec-tion 5. A single producer advances this sequence monotoni-cally within each epoch. The segment policy chooses how many boundary intervals to admit per round. We evaluate fixed spans and a load-selected policy that chooses among validated backend- and precision-specific spans according to current D occupancy and P pressure. These policies trade D waiting time against control overhead while retaining the same epoch checks, rendezvous order, and phase-state isolation. 
+
+## 7 Evaluation 
+
+We first characterize recurrent continuation releases and measure rollout completion (RQ1–RQ2). We then evaluate collective ordering and concurrent DeepEP execution (RQ3– RQ4), sensitivity to P pressure and segmentation (RQ5), and cross-node and live-RL execution (RQ6). 
+
+7.1 Methodology Systems and hardware. The main campaign uses eight NVIDIA H20-3E GPUs. Its software stack includes PyTorch 2.8, CUDA 13.0, NCCL 2.27.7, DeepEP 1.2.1, and SGLang 0.5.15 [20]. BF16 and FP8 runs use 42-layer internal MoE checkpoints with hidden size 2,560, 512 routed experts, and top-8 routing. A two-node campaign uses 16 H20-3E GPUs, a larger internal checkpoint, the same SGLang version, and a separate anonymized RL trace. RQ3 uses eight H200 GPUs for the crossed-cycle profile and H20-3E for model-free rank-skew stress; these diagnostic runs are excluded from perfor-mance results. Table 2 lists the evaluated parallel configurations. H1/H2 use tensor-parallel experts and state ETP explicitly; the re-maining profiles have ETP1. The eight-GPU crossed profile EP8/ADP2 therefore has ATP4. 
+
+Workload and protocol. The main replay preserves request order and sizes, multi-turn dependencies, output  
+
+> 6AInfer-PD : Communication-Safe P/D Multiplexing 10 210 3
+> appended tokens 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> fraction ≥ x
+
+a Prompt increment n=1265 292 / 2008 / 3062 10 2 10 3
+
+> generated tokens
+
+b Decode output n=1265 88 / 391 / 1057 10 2 10 3 10 4
+
+> context tokens
+
+c Context depth n=1265 4716 / 8828 / 12507 10 1
+
+> client wait (s)
+
+d Client wait n=1137 3.1 / 3.9 / 15 s annotations: p50 / p90 / p99 
+
+Figure 6. Distributions in the anonymized internal reinforcement-learning rollout trace. Panels show empirical CCDFs of (a) newly appended prompt tokens, (b) generated tokens, (c) retained context length, and (d) trace-derived completion-relative client wait. Annotations give sample count and p50/p90/p99. Both axes are logarithmic. 
+
+Table 2. Evaluation profiles. H1–H4 use BF16 and the non-DeepEP MoE backend; crossed cells span BF16/FP8 and MTP off/on. ATP and ETP are derived from world size as 𝑔 /𝑑 and 
+
+𝑔 /𝑒 .                                        
+
+> Profile Nodes ×GPUs EP/ADP ATP/ETP Backend / MTP H1 1×4EP1/ADP2 ATP2/ETP4 non-DeepEP / off H2 1×4EP1/ADP2 ATP2/ETP4 non-DeepEP / on H3 1×8EP8/ADP8 ATP1/ETP1 non-DeepEP / off H4 1×8EP8/ADP8 ATP1/ETP1 non-DeepEP / on Crossed 1×8EP8/ADP2 ATP4/ETP1 DeepEP / off,on Two-node 2×8EP16/ADP8 ATP2/ETP1 DeepEP / off
+
+lengths, and client waits from an anonymized internal RL trace. For continuation 𝑖 , the driver applies the same con-figured wait 𝛿 𝑖 after the preceding turn completes. Every performance run finishes 1,265 requests from 128 conver-sations, consuming 6,574,104 input and producing 220,862 output tokens. Headline cells use five repetitions and other single-node cells use three; we report medians and IQRs. All runs complete without eviction or runtime failure. We run a GSM8K exact-answer regression on Normal, AInfer-PD, and SGLang in BF16 with MTP off/on, and on DeepEP-enabled AInfer-PD in BF16/FP8 with MTP off/on. All ten runs are valid, and paired BF16 accuracy differs from 
+
+Table 3. Configured completion-relative client-wait profiles derived from the internal RL trace. 
+
+Profile Description p50 p90 p99 P1 P-heavy 0 0 0P2 short-idle 31 39 153 P3 mid-idle 93 117 459 P4 P-light 310 388 1,530 Trace wait unmodified 3,104 3,884 15,296 
+
+> Milliseconds; each system receives the same configured value for each of the 1,137 dependent continuations.
+
+Normal by at most 2.20 points. SGLang uses the same re-quests, token budgets, caching, overlap scheduling, and MTP setting; matched MTP uses three-step top-1 NextN with four draft tokens. 
+
+Baselines and metrics. AInfer Normal is the base AInfer engine with strict P priority and P/D multiplexing disabled. 
+
+AInfer-PD enables the complete design, and SGLang is the external system baseline. Normal and AInfer-PD share AIn-fer’s engine and kernels; SGLang provides an independent whole-stack comparison. The matched controls below isolate ordering within AInfer-PD. The safe-PD controls retain AInfer-PD’s admission, life-cycle, per-phase DeepEP state, model, and engine settings. 
+
+Global-Complete uses a whole-P GPU fence; Global-Enqueue 
+
+acknowledges all-rank whole-epoch host enqueue without waiting for GPU completion; Fine-grained advances at re-quired segment boundaries. The ladder separates asynchro-nous progress from boundary granularity. Primary metrics are fixed-workload makespan and com-pleted requests/s, reciprocal views of 1,265 completions. Re-quest completion spans submission to the final token; trajec-tory completion spans the first release to the last turn’s final token, including configured waits. We also report p99 TTFT and mean D wait. Makespan is primary because training consumes the completed rollout. 
+
+7.2 RQ1: What Recurs on the Rollout Critical Path? 
+
+Figure 6 plots empirical complementary CDFs. The main-campaign trace contains 1,265 requests from 128 trajecto-ries of up to ten causally dependent turns, including 1,137 continuations released after a preceding generation. New P work therefore recurs throughout multi-turn execution rather than consisting only of an initial prompt batch. Mean-while, prompt increments and generated outputs are long-tailed: their medians are 292 and 88 tokens, while p99 reaches 3,062 and 1,057 tokens. Retained context is 4,716 tokens at the median and 12,507 at p99. These unequal turn lengths 
+
+> 7Wang, Yang, et al.
+
+Table 4. Crossed-order controls and protocol stress. Paren-theses give ATP/ADP; the first row is one instrumented in-stance of the recurrent stall.       
+
+> Case (ATP/ADP) Outcome Comm.-isolated (2/2) stable stall; capture at 418/1,265 Single-axis (1/4; 4/1) both complete Residency (2/2) 23-CTA cap completes; 24-CTA cap stalls Selective ordering (2/2) 3/3 complete Rank-skew stress 2,560/2,560 cycles (5 seeds) Delayed-P ACK P incomplete in 20/64
+
+and continuation releases create repeated opportunities for phase skew that an attention-DP rollout engine must accom-modate. Trace-derived client wait has a 3.10 s median and 15.30 s p99. The headline configuration releases continuations im-mediately; RQ5 scales the assigned wait vector into Table 3’s four distributions and reports the original vector separately. 
+
+7.3 RQ2: End-to-End Rollout Completion 
+
+Figure 7 compares four high-P-pressure profiles with no added continuation idle. Across H1–H4, AInfer-PD reduces E2E time relative to AInfer Normal by 7.1%, 8.7%, 21.5%, and 22.5%. Relative to SGLang, E2E falls by 24.8–32.9%. The result holds across both topologies and with MTP on or off. H1–H2 exercise the crossed ADP/ATP ordering path. H3– H4 have ATP1 and need neither the selective route nor DeepEP state isolation; they measure the underlying benefit of in-place P/D scheduling. Figure 7 therefore measures the end-to-end benefit of the full system. RQ3 and RQ4 separately examine collective ordering and DeepEP state isolation. Across H1–H4, p99 request completion falls by 21.3–37.9% versus Normal and 39.3–44.0% versus SGLang; trajectory completion falls by 8.2–22.7% and 27.0–33.4%, respectively. P99 TTFT remains within −6.3 to +1.2% of Normal. 
+
+7.4 RQ3: Does Collective-Order Isolation Remove the Cycle? 
+
+Communication-group separation alone repeatedly stalls the crossed ATP2/ADP2 path. Figure 2 captures one four-rank D AllGather/P AllReduce frontier, and Table 4 summarizes the controls. Reducing either topology axis or capping resi-dency at 23 rather than 24 CTAs per SM avoids the stall; the selective route completes all three full replays. Across a 40-step repaired-path window, each observed rank contains 468 eager P full-TP NCCL kernels and 57 D graph replays. The registered NCCL pair has 0 ms overlap. Segment-level release nevertheless lets D advance before the complete P epoch: P computation overlaps D for 31.2/31.6 ms on ranks 0/1 (6.3/6.5%). A model-free stress injects up to 20 ms of rank skew and completes 2,560/2,560 turnstile cy-cles across five seeds. In a delayed-P control, D acknowledges enqueue while P remains incomplete in 20/64 cycles, distin-guishing enqueue order from completion fencing. We next measure the rollout effect of the matched ordering ladder defined above. At the trace-wait point, Global-Enqueue is within 0.9% of Global-Complete and Fine cuts E2E by 8.6% versus Enqueue (7.8% versus Complete). With no added wait, the reductions are 6.8% and a further 19.8% (25.2% end to end). Mean D wait falls from 127.3/114.1 ms under Enqueue to 17.5/18.0 ms under Fine. Thus fine-grained segmentation improves rollout completion by protecting D from whole-P blocking rather than by overlapping the conflicting collectives. Each Global-Enqueue epoch uses one rendezvous after 40 dispatch boundaries. The trace-wait and no-wait workloads require medians of 432 and 566 eight-rank rendezvous, which take 0.93 and 0.91 ms, respectively. P remains incomplete at 791 of 10,312 acknowledgements in the trace-wait workload and 314 of 13,584 in the no-wait workload. An eight-rank trace shows matching epoch and boundary identifiers across ranks. 
+
+7.5 RQ4: Can DeepEP’s P/D Protocols Coexist? Topology coverage. RQ2 covered the non-DeepEP back-end on H1–H4, including EP8/ADP8. With DeepEP and FP8, AInfer-PD reaches 9.18–14.74 requests/s in EP8/ADP8, 26.6–50.4% above Normal and 36.0–62.8% above SGLang. The crossed EP8/ADP2 configuration reaches 9.47–15.74 re-quests/s across precision and MTP settings. 
+
+DeepEP interaction. Figure 8a gives the matched back-end interaction. In EP8/ADP2, P/D raises request rate 11.7– 16.1% over Normal with the non-DeepEP backend and 21.8– 31.9% with DeepEP. DeepEP changes Normal by −11 .3 to 
+
++17 .8% and AInfer-PD by −1.7 to +30 .8%; its effect there-fore depends on the scheduling mode. The complete con-figuration is 12.5–46.1% above non-DeepEP Normal while sustaining both DeepEP paths. In EP8, DeepEP reserves 140.2 MiB per rank for normal-path NVLink payload and 325.0 MiB for low-latency RDMA payload: 465.2 MiB in both single- and dual-phase configura-tions. Concurrency adds P metadata and a 12-index interval in each 128-index per-peer QP namespace. Normal P uses 12 of 132 SMs; NIC bandwidth and residual SM capacity remain shared. 
+
+7.6 RQ5: Sensitivity to Rollout Pressure and Segmentation 
+
+We repeat the eight-GPU DeepEP topology for all three sys-tems in BF16 with MTP off. P1–P4 multiply the trace-derived wait vector by 0, 0.01, 0.03, and 0.10 while preserving prompts and dependencies; the original vector is separate. Across P1–P4, Normal and SGLang reach 6.75–7.23 and 6.75–7.65 requests/s; AInfer-PD reaches 8.82–9.09, gains of 22.0–34.6% and 15.2–34.7%. Its p99 TTFT is 6.10–6.42 s, at worst 4.9% and 5.9% higher. P99 request completion falls by    
+
+> 8AInfer-PD : Communication-Safe P/D Multiplexing H1 H2 H3 H4 topology / mode 0100 E2E time (s)
+
+a Rollout makespan ↓ H1 H2 H3 H4 topology / mode 0510 completed requests/s  b Completion rate ↑ H1 H2 H3 H4 topology / mode 05p99 TTFT (s) 
+
+c Admission tradeoff ↓ median · E2E and REQ/s IQR AInfer Normal AInfer-PD SGLang 
+
+Figure 7. Fixed-workload end-to-end comparison using the profiles in Table 2. Panels report (a) replay makespan, (b) completed requests/s, and (c) p99 TTFT. Bars are medians; error bars are IQRs. Since every run completes 1,265 requests, panels a and b are reciprocal views. 
+
+Table 5. Matched crossed-topology safe-PD ordering ladder (BF16, DeepEP, MTP off). E2E, REQ/s, and TTFT are median (IQR), 
+
+𝑛 = 3; D wait is the median per-iteration mean. Ov. measures concurrent P/D GPU work, not overlap between the ordered NCCL pair.                             
+
+> Workload Policy E2E (s) REQ/s p99 TTFT (s) D wait (ms) Ov. (%) Trace wait Global-Complete 179.79 (1.40) 7.036 (.055) 6.26 (.65) 138.5 89.8 Global-Enqueue 181.39 (.73) 6.974 (.028) 7.14 (.73) 127.3 90.4 Fine-grained 165.83 (1.81) 7.628 (.083) 6.37 (.81) 17.5 95.0 No wait Global-Complete 181.12 (1.79) 6.984 (.070) 6.64 (.54) 122.6 84.1 Global-Enqueue 168.88 (1.15) 7.490 (.050) 6.88 (.08) 114.1 87.6 Fine-grained 135.49 (2.17) 9.336 (.148) 7.34 (.56) 18.0 94.8 BF16 BF16 +MTP FP8 FP8 +MTP precision / mode 010 completed requests/s
+
+a Backend interaction N/Ord. N/DeepEP PD/Ord. PD/DeepEP auto 1 2 3 4DeepEP segment policy −5 0request rate vs auto (%) 
+
+b Segment policy BF16 FP8 0 8 16 24 31 training step 30 40 rollout wall-clock (min)  c Live RL rollout SGLang AInfer-PD 
+
+Figure 8. Backend interaction, segment policy, and live-RL rollout. (a) Normal/PD × non-DeepEP/DeepEP across precision and MTP; medians with IQRs. (b) Fixed sizes versus the runtime selector. (c) Wall-clock for 32 aligned RL steps; AInfer-PD is lower at every step and by 17.6% in aggregate. 36.0–46.5% and 28.8–45.2%; trajectory completion by 18.6– 26.9% and 13.7–27.0%. With the original wait vector, AInfer-PD’s 166.93 s median makespan is 5.5% below Normal and 11.1% below SGLang; p99 TTFT rises 4.9% and 5.5%. Longer client waits leave less overlap opportunity. 
+
+Segment granularity. Figure 8b compares fixed segment sizes 1–4 with the runtime selector. All six selector runs choose segment 2; that choice is best for BF16 and within 0.8% of the best FP8 choice, while a poor fixed choice loses 6.1%. The selected runs have rank-aggregated decode boundary-wait, prefill wait-for-permit, and prefill enqueue totals within 3.2% of fixed-2. From size 1 to 4, aggregate prefill wait-for-permit time falls 31–34%, while decode boundary-wait and prefill enqueue time rise 3.9–4.2 × and 3.6–3.7 ×. These mea-surements show the synchronization tradeoff across segment sizes. The selector chooses among safe boundaries without changing their ordering contract.             
+
+> 9Wang, Yang, et al. P1 P2 P3 P4 Trace-derived wait client-wait profile 789completed requests/s  aCompletion rate ↑
+> P1 P2 P3 P4 Trace-derived wait client-wait profile 6.0 6.2 6.4 p99 TTFT (s)  bAdmission tradeoff ↓
+> AInfer Normal AInfer-PD SGLang
+
+Figure 9. Sensitivity to the configured client-wait distributions in Table 3. P1–P4 form the controlled sweep; the shaded trace-wait point is shown separately. Panels show (a) completed requests/s and (b) p99 TTFT. Points are medians; error bars are IQRs. In a decode-only control, enabling the P/D path with the same kernels lowers request rate by 6.7%, motivating activa-tion only when concurrent P work exists. 
+
+7.7 RQ6: Cross-Node and Live-RL Validation 
+
+Table 6 holds within-row work identical: 1,265–8,258 re-quests, 6.57M–207.83M input tokens, and 0.22M–2.73M out-put tokens. AInfer-PD cuts E2E 18.0–35.3% versus Normal and 18.3–31.8% versus SGLang; maximum range/mean is 1.28%, 1.20%, and 2.09% for SGLang, Normal, and AInfer-PD, respectively. Across the four workload scales, relative to Normal, p99 TTFT rises 13.2–37.9%, exposing the completion-time/TTFT tradeoff under the completion-oriented admis-sion policy. A more conservative P budget or segment policy can prioritize TTFT at the expense of rollout completion. The campaign also exercises the larger checkpoint and crossed attention-DP/EP path on 16 GPUs. Figure 8c reports two independent live-RL runs. Summed rollout time across steps 0–31 falls from 17.14 to 14.12 hours (17.6%). Generated trajectories may diverge after each step, so this is operational rather than paired evidence. 
+
+## 8 Related Work 
+
+Agentic RL execution. HybridFlow, AReaL, and DORA improve placement, pipelining, and synchronization be-tween rollout, reward, and training stages in RL systems [6, 8, 17]. These systems primarily address how stages share a cluster. AInfer-PD is complementary: it targets the inference runtime within a rollout worker, where asynchro-nous multi-turn continuations repeatedly introduce P work alongside active D. 
+
+P/D disaggregation. Splitwise, DistServe, and Mooncake place P and D on distinct workers or pools and transfer KV state between them [15, 16, 21]. This placement provides sep-arate phase capacity and communication domains. Expert-Plex uses a hybrid organization that disaggregates attention while sharing a distributed expert pool [19]. AInfer-PD in-stead operates within one in-place model and KV replica; its communication contracts address phase coexistence within that shared deployment. 
+
+In-place P/D multiplexing. Sarathi-Serve, Layered Pre-fill, and POD-Attention change prefill granularity or joint execution to reduce decode contention [1, 9, 10]. WindServe, MuxWise, Bullet, semi-PD, and Nexus multiplex P and D within a worker through stream scheduling, spatial parti-tioning, or phase-wise resource management [2, 5, 7, 11, 18]. These systems establish the value of local P/D overlap. In common serving implementations, phase-skewed attention replicas can expose intersecting P and D collectives in differ-ent orders. The cited designs do not specify rank-consistent ordering for this case; AInfer-PD adds that contract while retaining asynchronous P work. 
+
+Distributed MoE communication. Large MoE models combine tensor, data, and expert parallelism; DeepSeek-V3 is a representative architecture with MoE, EP, attention data parallelism, and MTP [3]. DeepEP provides throughput-oriented normal and low-latency protocols for expert dis-patch and combine [4]. Concurrent P/D execution activates both protocols within one process, but the original runtime does not isolate their mutable state. AInfer-PD adds phase-owned protocol and transport state while sharing process-level initialization and physical resources; this requirement is independent of collective ordering. 
+
+## 9 Discussion and Limitations 
+
+Applicability and ordering scope. AInfer-PD targets rollout workers that keep one model and KV state on the same devices while P and D coexist. Disaggregation remains preferable when separate phase capacity and KV transfer are acceptable. In-place collective ordering is needed only when P/D paths intersect and ranks can expose them in 
+
+> 10
+
+AInfer-PD : Communication-Safe P/D Multiplexing 
+
+Table 6. Two-node, 16-H20-3E validation (BF16, FA3, MTP off, EP16/ADP8 (ATP2, ETP1), DeepEP, 32K-token P budget). Each cell is a three-run mean; rows increase workload depth at matched within-row work. SG denotes SGLang. 
+
+Context E2E (s) Completed REQ/s p99 TTFT (s) Rounds Avg/Max SG Normal AInfer-PD SG Normal AInfer-PD SG Normal AInfer-PD 10 5,197/17,479 486.31 512.69 331.57 2.601 2.467 3.815 26.06 18.83 21.31 25 10,102/35,884 1,209.39 1,213.79 887.51 2.575 2.566 3.509 13.87 14.11 15.98 50 17,304/68,774 2,711.48 2,712.62 2,154.78 2.160 2.159 2.718 10.73 11.04 15.22 100 25,167/101,214 3,966.09 3,951.15 3,238.89 2.082 2.090 2.550 8.41 8.47 10.39 
+
+different orders. The turnstile is not tied to ADP/ATP: it applies when phase-specific paths traverse intersecting col-lective groups in different orders and expose safe insertion boundaries. Extending it to a new pair requires identifying its participants, safe P boundary, device-order edge, and no-work behavior. The ordering result assumes healthy ranks and transport, matched participation, and fair CUDA/NCCL progress. Epoch validation detects violations of this protocol rather than general system faults. 
+
+State isolation and scheduling policy. The DeepEP extension isolates mutable protocol state, not NIC band-width, caches, or unreserved SM capacity. Admission and communication-SM budgets regulate these resources. The ownership principle may extend to other expert runtimes with phase-specialized state, although we evaluate only DeepEP. The primary objective is rollout completion, and aggressive P admission can increase TTFT. Segment policy selects this operating point without changing the communi-cation contract; online adaptation remains future work. 
+
+Evaluation scope. We evaluate one- and two-node H20-3E deployments, BF16/FP8, both MoE backends, and MTP on/off; broader scales and hardware remain open. Same-engine controls isolate ordering, while SGLang is a matched-work whole-stack comparison. Live-RL trajectories can di-verge and provide operational rather than paired evidence. 
+
+## 10 Conclusion 
+
+Rollout generation is a major component of RL training time, and agentic multi-turn trajectories repeatedly release prefill work while other trajectories decode. In-place multiplex-ing avoids separate phase pools and KV transfer, but com-mon large-MoE implementations can expose incompatible cross-rank collective orders and shared DeepEP protocol state. AInfer-PD orders the registered collectives and gives DeepEP phase-owned state while retaining one model and KV replica. Across the evaluated prefill-intensive single-node profiles, AInfer-PD reduces rollout makespan by 7.1–22.5% versus the same engine with multiplexing disabled and by 24.8– 32.9% versus SGLang; the two-node profiles yield reductions of 18.0–35.3% and 18.3–31.8%, respectively. Fine-grained seg-ment boundaries add 8.6–19.8% over whole-epoch asynchro-nous enqueue in the measured crossed topology. AInfer-PD therefore shortens the rollout critical path without a second model instance or KV transfer. 
+
+## References 
+
+[1] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav Gulavani, Alexey Tumanov, and Ramachandran Ramjee. 2024. Taming Throughput-Latency Tradeoff in LLM In-ference with Sarathi-Serve. In 18th USENIX Symposium on Operat-ing Systems Design and Implementation (OSDI ’24) . 117–134. https: //www.usenix.org/conference/osdi24/presentation/agrawal 
+
+[2] Yukang Chen, Weihao Cui, Han Zhao, Ziyi Xu, Xiaoze Fan, Xusheng Chen, Yangjie Zhou, Shixuan Sun, Bingsheng He, and Quan Chen. 2026. Towards High-Goodput LLM Serving with Prefill-Decode Mul-tiplexing. In Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Sys-tems, Volume 2 (ASPLOS ’26) . 2030–2047. doi: 10.1145/3779212.3790236 
+
+[3] DeepSeek-AI. 2024. DeepSeek-V3 Technical Report. arXiv:2412.19437 
+
+https://arxiv.org/abs/2412.19437 
+
+[4] DeepSeek-AI. 2025. DeepEP: An Efficient Expert-Parallel Commu-nication Library. Software artifact. https://github.com/deepseek-ai/DeepEP 
+
+[5] Jingqi Feng, Yukai Huang, Rui Zhang, Sicheng Liang, Ming Yan, and Jie Wu. 2025. WindServe: Efficient Phase-Disaggregated LLM Serving with Stream-Based Dynamic Scheduling. In Proceedings of the 52nd Annual International Symposium on Computer Architecture (ISCA ’25) .1283–1295. doi: 10.1145/3695053.3730999 
+
+[6] Wei Fu, Jiaxuan Gao, Xujie Shen, Chen Zhu, Zhiyu Mei, Chuyi He, Shusheng Xu, Guo Wei, Jun Mei, Jiashu Wang, Tongkai Yang, Binhang Yuan, and Yi Wu. 2025. AReaL: A Large-Scale Asynchronous Reinforce-ment Learning System for Language Reasoning. In Advances in Neural Information Processing Systems . https://arxiv.org/abs/2505.24298 
+
+[7] Ke Hong, Lufang Chen, Zhong Wang, Xiuhong Li, Qiuli Mao, Jian-ping Ma, Chao Xiong, Guanyu Wu, Buhe Han, Guohao Dai, Yun Liang, and Yu Wang. 2025. semi-PD: Towards Efficient LLM Serv-ing via Phase-Wise Disaggregated Computation and Unified Storage. arXiv:2504.19867 https://arxiv.org/abs/2504.19867 
+
+[8] Tianhao Hu, Xiangcheng Liu, Youshao Xiao, Yang Zheng, Xuan Huang, Jinrui Ding, Yufei Zhang, Tao Liang, Hongyu Zang, Quan Chen, Yue-qing Sun, Wenjie Shi, Chao Zhang, Wei Wang, Qi Gu, Yerui Sun, Yucheng Xie, and Xunliang Cai. 2026. DORA: A Scalable Asynchro-nous Reinforcement Learning System for Language Model Training. arXiv:2604.26256 https://arxiv.org/abs/2604.26256 
+
+[9] Aditya K. Kamath, Ramya Prabhu, Jayashree Mohan, Simon Peter, Ramachandran Ramjee, and Ashish Panwar. 2025. POD-Attention: Unlocking Full Prefill-Decode Overlap for Faster LLM Inference. In 
+
+Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 
+
+11 Wang, Yang, et al. 
+
+(ASPLOS ’25) . 897–912. doi: 10.1145/3676641.3715996 
+
+[10] Gunjun Lee, Jiwon Kim, Jaiyoung Park, Younjoo Lee, and Jung Ho Ahn. 2026. From Tokens to Layers: Redefining Stall-Free Scheduling for MoE Serving with Layered Prefill. In Proceedings of Machine Learning and Systems (MLSys ’26, Vol. 8) . https://proceedings.mlsys.org/paper_files/paper/2026/hash/ c0f460c6d63599ea870ba9db63dc96a9-Abstract-Conference.html 
+
+[11] Zejia Lin, Hongxin Xu, Guanyi Chen, Zhiguang Chen, Yutong Lu, and Xianwei Zhang. 2026. Bullet: Boosting GPU Utilization for LLM Serving via Dynamic Spatial-Temporal Orchestration. In Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 (ASPLOS ’26) . 290–306. doi: 10.1145/3779212.3790135 
+
+[12] NVIDIA Corporation. 2026. CUDA Programming Guide: CUDA Graphs. NVIDIA Documentation. https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html Accessed: 2026-08-26. [13] NVIDIA Corporation. 2026. CUDA Programming Guide: CUDA Stream Ordering. NVIDIA Documentation. 
+
+https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html#cuda-stream-ordering 
+
+Accessed: 2026-08-26. [14] NVIDIA Corporation. 2026. NCCL User Guide: Using Mul-tiple NCCL Communicators Concurrently. NVIDIA Docu-mentation. https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/communicators.html#using-multiple-nccl-communicators-concurrently Accessed: 2026-08-26. [15] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Íñigo Goiri, Saeed Maleki, and Ricardo Bianchini. 2024. Splitwise: Efficient Generative LLM Inference Using Phase Splitting. In 51st ACM/IEEE Annual International Symposium on Computer Architecture (ISCA ’24) .118–132. doi: 10.1109/ISCA59077.2024.00019 
+
+[16] Ruoyu Qin, Zheming Li, Weiran He, Jialei Cui, Feng Ren, Mingxing Zhang, Yongwei Wu, Weimin Zheng, and Xinran Xu. 2025. Mooncake: Trading More Storage for Less Computation—A KVCache-Centric Architecture for Serving LLM Chatbot. In 23rd USENIX Conference on File and Storage Technologies (FAST ’25) . 155–170. https://www.usenix. org/conference/fast25/presentation/qin 
+
+[17] Guangming Sheng, Chi Zhang, Zilingfeng Ye, Xibin Wu, Wang Zhang, Ru Zhang, Yanghua Peng, Haibin Lin, and Chuan Wu. 2025. Hybrid-Flow: A Flexible and Efficient RLHF Framework. In Proceedings of the Twentieth European Conference on Computer Systems (EuroSys ’25) .1279–1297. doi: 10.1145/3689031.3696075 
+
+[18] Xiaoxiang Shi, Colin Cai, Junjia Du, and Zhihao Jia. 2025. Nexus: Proactive Intra-GPU Disaggregation of Prefill and Decode in LLM Serving. arXiv:2507.06608 https://arxiv.org/abs/2507.06608 
+
+[19] Bingyang Wu, Chao Jin, Zili Zhang, Xinming Wei, Yinmin Zhong, Ruidong Zhu, Chengxu Yang, Xin Jin, and Yuliang Liu. 2026. Ex-pertPlex: A High-Goodput Disaggregated Serving System for MoE LLMs with Adaptive Persistent Kernels. arXiv:2607.18002 https: //arxiv.org/abs/2607.18002 
+
+[20] Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody Hao Yu, Shiyi Cao, Christos Kozyrakis, Ion Sto-ica, Joseph E. Gonzalez, Clark Barrett, and Ying Sheng. 2024. SGLang: Efficient Execution of Structured Language Model Pro-grams. In Advances in Neural Information Processing Systems , Vol. 37. 62557–62583. https://papers.nips.cc/paper_files/paper/2024/hash/ 724be4472168f31ba1c9ac630f15dec8-Abstract-Conference.html 
+
+[21] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xu-anzhe Liu, Xin Jin, and Hao Zhang. 2024. DistServe: Disaggregating Prefill and Decoding for Goodput-Optimized Large Language Model Serving. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI ’24) . 193–210. https://www.usenix.org/ conference/osdi24/presentation/zhong-yinmin 
+
+12
