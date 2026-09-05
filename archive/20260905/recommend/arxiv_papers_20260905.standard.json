@@ -1,0 +1,864 @@
+{
+  "mode": "standard",
+  "generated_at": "2026-09-05T21:17:24.605337+00:00",
+  "stats": {
+    "mode": "standard",
+    "tag_count": 2,
+    "deep_divecandidates": 39,
+    "deep_cap": 7,
+    "deep_selected": 9,
+    "quick_candidates": 43,
+    "quick_skim_target": 12,
+    "quick_selected": 12
+  },
+  "deep_dive": [
+    {
+      "id": "2608.28003v1",
+      "source": "arxiv",
+      "title": "A Method for Layer Bit-Width Allocation in LLM Quantization via Performance Maximization Under a Quality-Degradation Constraint",
+      "abstract": "This paper proposes a layer bit allocation method for Gemma-3-1B, formulating the problem as performance maximization (latency decrease) given a degradation budget constraint (allowable level of generation quality loss). This approach is different from time- and resource-consuming uniform layer quantization methods that are used in the literature (like GPTQ or AWQ) or allocation methods without proven performance-accelerating effect (like MixLLM or TorchAO). The layer sensitivity profile resulting from our prior work SA-PTQ is applied using the activation pass-through mode inside TensorRT-LLM. For each layer precision is determined individually in blocks, according to a grouping introduced in the prior step (5+5, 10+10, all26), differentiating the contribution of FFN, Attention, and lm_head to the overall speedup. The clock speed was measured for 13 W8A8 variants on an RTX 5090. We find that for FFN and lm_head the time cost of quantization/dequantization is compensated for by the use of integer arithmetic, while for short context lengths, the opposite holds true for Attention: an additional step of quantization slows execution down. We propose a manual implementation of SmoothQuant for TensorRT-LLM which was necessary due to export failures, unavailable for lm_head. The best solution found under joint consideration of all three criteria with minimal degradation was FFN 5+5 with lm_head, providing an 11.0% reduction in latency with negligible quality loss (98.90% Top-1 agreement, +0.85% perplexity degradation). With acceptable quality loss for FFN all26 + lm_head, a speedup up to 19.1% was found possible. We suggest further optimizations: fused attention kernels in INT8, KV-cache quantization, using FP8 instead of INT8 and partial Attention quantization analogous to FFN.",
+      "authors": [
+        "Artem Safronov"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.AI"
+      ],
+      "published": "2026-08-28T07:13:42+00:00",
+      "link": "https://arxiv.org/pdf/2608.28003v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "layer-level mixed-precision quantization for LLM inference that maximizes latency speedup under a generation-quality degradation budget using TensorRT-LLM",
+      "llm_evidence_cn": "面向LLM推理的分层混合精度位宽分配，在生成质量退化预算内最大化延迟收益，并在TensorRT-LLM中实现",
+      "llm_evidence": "面向LLM推理的分层混合精度位宽分配，在生成质量退化预算内最大化延迟收益，并在TensorRT-LLM中实现",
+      "canonical_evidence": "面向LLM推理的分层混合精度位宽分配，在生成质量退化预算内最大化延迟收益，并在TensorRT-LLM中实现",
+      "llm_tldr_en": "Presents a layer bit-width allocation method for LLM quantization that formulates the problem as performance maximization under a quality-degradation budget, using layer sensitivity profiles and activation pass-through within TensorRT-LLM instead of uniform quantization.",
+      "llm_tldr_cn": "针对均匀低比特量化难以在同一质量约束下获得最优加速的问题，论文提出面向Gemma-3-1B的分层位宽分配方法。该方法将量化建模为在可允许生成质量损失约束下最大化延迟收益的优化问题，并按块分配层精度，使用激活直通模式部署于TensorRT-LLM。与GPTQ、AWQ等均匀量化及MixLLM等非加速分配方法相比，该方法在质量预算内获得可验证的延迟下降。该工作为系统级LLM分层混合精度量化部署提供了一种面向性能的优化范式。",
+      "llm_tldr": "针对均匀低比特量化难以在同一质量约束下获得最优加速的问题，论文提出面向Gemma-3-1B的分层位宽分配方法。该方法将量化建模为在可允许生成质量损失约束下最大化延迟收益的优化问题，并按块分配层精度，使用激活直通模式部署于TensorRT-LLM。与GPTQ、AWQ等均匀量化及MixLLM等非加速分配方法相比，该方法在质量预算内获得可验证的延迟下降。该工作为系统级LLM分层混合精度量化部署提供了一种面向性能的优化范式。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2608.30830v1",
+      "source": "arxiv",
+      "title": "Adaptive KV Retention for LLM Agents at Human-Approval Timescales",
+      "abstract": "Unlike the seconds-scale tool-call pauses targeted by prior agent-serving systems, agentic LLM requests can be suspended for minutes or hours while waiting for human approval. We study how suspension and resumption affect GPU serving performance and develop a retention policy that balances active-serving capacity against future recomputation under uncertain approval waits. The central tension is severe because retaining suspended KV preserves fast resume but can consume enough GPU capacity to reduce active-serving goodput by 41%, while evicting it avoids that residency cost at the expense of nearly $10\\times$ higher resume latency when the request returns. We develop a tiered retention controller around GPU opportunity cost, which expresses the serving capacity consumed by preserving or reconstructing a suspended request's KV state in a common GPU-time cost. Within host memory, the controller selects between indefinite retention and load-indexed expiration using calibration wait samples, without requiring per-request wait prediction. On human-scale approval workloads, our controller improves active-request goodput by 23-51% over the vLLM baselines, 22-29% over MORI, and 41-52% over Continuum.",
+      "authors": [
+        "Minseo Choi",
+        "Ananya Joshi"
+      ],
+      "primary_category": "cs.OS",
+      "categories": [
+        "cs.OS"
+      ],
+      "published": "2026-08-31T14:05:52+00:00",
+      "link": "https://arxiv.org/pdf/2608.30830v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "KV retention policy for suspended agent LLM requests balancing GPU serving capacity and resume latency",
+      "llm_evidence_cn": "面向挂起智能体请求的KV保留策略，权衡GPU服务容量与恢复延迟",
+      "llm_evidence": "面向挂起智能体请求的KV保留策略，权衡GPU服务容量与恢复延迟",
+      "canonical_evidence": "面向挂起智能体请求的KV保留策略，权衡GPU服务容量与恢复延迟",
+      "llm_tldr_en": "Studies how suspending LLM agent requests for human-approval timescales affects GPU serving performance, and proposes a tiered KV retention controller balancing fast resume and active-serving capacity.",
+      "llm_tldr_cn": "针对智能体LLM请求等待人工审批时可能挂起数分钟甚至数小时、现有系统仅考虑秒级工具调用暂停的问题，本文系统研究挂起/恢复对GPU服务性能的影响，发现保留KV可快速恢复但会占用显存并降低活跃请求吞吐，驱逐KV则恢复延迟大幅增加。作者提出基于GPU机会成本的分层KV保留控制器，自适应决定保留或释放挂起请求的KV。实验表明该方法能有效平衡服务吞吐与恢复延迟，改善了长时挂起下的系统整体性能。",
+      "llm_tldr": "针对智能体LLM请求等待人工审批时可能挂起数分钟甚至数小时、现有系统仅考虑秒级工具调用暂停的问题，本文系统研究挂起/恢复对GPU服务性能的影响，发现保留KV可快速恢复但会占用显存并降低活跃请求吞吐，驱逐KV则恢复延迟大幅增加。作者提出基于GPU机会成本的分层KV保留控制器，自适应决定保留或释放挂起请求的KV。实验表明该方法能有效平衡服务吞吐与恢复延迟，改善了长时挂起下的系统整体性能。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.00049v1",
+      "source": "arxiv",
+      "title": "REAL-Q: E2E LLM Quantization via Dynamic Gradient Descent",
+      "abstract": "Post-training quantization (PTQ) is essential for deploying large language models (LLMs) under strict resource constraints. State-of-the-art PTQ methods quantize each layer with a single closed-form second-order solver: to remain analytically tractable, they heavily approximate the global loss (dropping cross-channel coupling, pooling output rows into groups), and they then freeze the resulting Hessian across the entire layer, with no way to refresh it as the loss landscape shifts column by column--a phenomenon we call information misalignment. We propose REAL-Q (Real-time E2E-loss Aligned LLM Quantization), a novel PTQ paradigm that breaks this compromise: instead of diluting the objective for the sake of analytic tractability, REAL-Q targets an end-to-end-aligned surrogate of the global loss and refines it via fine-grained, dynamic Block-wise Gradient Descent applied after every column block (128 columns). By coupling this fine-grained correction with a sliding window mechanism for smooth cross-layer transitions, REAL-Q effectively mitigates error propagation across the network. On LLaMA-3.1 (8B and 70B) and Qwen3 (0.6B-32B) at W4A16, REAL-Q reduces end-to-end KL divergence by up to ~49% relative to state-of-the-art globally-guided methods.",
+      "authors": [
+        "Qian Zhang",
+        "Yaoming Li",
+        "Zhewen Tan",
+        "Yanshu Wang",
+        "Heng Lu",
+        "Kun Su",
+        "Zongwei Lv",
+        "Wenhan Yu",
+        "Yongge Ma",
+        "Yinjun Han",
+        "Ruikuang Liu",
+        "Tong Yang"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.AI"
+      ],
+      "published": "2026-08-30T06:30:31+00:00",
+      "link": "https://arxiv.org/pdf/2609.00049v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "Low-precision post-training quantization for resource-constrained LLM inference",
+      "llm_evidence_cn": "面向资源受限大模型推理的低精度后训练量化优化",
+      "llm_evidence": "面向资源受限大模型推理的低精度后训练量化优化",
+      "canonical_evidence": "面向资源受限大模型推理的低精度后训练量化优化",
+      "llm_tldr_en": "REAL-Q proposes dynamic gradient descent for E2E-loss-aligned LLM quantization, avoiding closed-form PTQ approximations and improving low-bit inference quality.",
+      "llm_tldr_cn": "现有后训练量化方法为了保持可解析性而严重近似全局损失，并在整层上冻结Hessian，使其无法随列变化刷新，造成信息错位。本文提出REAL-Q，通过动态梯度下降端到端对齐量化损失，取代单次闭式二阶求解器，并在量化过程中动态更新对损失景观的估计。该方法能保留更多跨通道信息，提升低比特大模型的部署精度。REAL-Q表明，端到端动态优化可显著改善资源受限条件下的大模型量化质量。",
+      "llm_tldr": "现有后训练量化方法为了保持可解析性而严重近似全局损失，并在整层上冻结Hessian，使其无法随列变化刷新，造成信息错位。本文提出REAL-Q，通过动态梯度下降端到端对齐量化损失，取代单次闭式二阶求解器，并在量化过程中动态更新对损失景观的估计。该方法能保留更多跨通道信息，提升低比特大模型的部署精度。REAL-Q表明，端到端动态优化可显著改善资源受限条件下的大模型量化质量。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.00058v1",
+      "source": "arxiv",
+      "title": "CUDA-Harness: Harnessing Agentic CUDA Kernel Generation and Optimization from Natural Language",
+      "abstract": "Developing high-performance CUDA kernels demands specialized knowledge in algorithm implementation, correctness validation, and hardware-aware parallel optimization, creating a substantial expertise barrier and making generating CUDA kernels directly from natural language (Text2CUDA) essential. Meanwhile, the general-purpose code generation capability of Large Language Models (LLMs) prompts a series of works exploring LLM-based CUDA kernel generation. They mainly focus on transpilation from high-level frameworks such as PyTorch to CUDA (Torch2CUDA) rather than Text2CUDA, where models must understand the high-level input semantics and handle low-level kernel implementation and validation. Additionally, these methods are vulnerable to reward hacking due to reliance on predefined test inputs. In this paper, we propose CUDA-Harness, a framework for harnessing agentic CUDA kernel generation and optimization from natural language. Specifically, we introduce Intermediate-Structured Generation to connect high-level semantic understanding with low-level kernel generation. To dilute reward hacking in Text2CUDA, we construct Synthesis-Based Verification to provide isolated test data and progressive validation. Furthermore, we propose Feedback-Adaptive Evolution, a kernel evolution strategy that prioritizes correctness while optimizing performance. Finally, through extensive experiments, we demonstrate the effectiveness of CUDA-Harness, with further evaluations illustrating generalization across LLMs, hardware platforms, and to C-to-CUDA transpilation.",
+      "authors": [
+        "Qi Fan",
+        "An Zou",
+        "Yehan Ma"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL",
+        "cs.AI",
+        "cs.MA",
+        "cs.PL",
+        "cs.SE"
+      ],
+      "published": "2026-08-30T13:51:43+00:00",
+      "link": "https://arxiv.org/pdf/2609.00058v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "agentic framework for generating and optimizing high-performance CUDA kernels from natural language",
+      "llm_evidence_cn": "从自然语言以智能体方式生成并优化高性能CUDA内核",
+      "llm_evidence": "从自然语言以智能体方式生成并优化高性能CUDA内核",
+      "canonical_evidence": "从自然语言以智能体方式生成并优化高性能CUDA内核",
+      "llm_tldr_en": "CUDA-Harness is an agentic framework that generates high-performance CUDA kernels directly from natural language, addressing implementation correctness, validation, and hardware-aware parallel optimization.",
+      "llm_tldr_cn": "针对高性能CUDA内核开发需要算法实现、正确性验证和硬件感知并行优化等专业知识的问题，CUDA-Harness提出从自然语言直接生成CUDA内核的Agentic框架。它利用大模型智能体完成从高层语义理解到低层内核实现与验证的完整流程，克服此前工作偏重PyTorch转CUDA而非文本直接生成CUDA的局限。这有助于显著降低CUDA编程门槛并自动化内核优化过程。",
+      "llm_tldr": "针对高性能CUDA内核开发需要算法实现、正确性验证和硬件感知并行优化等专业知识的问题，CUDA-Harness提出从自然语言直接生成CUDA内核的Agentic框架。它利用大模型智能体完成从高层语义理解到低层内核实现与验证的完整流程，克服此前工作偏重PyTorch转CUDA而非文本直接生成CUDA的局限。这有助于显著降低CUDA编程门槛并自动化内核优化过程。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.00796v2",
+      "source": "arxiv",
+      "title": "SFAD: Speculative Factuality-Aware Decoding",
+      "abstract": "As one of the most critical challenges in large language models, contextual faithfulness directly determines their reliability in knowledge-intensive applications. This task is particularly challenging as it requires balancing factual consistency with generation efficiency. Contrastive decoding methods require dual forward passes (with and without context) to compare model outputs, doubling inference computational overhead, while post-training alignment demands extensive reinforcement learning with substantial computational overhead. To address this challenge, we present SFAD, a speculative decoding framework that enhances contextual faithfulness without inference degradation. We first construct ConFide, a preference dataset with fine-grained atomic perturbations, to train a context-faithful draft model via Direct Preference Optimization. During inference, Epistemic Friction detects potential hallucinations by quantifying distributional tension weighted by specialist certainty. When friction exceeds the threshold, Asymmetric Logit Steering refines the target distribution through residual-based logit injection; otherwise, standard speculation proceeds. Extensive experiments demonstrate that SFAD substantially improves faithfulness while achieving $2.48\\times$ speedup, offering a practical solution for efficient LLMs.",
+      "authors": [
+        "Guanqiao Chen",
+        "Di Wang",
+        "Lijie Hu"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL"
+      ],
+      "published": "2026-09-01T06:46:54+00:00",
+      "link": "https://arxiv.org/pdf/2609.00796v2",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "Speculative decoding framework for factuality-aware generation",
+      "llm_evidence_cn": "面向事实性感知的投机解码框架",
+      "llm_evidence": "面向事实性感知的投机解码框架",
+      "canonical_evidence": "面向事实性感知的投机解码框架",
+      "llm_tldr_en": "SFAD is a speculative decoding framework that improves contextual faithfulness without extra forward passes, using a preference dataset with fine-grained atomic perturbations to train a factuality-aware verification mechanism.",
+      "llm_tldr_cn": "在LLM知识密集型应用中，上下文忠实性需要与生成效率相平衡；对比解码需要双前向、后训练对齐需要强化学习，开销过大。SFAD构建包含细粒度原子扰动的偏好数据集ConFide，训练可在投机解码阶段识别事实不一致的验证模块。模型在不引入推理退化的前提下提升上下文忠实性并降低幻觉。该工作展示了投机解码作为低开销事实性保障机制的价值。",
+      "llm_tldr": "在LLM知识密集型应用中，上下文忠实性需要与生成效率相平衡；对比解码需要双前向、后训练对齐需要强化学习，开销过大。SFAD构建包含细粒度原子扰动的偏好数据集ConFide，训练可在投机解码阶段识别事实不一致的验证模块。模型在不引入推理退化的前提下提升上下文忠实性并降低幻觉。该工作展示了投机解码作为低开销事实性保障机制的价值。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "speculative decoding",
+      "matched_requirement_id": "req-3",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.01735v1",
+      "source": "arxiv",
+      "title": "CircuitsDNA: Discovering Unconventional Multi-Accuracy Arithmetic Circuits via Evolutionary Synthesis",
+      "abstract": "Emerging edge AI workloads increasingly require arithmetic units that can trade computational accuracy for efficiency on demand. However, existing approximate arithmetic circuits are typically fixed-accuracy or rely on predefined structures for runtime configurability. This work introduces CircuitsDNA, an evolutionary framework that automatically evolves accuracy-configurable arithmetic circuits supporting multiple accuracy modes within a single circuit. It integrates three key features: 1) multi-threshold verifiability miter to enforce mode-specific accuracy requirements, 2) resource-limited verifiability-driven search to reduce verification overhead without sacrificing correctness, enabling efficient exploration of large circuit design, and 3) feedback-driven adaptive mutation to prioritize effective structural modifications and accelerate search convergence. Experimental results show that the 8-bit multiplier variants synthesized in 28-nm CMOS reduce the area-power product by up to 56% on INT8 DNN workload and 93% under exhaustive activity, compared with an exact 8-bit multiplier. Across CNNs and DeiTs, the accuracy loss relative to FP32 remains below 2% after fine-tuning under worst-case error (WCE) budgets of at most 1%. CircuitsDNA eliminates all search stalls observed in conventional methods across 8/12/16-bit multipliers, while adaptive mutation provides up to 1.33 times faster convergence than its non-adaptive counterpart.",
+      "authors": [
+        "Ruichen Qi",
+        "Junyi Luo",
+        "Xinting Jiang",
+        "Quan Cheng",
+        "Gregory Kielian",
+        "Ben Laurie",
+        "Dennis Sylvester",
+        "Mehdi Saligane"
+      ],
+      "primary_category": "cs.NE",
+      "categories": [
+        "cs.NE"
+      ],
+      "published": "2026-09-01T18:03:46+00:00",
+      "link": "https://arxiv.org/pdf/2609.01735v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "evolutionary synthesis framework automatically explores arithmetic circuit design space for multi-accuracy hardware; direct DSE through evolutionary search with verification constraints",
+      "llm_evidence_cn": "用进化搜索自动探索多精度算术电路设计空间，结合可验证性约束，直接对应设计空间探索方法",
+      "llm_evidence": "用进化搜索自动探索多精度算术电路设计空间，结合可验证性约束，直接对应设计空间探索方法",
+      "canonical_evidence": "用进化搜索自动探索多精度算术电路设计空间，结合可验证性约束，直接对应设计空间探索方法",
+      "llm_tldr_en": "CircuitsDNA automatically evolves accuracy-configurable arithmetic circuits that support multiple accuracy modes in one design. It combines a multi-threshold verifiability miter, resource-limited verifiability-driven search, and evolutionary synthesis to discover unconventional circuit structures. Directly advances DSE for hardware and EDA circuit synthesis.",
+      "llm_tldr_cn": "面向边缘AI对可按需切换精度与效率的算术单元需求，现有近似电路多为固定精度或依赖预定义结构。CircuitsDNA提出进化综合框架自动搜索支持多种精度模式的算术电路，内部集成多阈值可验证性miter来保证每个模式的准确度约束，并用资源受限的可验证性驱动搜索降低验证开销。实验表明该方法能发现非传统且满足多精度约束的电路结构，为近似计算硬件设计空间探索和EDA自动综合提供了一条新路径。",
+      "llm_tldr": "面向边缘AI对可按需切换精度与效率的算术单元需求，现有近似电路多为固定精度或依赖预定义结构。CircuitsDNA提出进化综合框架自动搜索支持多种精度模式的算术电路，内部集成多阈值可验证性miter来保证每个模式的准确度约束，并用资源受限的可验证性驱动搜索降低验证开销。实验表明该方法能发现非传统且满足多精度约束的电路结构，为近似计算硬件设计空间探索和EDA自动综合提供了一条新路径。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "Design space exploration for hardware, HLS, compiler, or EDA flows using Bayesian optimization, surrogate models, evolutionary search, or active learning.",
+      "matched_requirement_id": "req-20",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.03235v1",
+      "source": "arxiv",
+      "title": "SGD-KV: Summarization Guided KV Cache Compression",
+      "abstract": "Large language models (LLMs) face severe memory bottlenecks in long-context inference due to the linearly growing size of key-value (KV) caches. Existing KV cache compression techniques typically rely on simple heuristics, overlooking the distinct functional roles of different attention heads. We present SGD-KV (Summarization-Guided KV Cache Compression), a head-aware framework that leverages a novel chunk-summarization diagnostic task to systematically identify and prioritize attention heads specialized in hierarchical information aggregation. Experiments on Qwen2.5-7B-1M and Qwen3-32B across diverse long-context benchmarks demonstrate that SGD-KV achieves state-of-the-art performance with contexts up to 1M tokens, while reducing KV cache memory usage by up to 75%. Our findings show that strategically allocating the KV cache budget based on the summarization score distribution of attention heads yields a superior efficiency-accuracy trade-off for long-context inference.",
+      "authors": [
+        "Zeyu Liu",
+        "Woomin Song",
+        "Xuandi Fu",
+        "Sai Muralidhar Jayanthi",
+        "Vivek Govindan",
+        "Aram Galstyan",
+        "Sravan Babu Bodapati",
+        "Srikanth Ronanki"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL"
+      ],
+      "published": "2026-09-03T00:31:11+00:00",
+      "link": "https://arxiv.org/pdf/2609.03235v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "Summarization-guided KV cache compression for long-context LLM inference",
+      "llm_evidence_cn": "摘要引导的KV缓存压缩方法，缓解长上下文显存瓶颈",
+      "llm_evidence": "摘要引导的KV缓存压缩方法，缓解长上下文显存瓶颈",
+      "canonical_evidence": "摘要引导的KV缓存压缩方法，缓解长上下文显存瓶颈",
+      "llm_tldr_en": "SGD-KV is a head-aware KV cache compression framework guided by a chunk-summarization diagnostic task; it cuts cache memory by up to 75% while supporting 1M-token contexts on Qwen models.",
+      "llm_tldr_cn": "长上下文LLM推理中KV缓存随序列线性增长，现有压缩方法多依赖简单启发式，忽略注意力头的功能差异。SGD-KV提出块摘要诊断任务，系统识别并优先保留负责层级信息聚合的注意力头，再据此进行压缩。在Qwen2.5-7B-1M和Qwen3-32B上的长上下文基准中，SGD-KV支持100万token上下文并把KV缓存内存最多减少75%。该结果说明头感知任务引导能够在保持性能的同时显著压缩KV缓存。",
+      "llm_tldr": "长上下文LLM推理中KV缓存随序列线性增长，现有压缩方法多依赖简单启发式，忽略注意力头的功能差异。SGD-KV提出块摘要诊断任务，系统识别并优先保留负责层级信息聚合的注意力头，再据此进行压缩。在Qwen2.5-7B-1M和Qwen3-32B上的长上下文基准中，SGD-KV支持100万token上下文并把KV缓存内存最多减少75%。该结果说明头感知任务引导能够在保持性能的同时显著压缩KV缓存。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.03494v1",
+      "source": "arxiv",
+      "title": "GrowPage: On-Demand KV Budgeting for Efficient LLM Reasoning Serving",
+      "abstract": "Long-output reasoning has made the key--value (KV) cache a critical memory bottleneck for efficient LLM serving. Existing KV compression methods usually rely on a predefined per-request budget and adjust only which KV states are retained, leaving the total capacity fixed throughout decoding. However, reasoning workloads exhibit substantial demand variation: different requests require different KV capacities, and the attention demand of an individual request evolves during generation. We introduce \\textbf{GrowPage}, an on-demand KV budgeting framework that treats KV capacity as a runtime resource. GrowPage maintains lightweight dual-timescale query summaries to capture recent and long-term attention behaviors, and uses their relative attention working sets to estimate demand evolution. At each capacity boundary, GrowPage either compresses KV states within the current allocation or acquires an additional physical page when broader demand emerges. By integrating with PagedAttention's page-level memory abstraction, GrowPage preserves continuous batching and prefix caching. Experiments on reasoning benchmarks across multiple models show that GrowPage achieves a superior performance--throughput trade-off over existing approaches.",
+      "authors": [
+        "Qiankun Ma",
+        "Yanjiang Zhou",
+        "Zinan Xiong",
+        "Haofei Wang",
+        "Zhen Song",
+        "Yang Xiang",
+        "Ziyao Zhang",
+        "Hairong Zheng"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-09-03T07:53:05+00:00",
+      "link": "https://arxiv.org/pdf/2609.03494v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "On-demand KV budgeting framework dynamically allocates KV cache capacity per request in LLM serving",
+      "llm_evidence_cn": "提出按需KV预算框架，将KV容量作为运行时资源依据注意力需求动态分配",
+      "llm_evidence": "提出按需KV预算框架，将KV容量作为运行时资源依据注意力需求动态分配",
+      "canonical_evidence": "提出按需KV预算框架，将KV容量作为运行时资源依据注意力需求动态分配",
+      "llm_tldr_en": "GrowPage treats KV cache capacity as a runtime resource, using dual-timescale query summaries to estimate attention working sets and dynamically allocate KV budgets to each request during decoding.",
+      "llm_tldr_cn": "长输出推理使KV缓存成为LLM服务的关键内存瓶颈，而现有压缩方法采用固定预算，无法应对请求间和生成中的容量需求变化。GrowPage将KV容量视作运行时资源，维护轻量的双时间尺度查询摘要，捕捉近期与长期注意力行为，并据此估计注意力工作集来动态分配KV预算。该方法能够在推理过程中按需调整各请求的缓存容量，缓解高负载场景下的内存压力并提升服务吞吐。",
+      "llm_tldr": "长输出推理使KV缓存成为LLM服务的关键内存瓶颈，而现有压缩方法采用固定预算，无法应对请求间和生成中的容量需求变化。GrowPage将KV容量视作运行时资源，维护轻量的双时间尺度查询摘要，捕捉近期与长期注意力行为，并据此估计注意力工作集来动态分配KV预算。该方法能够在推理过程中按需调整各请求的缓存容量，缓解高负载场景下的内存压力并提升服务吞吐。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.04098v1",
+      "source": "arxiv",
+      "title": "Why Gated DeltaNet Survives 4-Bit Quantization: NVFP4 W4A4 for the Recurrent Half of a Hybrid 27B LLM",
+      "abstract": "Hybrid LLMs pair softmax attention with linear-attention layers such as Gated DeltaNet (GDN), whose recurrent state summarizes the context in fixed size. Early community 4-bit quantizations of Qwen3.8-27B (48 GDN layers, 16 attention layers) left the GDN block in 8- or 16-bit precision -- especially its decay and write-strength gates -- on the intuition that errors in a recurrence accumulate over long contexts. We test that intuition by building Minima: NVFP4 W4A4 on all 496 linear layers, GDN included. Across perplexity at 4K/32K, MMLU-Pro, GSM8K, AIME'25, GPQA-Diamond, LiveCodeBench, and RULER retrieval to 64K, Minima matches BF16 within seed noise (5-task average -0.52) while being the smallest (17.5 GiB) and fastest-prefill (+14-19%) recipe we compare, and its 32K perplexity gap shrinks with position. A four-part mechanism study explains why: (i) NVFP4's 16-element block scaling localizes the residual stream's extreme outliers, equalizing activation error across layer roles; (ii) the supposedly fragile gate projections are the least sensitive -- softplus/exponential and sigmoid parameterizations compress ~11% GEMM error to ~2% output error; (iii) the delta-rule recurrence holds injected noise at a flat plateau over 32K tokens and forgets a state impulse within hundreds of steps, because each write overwrites the state along the current key direction; (iv) the per-token quantization cost washes out with context instead of compounding. We also repair a global-scale mismatch that arises when per-module-calibrated NVFP4 checkpoints are served by kernels that fuse those modules into one GEMM, and show calibrated FP8 KV-cache scales are performance-free. The result: a practical recipe -- quantize everything, ship KV scales -- and a mechanistic account of why the recurrent half of a hybrid LLM is the easy half to quantize. Checkpoint: https://huggingface.co/minima-ai/mnma_qwen3.8_27b_nvfp4",
+      "authors": [
+        "Sergii Kozyrev",
+        "Davyd Maiboroda"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-09-03T17:04:26+00:00",
+      "link": "https://arxiv.org/pdf/2609.04098v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "extreme low-bit quantization of hybrid LLM for smallest and fast inference",
+      "llm_evidence_cn": "面向混合大模型的NVFP4 W4A4低比特量化推理",
+      "llm_evidence": "面向混合大模型的NVFP4 W4A4低比特量化推理",
+      "canonical_evidence": "面向混合大模型的NVFP4 W4A4低比特量化推理",
+      "llm_tldr_en": "Builds Minima, an NVFP4 W4A4 quantization of all 496 linear layers in a hybrid 27B LLM including recurrent Gated DeltaNet. On perplexity, benchmarks, and 64K RULER retrieval, Minima matches BF16 while being smallest and fastest.",
+      "llm_tldr_cn": "混合LLM把softmax注意力与Gated DeltaNet等线性注意力配对，过去4比特量化往往跳过循环层的门控与衰减参数，担心递归误差累积。Minima反向验证该直觉：把所有496个线性层全部用NVFP4 W4A4量化，GDN包含在内，在4K和32K困惑度、MMLU-Pro、GSM8K、AIME25、GPQA-Diamond、LiveCodeBench和RULER 64K检索上与BF16在种子噪声内持平，5任务平均差仅-0.52，同时模型最小且速度最快。这说明混合模型的递归一半同样能承受极低比特量化，为低比特serving和状态压缩提供新空间。",
+      "llm_tldr": "混合LLM把softmax注意力与Gated DeltaNet等线性注意力配对，过去4比特量化往往跳过循环层的门控与衰减参数，担心递归误差累积。Minima反向验证该直觉：把所有496个线性层全部用NVFP4 W4A4量化，GDN包含在内，在4K和32K困惑度、MMLU-Pro、GSM8K、AIME25、GPQA-Diamond、LiveCodeBench和RULER 64K检索上与BF16在种子噪声内持平，5任务平均差仅-0.52，同时模型最小且速度最快。这说明混合模型的递归一半同样能承受极低比特量化，为低比特serving和状态压缩提供新空间。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch"
+    }
+  ],
+  "quick_skim": [
+    {
+      "id": "2608.22613v1",
+      "source": "arxiv",
+      "title": "NOVA: Technology-Architecture Co-Design of Near-Memory Processing for Attention-SSM-MoE Hybrid LLM Inference",
+      "abstract": "The rapid evolution of hybrid large language models (LLMs), which interleave grouped-query-attention (GQA), state-space model (SSM), and Mixture-of-Experts (MoE) layers, introduces two fundamental challenges for near-memory processing (NMP) architectures. First, the Technology Wall: the conventional 6F^2 DRAM cell is approaching its physical scaling limits at 10nm-class nodes, making it difficult to meet the memory capacity demands of MoE models with hundreds of experts. Second, the Architecture Wall: existing NMP designs target narrow arithmetic intensity (Op/B) ranges and cannot efficiently support the heterogeneous compute characteristics of hybrid LLMs, spanning memory-bound SSM layers, compute-intensive GQA layers, and large Op/B variations across experts. We propose NOVA, a technology-architecture co-designed NMP system that overcomes both walls. On the technology side, NOVA combines a 4F^2 vertical channel transistor (VCT) DRAM cell with a peri-over-cell (POC) structure to achieve approximately 2x memory density at iso-area over conventional 6F^2-based DRAM, enabling continued scaling into sub-10nm nodes. On the architecture side, NOVA repurposes the POC peripheral-die (peri-die) to host processing units, forming a 2-tier NMP architecture: Tier-1 (peri-die NMP) for low-to-mid Op/B operations, and Tier-2 (base-die NMP) for mid-to-high Op/B operations. Parallel execution across tiers supports diverse compute patterns for hybrid LLMs, maximizing inference performance. Evaluated on state-of-the-art hybrid and MoE LLMs including Nemotron3-Nano, Nemotron3-Super, Falcon-H1R, and Qwen3, NOVA achieves on average 4.5x higher throughput, 69.8% lower end-to-end latency, and 5x better energy efficiency over a GPU baseline, with only 3.9% area overhead and no loss in memory capacity.",
+      "authors": [
+        "In-Jun Jung",
+        "Jaeha Min",
+        "Joo-Young Kim"
+      ],
+      "primary_category": "cs.AR",
+      "categories": [
+        "cs.AR"
+      ],
+      "published": "2026-08-23T21:38:46+00:00",
+      "link": "https://arxiv.org/pdf/2608.22613v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "Near-memory processing architecture co-designed for hybrid LLM inference",
+      "llm_evidence_cn": "面向混合LLM推理的近内存处理架构协同设计",
+      "llm_evidence": "面向混合LLM推理的近内存处理架构协同设计",
+      "canonical_evidence": "面向混合LLM推理的近内存处理架构协同设计",
+      "llm_tldr_en": "NOVA co-designs technology and near-memory processing architecture to efficiently support hybrid LLMs with GQA, SSM, and MoE layers, overcoming memory capacity and arithmetic intensity walls.",
+      "llm_tldr_cn": "混合大语言模型交替使用GQA、SSM和MoE层，对近内存处理(NMP)架构提出了技术墙和架构墙的挑战。NOVA通过技术-架构协同设计，在不缩小DRAM单元的情况下满足大规模MoE的内存容量需求，并扩展NMP支持的算术强度范围，从而高效支撑异构计算特征。实验结果表明NOVA能显著提升混合LLM推理的能效与性能。",
+      "llm_tldr": "混合大语言模型交替使用GQA、SSM和MoE层，对近内存处理(NMP)架构提出了技术墙和架构墙的挑战。NOVA通过技术-架构协同设计，在不缩小DRAM单元的情况下满足大规模MoE的内存容量需求，并扩展NMP支持的算术强度范围，从而高效支撑异构计算特征。实验结果表明NOVA能显著提升混合LLM推理的能效与性能。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM inference",
+      "matched_requirement_id": "req-6",
+      "selection_source": "carryover_cache",
+      "paper_id": "2608.22613v1",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2608.28188v1",
+      "source": "arxiv",
+      "title": "Beyond Flat Netlist: Hierarchical Graph Representation Learning for Scalable Analysis of Sequential Circuits",
+      "abstract": "Circuit Representation Learning (CRL) offers a powerful paradigm to guide and optimize core Electronic Design Automation (EDA) tasks, but its practical adoption is hindered by the immense scale of industrial netlists and a failure to explicitly model register-level temporal dynamics. To overcome these barriers, we introduce DeepSeq3, a novel hierarchical framework that abstracts circuits into a two-level representation: fine-grained combinational subgraphs partitioned by flip-flops (FFs), and a high-level Super-Node Graph (SNG) that models the register-transfer structure. A dual Graph Neural Network (GNN) architecture learns representations at both levels, capturing local Boolean logic and global state transitions. Crucially, we introduce a state-centric pre-training scheme that predicts the reachability between FF states, endowing the model with a deep understanding of temporal behavior. Demonstrated on large-scale benchmarks, DeepSeq3's approach yields superior scalability and richer representations, reducing bounded model checking (BMC) solving time by 18% while guaranteeing correctness.",
+      "authors": [
+        "Jingyi Zhou",
+        "Zhengyuan Shi",
+        "Jiaying Zhu",
+        "Ziyang Zheng",
+        "Qiang Xu"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.AI",
+        "cs.AR"
+      ],
+      "published": "2026-08-28T10:56:04+00:00",
+      "link": "https://arxiv.org/pdf/2608.28188v1",
+      "tags": [
+        "keyword:dse",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "hierarchical graph representation learning for scalable EDA analysis and optimization of sequential circuits",
+      "llm_evidence_cn": "提出层级图表示学习方法辅助EDA分析优化，针对大规模时序电路可扩展问题",
+      "llm_evidence": "提出层级图表示学习方法辅助EDA分析优化，针对大规模时序电路可扩展问题",
+      "canonical_evidence": "提出层级图表示学习方法辅助EDA分析优化，针对大规模时序电路可扩展问题",
+      "llm_tldr_en": "DeepSeq3 abstracts large sequential circuits into two-level register-partitioned combinational subgraphs plus a super-node graph, training dual GNNs to learn local logic and global state transitions for scalable EDA analysis.",
+      "llm_tldr_cn": "电路表示学习虽能辅助EDA任务，但工业网表规模巨大且难以显式建模寄存器级时序动态。DeepSeq3将电路抽象为细粒度组合子图与高层寄存器传输超节点图的两级表示，并用双GNN分别学习局部布尔逻辑和全局状态转移。该方法面向大规模时序电路具备更强可扩展性，可为综合、验证等EDA任务提供结构化表征支持。",
+      "llm_tldr": "电路表示学习虽能辅助EDA任务，但工业网表规模巨大且难以显式建模寄存器级时序动态。DeepSeq3将电路抽象为细粒度组合子图与高层寄存器传输超节点图的两级表示，并用双GNN分别学习局部布尔逻辑和全局状态转移。该方法面向大规模时序电路具备更强可扩展性，可为综合、验证等EDA任务提供结构化表征支持。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "EDA optimization",
+      "matched_requirement_id": "req-13",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2608.27794v1",
+      "source": "arxiv",
+      "title": "Node-wise Feature Encoding for Neural Performance Prediction",
+      "abstract": "As neural networks are increasingly deployed on resource constrained edge devices, accurate prediction of latency and energy is critical for efficient neural architecture search. Existing GNN and transformer based predictors achieve strong results but largely ignore node-level computational cost, limiting their ability to model performance critical operations. To address this, we introduce FeatureFormer, a neural performance predictor that incorporates explicit node-wise encodings of FLOPs, parameter counts, and memory proxies within a gated graph attention architecture. We also present NNEQ, a new large-scale energy consumption dataset that enables unified evaluation of latency and energy prediction. Extensive experiments demonstrate that FeatureFormer achieves state-of-the-art performance across both metrics, including challenging out-of-domain settings. Finally, we show that the proposed encoding is broadly applicable and consistently improves existing predictors with negligible overhead.",
+      "authors": [
+        "Matthew Grenier",
+        "William Hammer",
+        "Andrew Heuer",
+        "Nikhil Krishna",
+        "Yi Wang",
+        "Ramtin Zand"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-08-28T00:20:27+00:00",
+      "link": "https://arxiv.org/pdf/2608.27794v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "neural performance predictor encoding node-wise computation costs; transferable surrogate model for latency/energy-aware design space exploration",
+      "llm_evidence_cn": "节点级计算开销编码的神经性能预测器，可迁移为面向时延能耗感知DSE的代理模型",
+      "llm_evidence": "节点级计算开销编码的神经性能预测器，可迁移为面向时延能耗感知DSE的代理模型",
+      "canonical_evidence": "节点级计算开销编码的神经性能预测器，可迁移为面向时延能耗感知DSE的代理模型",
+      "llm_tldr_en": "FeatureFormer is a neural performance predictor that injects node-wise FLOPs, parameter counts, and memory proxies into a gated graph attention model to predict latency and energy, with a new large-scale energy dataset (NNEQ), improving accuracy for edge-device neural architecture search.",
+      "llm_tldr_cn": "边缘设备上的神经网络部署需要准确的时延和能耗预测，而既有预测器大都忽略节点级计算代价。论文提出FeatureFormer，把FLOPs、参数量和访存代理量作为显式节点特征编码进门控图注意力网络，更好地刻画关键算子。同时发布NNEQ大规模能耗数据集。实验表明该预测器显著提升时延与能耗预测精度，为资源受限场景下的高效架构搜索提供可靠代理模型。",
+      "llm_tldr": "边缘设备上的神经网络部署需要准确的时延和能耗预测，而既有预测器大都忽略节点级计算代价。论文提出FeatureFormer，把FLOPs、参数量和访存代理量作为显式节点特征编码进门控图注意力网络，更好地刻画关键算子。同时发布NNEQ大规模能耗数据集。实验表明该预测器显著提升时延与能耗预测精度，为资源受限场景下的高效架构搜索提供可靠代理模型。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "Design space exploration for hardware, HLS, compiler, or EDA flows using Bayesian optimization, surrogate models, evolutionary search, or active learning.",
+      "matched_requirement_id": "req-20",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2608.23048v1",
+      "source": "arxiv",
+      "title": "Reservoir of Importance: Learning Semi-Structured Sparsity with Differentiable Subset Sampling",
+      "abstract": "Semi-structured $N$:$M$ sparsity has emerged as a practical direction for accelerating large language models (LLMs). However, existing learnable-mask approaches incur substantial parameter and memory overhead, limiting their scalability to large models and aggressive sparsity regimes. In this work, we revisit semi-structured pruning from a perspective that reconciles efficiency with scalability. We propose Reservoir of Importance (RoI), a lightweight semi-structured pruning framework that learns sparsity masks through differentiable subset sampling. Unlike prior methods that model full categorical distributions over all feasible $N$:$M$ patterns, RoI introduces a compact-logit parameterization for sparsity mask learning and performs sampling without replacement to select masks, thereby reducing trainable parameters from combinatorial complexity to $\\mathcal{O}({M})$. As a result, RoI requires 1.5-8.75$\\times$ fewer learnable parameters and significantly lower memory cost, while remaining fully aligned with hardware-friendly sparsity patterns. Extensive evaluations across multiple scales of the Qwen2.5 LLM family (0.5-7B parameters) demonstrate that RoI achieves competitive performance with strong memory efficiency, stability, and scalability to more aggressive $N$:$M$ sparsity patterns, offering a practical path toward efficient LLM deployment.",
+      "authors": [
+        "Ha Dinh",
+        "Xuan Duy Ta",
+        "Khoat Than",
+        "Khac-Hoai Nam Bui"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-08-24T09:54:24+00:00",
+      "link": "https://arxiv.org/pdf/2608.23048v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "semi-structured N:M sparsity for LLM acceleration, compatible with GPU kernel optimization",
+      "llm_evidence_cn": "面向LLM加速的半结构化N:M稀疏性，与GPU算子优化契合",
+      "llm_evidence": "面向LLM加速的半结构化N:M稀疏性，与GPU算子优化契合",
+      "canonical_evidence": "面向LLM加速的半结构化N:M稀疏性，与GPU算子优化契合",
+      "llm_tldr_en": "RoI introduces a lightweight semi-structured pruning framework using differentiable subset sampling and compact-logit parameterization, learning sparsity masks for LLM acceleration with less memory overhead than prior learnable-mask methods.",
+      "llm_tldr_cn": "半结构化N:M稀疏是加速大语言模型的有效方向，但现有可学习掩码方法参数和内存开销大。RoI提出基于可微子集采样的轻量级剪枝框架，使用紧凑logit参数化学习稀疏掩码，显著降低开销。该方法在保证可扩展性的同时实现LLM加速，可服务于GPU算子的高效推理。",
+      "llm_tldr": "半结构化N:M稀疏是加速大语言模型的有效方向，但现有可学习掩码方法参数和内存开销大。RoI提出基于可微子集采样的轻量级剪枝框架，使用紧凑logit参数化学习稀疏掩码，显著降低开销。该方法在保证可扩展性的同时实现LLM加速，可服务于GPU算子的高效推理。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "carryover_cache",
+      "paper_id": "2608.23048v1",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2608.29581v1",
+      "source": "arxiv",
+      "title": "Bridging Agent Semantics with Spot Capacity: An Elastic and Recoverable Service Model",
+      "abstract": "LLM agents increasingly drive long-running cloud inference workloads in which model calls differ in urgency, redundancy, completion semantics, and replay cost. Model-as-a-Service (MaaS) platforms expose several service models for trading cost against latency, availability, and capacity commitment. These models operate primarily at request, job, or endpoint scopes and provide limited support for combining transient platform supply with the evolving semantics of an agent task.   We present SemSpot, a semantics-aware service model that allows agent applications to leverage the spot capacity of LLM inference platforms. At the request level, SemSpot lets a provider publish short-lived offers over successful price, completion probability, and failure-notification deadline; the agent runtime selects among these offers using the current task state and completion rule. An audit of 1,535 cases from six agent benchmarks identifies four recurring workflow structures and shows how this service model may produce different cost, service-time, and fallback behavior. With specialized MaaS support, token-level SemSpot further preserves provider inference state and runtime-verified semantic segments inside a long request. We develop the service model, economic boundary, and the cross-layer research agenda required to realize SemSpot.",
+      "authors": [
+        "Minchen Yu"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-08-30T05:58:53+00:00",
+      "link": "https://arxiv.org/pdf/2608.29581v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "Semantics-aware service model for LLM inference platforms",
+      "llm_evidence_cn": "面向LLM服务的抢占式容量语义感知服务模型",
+      "llm_evidence": "面向LLM服务的抢占式容量语义感知服务模型",
+      "canonical_evidence": "面向LLM服务的抢占式容量语义感知服务模型",
+      "llm_tldr_en": "SemSpot is a semantics-aware service model that lets LLM agent workloads exploit spot capacity on inference platforms through short-lived offers, improving elasticity and recoverability while respecting task semantics.",
+      "llm_tldr_cn": "LLM智能体的长时云推理任务对成本、延迟与恢复语义有不同要求，而现有MaaS服务模型难以利用平台的抢占式容量。为此SemSpot提出一种语义感知服务模型，允许服务方发布带成功价格与完成概率的短期可用性报价，并按请求语义在Agent任务中动态使用抢占式容量。结合可恢复性与任务语义，该模型让Agent应用在维持完成语义的同时获得更强的资源弹性和成本效益。",
+      "llm_tldr": "LLM智能体的长时云推理任务对成本、延迟与恢复语义有不同要求，而现有MaaS服务模型难以利用平台的抢占式容量。为此SemSpot提出一种语义感知服务模型，允许服务方发布带成功价格与完成概率的短期可用性报价，并按请求语义在Agent任务中动态使用抢占式容量。结合可恢复性与任务语义，该模型让Agent应用在维持完成语义的同时获得更强的资源弹性和成本效益。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM serving",
+      "matched_requirement_id": "req-5",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2608.29934v1",
+      "source": "arxiv",
+      "title": "Compression-Aware Abstention: Teaching LLMs to Refuse When KV-Compression Masks Remove Answer Evidence",
+      "abstract": "KV-cache compression reduces LLM inference memory by evicting context tokens, but when the evicted tokens contain answer-bearing evidence, the model may hallucinate instead of recognizing that the compressed context is insufficient. We address this failure from a behavioral perspective: to our knowledge, this is the first work to formulate compression-aware abstention as a learning problem, in which a model learns to answer when supporting evidence survives compression and abstain when it does not. We construct supervision from compressor survival masks and tight answer-bearing spans, labeling examples as Confident when evidence survives and Abstain when it is removed. A 10.1M-parameter LoRA adapter trained on ~2.6K MuSiQue 2-hop QA examples reduces base-model hallucinations by 97% under prompt-style truncation while preserving correct answering on evidence-retaining examples. Unlike prompt-only abstention baselines, which over-abstain on many answerable high-retention examples, the trained adapter learns a conditional policy. We also evaluate the method under actual compressed-cache decoding, where multi-compressor training yields a 6-22x relative lift over the unaided base on evidence-retaining examples. Controlled-deletion experiments show that the learned behavior is driven by evidence content rather than input length alone.",
+      "authors": [
+        "Mohammadali Khodabandehlou",
+        "Bhaskar Krishnamachari"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL",
+        "cs.LG"
+      ],
+      "published": "2026-08-30T18:02:15+00:00",
+      "link": "https://arxiv.org/pdf/2608.29934v1",
+      "tags": [
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "Abstention learning when KV-compression removes answer evidence",
+      "llm_evidence_cn": "KV压缩掩码删除证据时让模型学习拒答",
+      "llm_evidence": "KV压缩掩码删除证据时让模型学习拒答",
+      "canonical_evidence": "KV压缩掩码删除证据时让模型学习拒答",
+      "llm_tldr_en": "Formulates compression-aware abstention as a learning problem and trains a 10.1M-parameter LoRA adapter so LLMs answer only when KV-compression masks preserve answer evidence, reducing post-compression hallucination.",
+      "llm_tldr_cn": "KV缓存压缩通过逐出上下文token降低推理内存，但若被逐出的token含有答案证据，模型常会幻觉而不是承认信息不足。论文首次将压缩感知弃权建模为学习问题，利用压缩器存活掩码与答案跨度构造Confident与Abstain监督，并训练10.1M参数的LoRA适配器。模型在证据被移除时能拒绝作答，在证据保留时维持正常答题能力。实验表明该方法可显著减少压缩后的错误输出，提升LLM在低内存场景下的可靠性。",
+      "llm_tldr": "KV缓存压缩通过逐出上下文token降低推理内存，但若被逐出的token含有答案证据，模型常会幻觉而不是承认信息不足。论文首次将压缩感知弃权建模为学习问题，利用压缩器存活掩码与答案跨度构造Confident与Abstain监督，并训练10.1M参数的LoRA适配器。模型在证据被移除时能拒绝作答，在证据保留时维持正常答题能力。实验表明该方法可显著减少压缩后的错误输出，提升LLM在低内存场景下的可靠性。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2608.23353v1",
+      "source": "arxiv",
+      "title": "FormuEvo: LLM-Guided Evolution for Discovering Solver-Efficient Mixed-Integer Programming Formulations",
+      "abstract": "Mixed-integer programming (MIP) lies at the core of operations research and industrial optimization. While large language models (LLMs) have recently shown promise in automated MIP modeling from natural language, they prioritize semantic correctness but overlook formulation strength, severely bottlenecking the efficiency of downstream solvers. We propose FormuEvo, an LLM-guided evolutionary framework for automated discovery of solver-efficient MIP formulations. FormuEvo frames MIP formulation design as evolutionary optimization over the symbolic space of MIP formulations, represented as executable modeling programs, by iteratively generating, evaluating, and selecting stronger candidates via LLM-driven crossover, mutation, and repair operations. To move beyond blind exploration, FormuEvo introduces a solver-informed diagnosis mechanism that exploits fine-grained solver statistics as verbal gradients for targeted refinement. Additionally, a structured memory abstracts prior experience into reusable modeling strategies, avoiding redundant exploration while enabling zero-shot transfer to unseen problems and bootstrapping smaller LLMs. Experiments across diverse linear and non-linear problems demonstrate that FormuEvo discovers formulations that significantly outperform both expert-designed formulations and existing LLM-based approaches, accelerating solvers by up to 5.5$\\times$, with distilled knowledge transferring effectively across problems and model scales.",
+      "authors": [
+        "Haofeng Yuan",
+        "Jianing Peng",
+        "Jieyi Bi",
+        "Ni Zhang",
+        "Shiji Song",
+        "Zhiguang Cao"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL",
+        "cs.NE"
+      ],
+      "published": "2026-08-24T15:01:28+00:00",
+      "link": "https://arxiv.org/pdf/2608.23353v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "LLM-guided evolutionary search over MIP formulation space, an instance of LLM-driven design space exploration",
+      "llm_evidence_cn": "LLM引导进化搜索MIP公式空间，属于LLM驱动的设计空间探索",
+      "llm_evidence": "LLM引导进化搜索MIP公式空间，属于LLM驱动的设计空间探索",
+      "canonical_evidence": "LLM引导进化搜索MIP公式空间，属于LLM驱动的设计空间探索",
+      "llm_tldr_en": "FormuEvo uses LLM-guided crossover and mutation to evolve mixed-integer programming formulations as executable programs, iteratively generating, evaluating, and selecting stronger candidates to improve downstream solver efficiency.",
+      "llm_tldr_cn": "大语言模型在自动建立MIP模型时只注重语义正确性，忽略公式强度，导致求解器效率低下。FormuEvo把MIP公式设计建模为可执行建模程序上的进化优化，用LLM驱动的交叉与变异迭代生成、评估和选择更强候选。该方法在符号化公式空间中自动发现求解器友好的公式，显著提升下游求解性能。其范式对硬件设计空间探索等需要LLM引导搜索的任务具有直接借鉴价值。",
+      "llm_tldr": "大语言模型在自动建立MIP模型时只注重语义正确性，忽略公式强度，导致求解器效率低下。FormuEvo把MIP公式设计建模为可执行建模程序上的进化优化，用LLM驱动的交叉与变异迭代生成、评估和选择更强候选。该方法在符号化公式空间中自动发现求解器友好的公式，显著提升下游求解性能。其范式对硬件设计空间探索等需要LLM引导搜索的任务具有直接借鉴价值。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "LLM-driven design space exploration",
+      "matched_requirement_id": "req-11",
+      "selection_source": "carryover_cache",
+      "paper_id": "2608.23353v1",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2608.29667v1",
+      "source": "arxiv",
+      "title": "A Target-Centric Survey of Quantization-Aware Training",
+      "abstract": "The rapid development of LLMs incurs prohibitive memory footprints and intensive computational demands. Quantization-Aware Training (QAT) techniques have emerged as a promising solution to address these challenges by explicitly simulating quantization effects during model training, yielding low-bit models that achieve accuracy comparable to their full-precision counterparts. In this work, we provide a target-centric survey of QAT, aimed at clarifying both its theoretical foundations and its evolving implementation landscape. We systematically review existing QAT methods through a target-centric taxonomy and synthesize cross-target differences in error characteristics, numerical formats, and strategy transferability. We further summarize QAT evaluation paradigms and discuss challenges in optimization and deployment, outlining potential directions for future research.",
+      "authors": [
+        "Jiamin Song",
+        "Mengjie Zhao",
+        "Zijing Wang",
+        "Yongkang Liu",
+        "Qian Li",
+        "Shi Feng",
+        "Feiliang Ren",
+        "Daling Wang",
+        "Hinrich Schütze"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-08-30T09:04:47+00:00",
+      "link": "https://arxiv.org/pdf/2608.29667v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "Survey of quantization-aware training for obtaining low-bit LLMs with lower memory footprints",
+      "llm_evidence_cn": "面向低比特大模型的量化感知训练综述，降低内存和算力开销",
+      "llm_evidence": "面向低比特大模型的量化感知训练综述，降低内存和算力开销",
+      "canonical_evidence": "面向低比特大模型的量化感知训练综述，降低内存和算力开销",
+      "llm_tldr_en": "A target-centric survey of quantization-aware training, comparing methods across quantization targets, error characteristics, numerical formats, strategy transferability, and evaluation paradigms to guide low-bit model training for efficient LLM deployment.",
+      "llm_tldr_cn": "大型语言模型带来巨大内存和计算开销，QAT通过在训练中显式模拟量化误差，可得到精度接近全精度的低比特模型。本文提出以量化目标为中心的分类体系，系统梳理不同目标下的QAT方法、误差特性、数值格式与策略迁移性，并总结评估范式。该工作为面向高效LLM推理的低比特模型训练选型提供了结构化参考。",
+      "llm_tldr": "大型语言模型带来巨大内存和计算开销，QAT通过在训练中显式模拟量化误差，可得到精度接近全精度的低比特模型。本文提出以量化目标为中心的分类体系，系统梳理不同目标下的QAT方法、误差特性、数值格式与策略迁移性，并总结评估范式。该工作为面向高效LLM推理的低比特模型训练选型提供了结构化参考。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.00749v1",
+      "source": "arxiv",
+      "title": "ContextPipe: Database-Inspired Context Assembly for Long-Horizon Agents",
+      "abstract": "Long-horizon large language model (LLM) agents require context assembly: the runtime must decide what to include in each prompt, in what order, and when to compact history under a hard context-window budget and a byte-sensitive prompt cache. In production agentic systems, this logic is scattered across prompt builders, ad hoc compaction routines, cache-break workarounds, and per-provider shims. We argue that context assembly is structurally isomorphic to query execution in a relational database: both execute under a hard budget, exploit a tiered cache, and leverage statistics. We adopt this discipline in ContextPipe: a five-phase pipeline (Plan Bind Optimize Execute Feedback) backed by a structured data-source catalog, a deterministic cache-aware optimizer, and an EXPLAIN ANALYZE trace. We show that context in ContextPipe is auditable, replayable, and failure-isolated. A preliminary evaluation using the SWE-bench Pro Qutebrowser subset shows that, compared with the append-only context construction policy, ContextPipe reduces total token volume by 31%, LLM calls by 23%, and response time by 9%, at the cost of a lower KV cache-hit ratio.",
+      "authors": [
+        "Peng Xu",
+        "Zuyu Zhang",
+        "Yuze Sun",
+        "Feng Tian",
+        "Long Wang",
+        "Chen Zhang"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI",
+        "cs.DB"
+      ],
+      "published": "2026-09-01T05:27:38+00:00",
+      "link": "https://arxiv.org/pdf/2609.00749v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "database-inspired context assembly under byte-sensitive prompt cache and context-window budgets; relevant to prefix-cache and KV-aware LLM serving",
+      "llm_evidence_cn": "用数据库查询执行思想管理字节级提示缓存与上下文窗口预算，与KV缓存和前缀缓存感知的LLM服务相关",
+      "llm_evidence": "用数据库查询执行思想管理字节级提示缓存与上下文窗口预算，与KV缓存和前缀缓存感知的LLM服务相关",
+      "canonical_evidence": "用数据库查询执行思想管理字节级提示缓存与上下文窗口预算，与KV缓存和前缀缓存感知的LLM服务相关",
+      "llm_tldr_en": "Formulates LLM prompt assembly under prompt-cache and context-budget constraints as database query execution, yielding a database-inspired Plan-Bind-Optimize-Execute-Feedback pipeline. Offers cache-aware planning and compaction techniques applicable to prefix caching and context-memory management in LLM serving systems.",
+      "llm_tldr_cn": "长程LLM智能体需要在硬上下文窗口预算和字节级提示缓存下决定每个提示放什么内容、按什么顺序放以及何时压缩历史，现有实现逻辑分散且容易破坏缓存。ContextPipe论证上下文组装与关系数据库查询执行同构，并以Plan-Bind-Optimize-Execute-Feedback五阶段实现，配套数据源目录与确定性缓存感知优化。结果表明可将缓存命中、历史压缩和上下文排序纳入统一优化流程，服务于带提示缓存的大模型运行时。该方法与LLM serving的前缀缓存及上下文管理高度相关，但不直接覆盖KV缓存和GPU内核优化。",
+      "llm_tldr": "长程LLM智能体需要在硬上下文窗口预算和字节级提示缓存下决定每个提示放什么内容、按什么顺序放以及何时压缩历史，现有实现逻辑分散且容易破坏缓存。ContextPipe论证上下文组装与关系数据库查询执行同构，并以Plan-Bind-Optimize-Execute-Feedback五阶段实现，配套数据源目录与确定性缓存感知优化。结果表明可将缓存命中、历史压缩和上下文排序纳入统一优化流程，服务于带提示缓存的大模型运行时。该方法与LLM serving的前缀缓存及上下文管理高度相关，但不直接覆盖KV缓存和GPU内核优化。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2608.23440v3",
+      "source": "arxiv",
+      "title": "Temporal Property-driven Design Space Exploration with Reinforcement Learning for Cyber-Physical Systems",
+      "abstract": "Design-space exploration of configurable Cyber-Physical Systems (CPS) requires executable evaluation when design choices affect timing, fault propagation, recovery behavior, and temporal-property satisfaction. Repeated stochastic executions make exhaustive exploration impractical for large design spaces. This paper presents a temporal-property-driven CPS design workflow using Reinforcement Learning (RL). At design time, the RL agent selects subsystem alternatives to assemble a candidate system model. The model is then evaluated through simulation, during which online temporal-property monitors observe runtime traces and produce functional-property violation indicators. These indicators are combined with evaluated non-functional terms for budget, recoverability, sustained compliance, and operational use to calculate the reward used for subsequent candidate selection. The workflow is evaluated on a methane-sensitive mine-pump CPS. The corresponding executable case-study model is provided as additional contribution. RL-guided search identifies the highest-reward design observed in the experiments after 26 episodes (corresponds to 130 executable simulations). These designs were reached with fewer simulations than surrogate-guided Bayesian Optimization and population-based Genetic Algorithm baselines under the same executable model and reward formulation. Ablation study results indicate that value-based feedback and reuse of previous simulation traces contribute to this reduction.",
+      "authors": [
+        "Tagir Fabarisov",
+        "Maxime Cordy"
+      ],
+      "primary_category": "eess.SY",
+      "categories": [
+        "eess.SY"
+      ],
+      "published": "2026-08-24T16:13:00+00:00",
+      "link": "https://arxiv.org/pdf/2608.23440v3",
+      "tags": [
+        "keyword:dse",
+        "query:dse"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "temporal-property-driven design space exploration with reinforcement learning",
+      "llm_evidence_cn": "基于强化学习的时序属性驱动设计空间探索",
+      "llm_evidence": "基于强化学习的时序属性驱动设计空间探索",
+      "canonical_evidence": "基于强化学习的时序属性驱动设计空间探索",
+      "llm_tldr_en": "Design-space exploration of configurable CPS requires executable evaluation; this paper uses an RL agent to assemble candidates while temporal-property monitors guide exploration through functional violation indicators.",
+      "llm_tldr_cn": "可配置信息物理系统（CPS）的设计空间探索需可执行评估，随机执行使穷举不可行。本文提出基于强化学习的时序属性驱动设计工作流：RL代理选择子系统备选方案装配候选系统，仿真中在线时序监视器产生属性违背指标。该方法结合指标评估非功能属性并以奖励驱动探索，从而在大设计空间内高效寻优。",
+      "llm_tldr": "可配置信息物理系统（CPS）的设计空间探索需可执行评估，随机执行使穷举不可行。本文提出基于强化学习的时序属性驱动设计工作流：RL代理选择子系统备选方案装配候选系统，仿真中在线时序监视器产生属性违背指标。该方法结合指标评估非功能属性并以奖励驱动探索，从而在大设计空间内高效寻优。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "design space exploration",
+      "matched_requirement_id": "req-16",
+      "selection_source": "carryover_cache",
+      "paper_id": "2608.23440v3",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2608.30647v1",
+      "source": "arxiv",
+      "title": "What It Costs to Compose, Rebuild, and Correct Precomputed Memory",
+      "abstract": "Language models can answer from precomputed memory, a model's saved reading of a body of material, reused across requests instead of read again at each. This paper maps where that practice preserves correctness and the conditions under which it fails. Across experiments on Llama-3.1-8B-Instruct using both saved key-value caches and trained compressions of them, precomputed memory degrades when assembled from separately prepared parts, stays current only through rebuilds costing a large fraction of full preparation in our measurements, and ignores corrections served beside it conditional on phrasing. If precomputed memories can be served alongside one another, be cost-efficiently rebuilt, and be superseded by new information arriving in real-time, they can serve as a way to avoid re-feeding context to a model over repeated queries. The implication of our results for a deployed system that deals with a variety of queries is that precomputed memories are best rebuilt on the cadence at which new information changes what the memory was originally computed from. Both warm-rebuilding trained compressions of key-value caches and serving specifically-phrased updates beside a memory, as pasted text or injected cache state, show particular promise for keeping precomputed memories current, the latter as an interim measure between rebuilds, and we measure the cost and name the remaining questions associated with each.",
+      "authors": [
+        "Asa Shepard"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL",
+        "cs.LG"
+      ],
+      "published": "2026-08-31T11:49:42+00:00",
+      "link": "https://arxiv.org/pdf/2608.30647v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "Study of correctness and cost when reusing saved key-value caches as precomputed memory in LLM inference",
+      "llm_evidence_cn": "对重用预存KV缓存作为预计算记忆的正确性与代价研究",
+      "llm_evidence": "对重用预存KV缓存作为预计算记忆的正确性与代价研究",
+      "canonical_evidence": "对重用预存KV缓存作为预计算记忆的正确性与代价研究",
+      "llm_tldr_en": "Maps when LLMs answering from precomputed memory (saved key-value caches) preserves correctness and when it fails, showing composition degrades outputs, rebuilds are expensive, and corrections depend on phrasing.",
+      "llm_tldr_cn": "针对语言模型复用预计算记忆（例如先前会话保存的KV缓存或训练压缩）时的可靠性和代价问题，论文基于Llama-3.1-8B-Instruct开展系统实验。结果表明，将分别准备的预计算记忆拼接在一起使用时模型输出会明显退化；预计算记忆需要通过消耗大量资源的重建来保持最新；补发的更正只有在条件措辞下才能被采纳。这些发现为在推理服务中安全、高效地复用预计算记忆提供了重要约束与成本量化，对KV缓存管理策略设计具有指导意义。",
+      "llm_tldr": "针对语言模型复用预计算记忆（例如先前会话保存的KV缓存或训练压缩）时的可靠性和代价问题，论文基于Llama-3.1-8B-Instruct开展系统实验。结果表明，将分别准备的预计算记忆拼接在一起使用时模型输出会明显退化；预计算记忆需要通过消耗大量资源的重建来保持最新；补发的更正只有在条件措辞下才能被采纳。这些发现为在推理服务中安全、高效地复用预计算记忆提供了重要约束与成本量化，对KV缓存管理策略设计具有指导意义。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2608.23463v1",
+      "source": "arxiv",
+      "title": "ProxyFormer: A Dual-Stream Proxy Architecture for Ultra-Long Context and High-Resolution Generation",
+      "abstract": "The quadratic growth of attention computation and key-value (KV) cache with respect to sequence length is a central bottleneck for ultra-long-context language models and high-resolution generative models. We propose ProxyFormer, a general dual-stream architecture built upon proxy tokens. In each layer, fine-grained local features are compressed bottom-up into a small set of proxy states; expensive global interactions are performed only in the compressed proxy space; the globally contextualized proxies are then decompressed and injected top-down back into the local stream. Because the local stream persists across layers, fine-grained information that is not captured by one compression step remains accessible for later refinement, alleviating the irreversible information loss of conventional one-shot compression. We further introduce factorized multi-level compression/decompression, layer-wise dynamic compression ratios, asymmetric dual embeddings, and a proxy-only KV-cache inference scheme. On a 16GB GPU with batch size 1, a standard decoder-only model can train sequences of only about 20K tokens, whereas ProxyFormer with a compression ratio of 64 extends the trainable sequence length to about 0.7M. A model trained with a 64K window retains 92%-95% retrieval accuracy on a multi-needle retrieval task with 1,048,576 tokens, and a model trained with an 8K window exceeds 94% accuracy when extrapolated to 256K tokens. Preliminary image-generation experiments demonstrate the feasibility of ProxyFormer for both pixel-space and latent-space flow matching.",
+      "authors": [
+        "Zhongpan Tang"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-08-24T16:31:46+00:00",
+      "link": "https://arxiv.org/pdf/2608.23463v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "proxy-token dual-stream architecture addressing attention quadratic cost and KV cache for long context",
+      "llm_evidence_cn": "代理令牌双流架构应对长上下文注意力二次复杂度与KV缓存",
+      "llm_evidence": "代理令牌双流架构应对长上下文注意力二次复杂度与KV缓存",
+      "canonical_evidence": "代理令牌双流架构应对长上下文注意力二次复杂度与KV缓存",
+      "llm_tldr_en": "ProxyFormer compresses local features into a few proxy tokens for global attention, then decompresses them back to the local stream, reducing quadratic attention cost and KV cache pressure in long-context models.",
+      "llm_tldr_cn": "超长上下文与高分辨率生成中，注意力计算和KV缓存随序列长度二次增长是核心瓶颈。ProxyFormer提出基于代理令牌的双流通用架构：每层将局部特征自下而上压缩为少量代理状态，仅在压缩代理空间中做全局交互，再自上而下注入局部流。由于局部流跨层保留，未被压缩捕获的细粒度信息可在后续层修正。该设计可同时缓解注意力复杂度与KV缓存压力。",
+      "llm_tldr": "超长上下文与高分辨率生成中，注意力计算和KV缓存随序列长度二次增长是核心瓶颈。ProxyFormer提出基于代理令牌的双流通用架构：每层将局部特征自下而上压缩为少量代理状态，仅在压缩代理空间中做全局交互，再自上而下注入局部流。由于局部流跨层保留，未被压缩捕获的细粒度信息可在后续层修正。该设计可同时缓解注意力复杂度与KV缓存压力。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "carryover_cache",
+      "paper_id": "2608.23463v1",
+      "quick_tier": "8plus"
+    }
+  ]
+}

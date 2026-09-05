@@ -1,0 +1,345 @@
+Title: Bridging Agent Semantics with Spot Capacity: An Elastic and Recoverable Service Model
+
+URL Source: https://arxiv.org/pdf/2608.29581v1
+
+Published Time: Tue, 01 Sep 2026 01:08:56 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Bridging Agent Semantics with Spot Capacity: An Elastic and Recoverable Service Model 
+
+# Minchen Yu 
+
+The Chinese University of Hong Kong, Shenzhen Shenzhen, China yuminchen@cuhk.edu.cn 
+
+## Abstract 
+
+LLM agents increasingly drive long-running cloud inference work-loads in which model calls differ in urgency, redundancy, comple-tion semantics, and replay cost. Model-as-a-Service (MaaS) plat-forms expose several service models for trading cost against la-tency, availability, and capacity commitment. These models operate primarily at request, job, or endpoint scopes and provide limited support for combining transient platform supply with the evolving semantics of an agent task. We present SemSpot , a semantics-aware service model that al-lows agent applications to leverage the spot capacity of LLM in-ference platforms. At the request level, SemSpot lets a provider publish short-lived offers over successful price, completion proba-bility, and failure-notification deadline; the agent runtime selects among these offers using the current task state and completion rule. An audit of 1,535 cases from six agent benchmarks identifies four recurring workflow structures and shows how this service model may produce different cost, service-time, and fallback behav-ior. With specialized MaaS support, Token-Level SemSpot further preserves provider inference state and runtime-verified semantic segments inside a long request. We develop the service model, eco-nomic boundary, and the cross-layer research agenda required to realize SemSpot. 
+
+## 1 Introduction 
+
+LLM agents are becoming a major source of cloud inference demand. A user objective can unfold into a long-running task that plans, retrieves information, invokes tools, explores alternatives, validates intermediate results, and revises subsequent actions. Such tasks maintain state across many model calls and reveal their execution structure online: a speculative branch may become critical after sibling failures, a verifier may initiate another round, and a join may make unfinished work irrelevant. Efficient agent serving must therefore follow the evolving structure of a live task [4, 14, 16, 38]. Model-as-a-Service (MaaS) platforms provide the computational substrate for these tasks. They multiplex requests with heteroge-neous context lengths and uncertain generation times over expen-sive accelerators while workload bursts continually change queue, compute, and memory pressure. Modern serving systems expose substantial internal flexibility through batching, disaggregation, preemption, KV-cache management, and elastic placement [1, 22, 23, 26, 27, 39]. Most of this flexibility remains hidden behind a conventional inference API. MaaS providers also offer varying service models, including Stan-dard and Priority for interactive requests, Batch for detached work, and Flex or best-effort processing for lower-cost service [3, 9, 10, 20, 21]. These models cover useful cost–service tradeoffs, and runtimes can route different inference calls to different products. Their public contracts are generally selected for a request, job, or capacity com-mitment. However, they provide limited support for conditioning an offer on the current state of a live task or coordinating recovery after opportunistic execution is interrupted. This boundary separates two views needed for efficient execu-tion. The runtime manages the current time budget, branch redun-dancy, completion rule, and replay cost of each call. The platform keeps track of resource utilization, request queue, model placement, and KV-cache availability. Existing products let the runtime select a service and react to its outcome, but they do not provide a common, task-conditioned contract that relates the semantics of the current call to the available capacity. The gap becomes most visible when opportunistic work fails late, several branches fall back together, or useful in-request progress could otherwise be retained. Cloud Spot services provide a useful economic precedent. They allow a provider to monetize spare infrastructure while retaining a reclaim option, and compensate the user through a discount [2, 11, 24, 25]. Flex processing has brought part of this exchange to model APIs [3, 9, 21]. We argue that agent serving motivates a semantics-aware extension that connects task context with the Spot capacity of MaaS platforms. We use Firm 1 to denote the stable execution path against which Spot is selected and recovered. An ideal Spot service should exchange the information needed for a joint decision. The runtime supplies only the semantics needed to choose and recover execution—for example, the current time budget, completion rule, fallback policy, and recovery capability. The provider supplies a priced description of the spot capacity available for that execution and returns a terminal outcome that the runtime can interpret deterministically. We call this service model SemSpot . SemSpot operates at two complementary granularities. At the request level , the provider pub-lishes a short-lived menu whose entries describe a settlement hori-zon, successful price, completion probability, and failure-notification deadline. The runtime chooses among Firm execution and these Spot offers according to the task’s current state and completion rule. At the token level , SemSpot moves the recovery boundary inside a long request with specialized support of MaaS platforms. Provider-state resume preserves KV-cache and decoder progress, while runtime-verified segment commit preserves output that has already become independently valid to the application. In this paper, we primarily focus on establishing and analyzing SemSpot service model. We first model request-level SemSpot un-der four recurring agent workflow structures identified through a preliminary audit of 1,535 benchmark cases. We then place provider  
+
+> 1Firm denotes any protected execution path that offers sufficiently stable delivery for the selected inference unit. It may be realized by Standard or Priority request service, and serves as the stable alternative and fallback to Spot. 1arXiv:2608.29581v1 [cs.DC] 30 Aug 2026 Minchen Yu
+
+operational saving and runtime bill reduction of SemSpot to derive an economic filter and guide the SemSpot configurations for MaaS providers. Finally, we examine the additional platform and runtime support required for token-level SemSpot and clarify when physi-cal and semantic recovery are complementary. Realizing SemSpot requires coordinated advances in three areas. A portable semantic contract must expose enough task context and terminal information without revealing a full workflow or private infrastructure state. The agent runtime must identify safe inference units, select among Firm and multiple Spot offers online, coordinate fan-out and cancel-lation, and validate recoverable progress. The MaaS platform must calibrate offers, protect the capacity required by Firm traffic and fallback, manage KV and compute resources, and provide auditable settlement. 
+
+Contributions. This paper makes the following contributions: 
+
+• We introduce SemSpot, a cross-layer, semantics-aware service model that connects agent task context with the spot capacity of MaaS platforms while preserving the responsibilities of the runtime and provider. 
+
+• We formulate request-level SemSpot as a short-lived provider menu and use a preliminary audit of 1,535 cases from six agent benchmarks to derive structure-specific bill, service-time-budget, and fallback implications. 
+
+• We analyze operational saving and runtime bill reduction of SemSpot for providers, yielding an economic filter and design guidelines for publishable Spot offers. 
+
+• We explore token-level SemSpot through provider-state resume and runtime-verified segment commit, and identify the runtime and MaaS mechanisms needed to evaluate the model. 
+
+• We identify the open problems for semantic contracts, agent runtime, and MaaS platforms required to realize and optimize SemSpot in practice. 
+
+## 2 Background 2.1 Agent Workloads 
+
+Coding, research, and data-analysis agents repeatedly alternate between model calls, tools, validators, and state updates [4, 14, 16, 38]. A task can contain a long causal chain, parallel candidates, an all-required join, or a feedback loop whose depth emerges only after execution. Recent workload studies also report long reusable prefixes, short outputs, and heavy-tailed generation times in coding agents [15, 34, 40]. The value of a model call changes with task state. Early exploration may be redundant; the last surviving branch may become mandatory; a semantic threshold can terminate the remaining cohort; final synthesis and effect authorization require stable execution. These transitions are application semantics, not properties of a queue priority. Long tasks can issue hundreds of inference calls, so modest per-call savings accumulate. The same elasticity can also threaten task completion. A late failure on a sequential chain consumes critical-path budget, while simultaneous misses in an all-required fan-out create a burst of Firm fallbacks. A service model for agents must therefore expose both economic opportunity and a continuation that the runtime can compose with the task. 
+
+## 2.2 MaaS Service Models 
+
+A customer-visible MaaS service model determines three aspects of execution. The operational unit specifies the granularity over which service and recovery semantics apply, such as a request, a detached job, a capacity envelope, or request-internal token progress. The 
+
+cost–service exchange specifies what service property is traded for a lower price or stronger capacity guarantee. The runtime-visible outcome determines what the runtime can observe and how it can continue after completion, rejection, or interruption. Operational unit is distinct from the billing meter: input, cached-input, and output tokens may remain the metered quantities for every service model. Table 1 summarizes the main MaaS service models [3, 9, 10, 20, 21]. Standard and Priority provide stable request execution; Batch discounts detached jobs with a longer completion window; Flex and best-effort services discount request-level execution while relaxing latency or capacity availability; and provisioned products reserve an aggregate capacity envelope. SemSpot builds on the same basic economic exchange as Flex—a lower price in return for weaker execution assurance—but makes two additional capabilities explicit. At the request level , the provider publishes a short-lived, task-composable offer and settles the at-tempt as either a complete response or an actionable Not-Completed outcome, enabling a defined Firm fallback. At the token level , SemSpot moves the recovery boundary inside the request and may expose compatible provider state, a runtime-verified output segment, or both. The distinction from Flex is therefore not the availability of discounted best-effort inference itself; it is the combination of a task-conditioned offer, an explicit continuation, and optional finer-grained recovery. 
+
+## 3 SemSpot 3.1 Definition and Properties 
+
+Definition. SemSpot is a customer-visible MaaS service model that exposes transient inference capacity through discounted, revocable offers with explicit continuations. The runtime associates compact task constraints and a fallback or recovery policy with an inference unit. The platform prices, admits, and executes that unit on Spot capacity. Every attempt resolves to an outcome from which the runtime can proceed deterministically. 
+
+Cross-layer service abstraction. The public contract joins two complementary control planes. The runtime contributes constraints that affect service selection, including urgency, completion rule, fallback budget, and requested recovery capability. The platform contributes a priced execution offer, a terminal outcome, and any retained inference state. Prompts, full task graphs, queue state, topology, and raw KV layouts remain private to their owners. 
+
+Semantics-aware orchestration. With SemSpot, Agent runtime can compose multiple service models according to semantics at a fine granularity. It chooses a service for each inference unit and revises later choices after verifier results, sibling failures, joins, or budget updates. This granularity lets the runtime protect manda-tory work, exploit application-owned redundancy, and cancel work whose marginal value has vanished. 
+
+> 2Bridging Agent Semantics with Spot Capacity
+
+Table 1: Comparison of customer-visible MaaS service models. Operational unit denotes the granularity of execution and recovery semantics, rather than the billing meter. For SemSpot, “token” refers to request-internal inference progress.              
+
+> Service model Operational unit Cost–service exchange Runtime-visible outcome / recovery Standard / Priority Request Stable or premium online execution Complete response or ordinary service error Batch Detached job Lower price for a longer asynchronous completion window Per-member completion status; unfinished members may be retried Flex / best effort Request Lower price for weaker latency or capacity availability Complete response or generic failure; timeout, retry, and fallback remain client-managed Provisioned Capacity envelope Capacity commitment for predictable throughput or dedicated service Ordinary request outcomes under a reservation, quota, or overflow policy
+> SemSpot (proposed) Request / token Task-conditioned, discounted, and revocable execution, with optional request-internal recovery Request level: complete response or actionable Not-Completed with a defined Firm fallback; token level: compatible state resume and/or a runtime-verified segment
+
+Recoverable interruption. A rejected or reclaimed attempt re-turns a defined continuation. Request-level SemSpot yields a com-plete response or an actionable failure followed by one Firm retry. Token-level SemSpot can additionally return compatible model state or identify a runtime-verified output boundary. The runtime validates task correctness; the platform controls physical execution, reclaim, and state retention. The abstraction creates a common optimization surface. An agent runtime can reduce the bill of elastic work while preserving Firm execution for critical stages, and can route online among multiple Spot offers as task state changes. A provider can monetize tran-sient queue, compute, and memory headroom, reclaim it to protect Firm demand, and use compact continuation information to limit destructive preemption and uncontrolled fallback bursts. Standard-ized terminal and recovery semantics also make heterogeneous implementations comparable. 
+
+## 3.2 Scope and Concepts 
+
+We clarify the scope and concepts for later discussion. 
+
+Task. An agent task is a runtime-owned workflow containing in-ference calls, tools, validators, and state transitions. The runtime owns the task graph, completion conditions, and all authority over external effects. 
+
+Inference unit. An inference unit 𝑢 is one immutable model call directly served by MaaS. It is identified by (i) the input snapshot consumed by the call, including the prompt, context, and task-state version, and (ii) the model and inference configuration, such as model version, reasoning effort, and decoding settings. Changing either part creates a new unit. A task can contain many units sepa-rated by runtime-owned tools or validation. 
+
+Attempt. An attempt is one submission of 𝑢 under one service mode. The same unit may first run on SemSpot and later on Firm. A separate execution epoch is unnecessary unless a future service changes price, protection, or authority inside one live attempt. 
+
+Recovery boundary. A recovery boundary identifies the latest state from which continuation is correct and economically useful. Request-level Spot returns to the original immutable input. Token-level Spot can add provider KV cache state, a runtime-verified output segment, or both. 
+
+## 3.3 Two Execution Granularities 
+
+Request-level SemSpot. The request-level profile treats one in-ference unit as atomic. A successful attempt returns a complete response at the quoted price. An unsuccessful attempt returns an actionable failure, after which the runtime immediately retries the same unit on Firm. This profile has a compact public contract and applies when whole-request replay is safe and affordable. 
+
+Token-level SemSpot. The token-level profile moves the recovery boundary inside a long request and therefore requires specialized MaaS support. State Resume retains or exports compatible KV-cache, decoder position, and serving metadata. Verified Segment Commit preserves a closed output segment after a runtime-owned verifier establishes that it is independently reusable. The capabilities address different forms of replay and can be combined. Both profiles require an unambiguous terminal outcome and a continuation understood by the runtime. SemSpot does not make the provider responsible for task correctness, nor does it recover arbitrary tools or external effects. Instead, the provider expose sufficient information for the runtime to evaluate efficient and recoverable execution. 
+
+## 4 Request-Level SemSpot 4.1 Contract and Single-Unit Analysis 
+
+Request-level SemSpot treats one inference unit as atomic. The first profile rests on four assumptions. 
+
+(A1) Equivalent and replay-safe unit. The spot attempt and its Firm fallback execute the same immutable input and task-state version under the same model, reasoning profile, decoding and safety contract, and complete-response boundary. Replaying the unit does not repeat an external effect. 
+
+(A2) Atomic visibility. The runtime consumes only a complete response. Partial output cannot trigger tools, mutate shared state, or authorize an external effect before the response is accepted. 
+
+(A3) Zero-charge unsuccessful attempt. An attempt that ends as Not-Completed is not billed. This assumption keeps the first-order model transparent; a product that charges incomplete work requires an additional settlement term. 
+
+(A4) Immediate one-shot Firm fallback. A Not-Completed outcome immediately sends the same unit to Firm, and the runtime 
+
+> 3Minchen Yu
+
+does not issue another spot attempt. Capacity shortage is a com-mon source of rejection or reclaim, so repeated spot attempts can encounter correlated scarcity while consuming the time reserved for completion. One-shot fallback bounds retry amplification and guarantees a stable continuation. 
+
+Provider menu. For unit 𝑢 , the provider publishes a short-lived menu 
+
+M ( 𝑢 ) = {𝑜 𝑗 = (ℎ𝑗 , 𝑟 𝑗 , 𝑝 𝑗 , 𝑓 𝑗 )} 𝑚 𝑗 =1. (1) The horizon ℎ𝑗 is the latest time at which the Spot attempt set-tles. The price ratio 𝑟 𝑗 is the successful Spot price divided by the Firm price. The completion probability 𝑝 𝑗 is the probability of a complete response by ℎ𝑗 for the provider’s current request class. The failure-notification deadline 𝑓 𝑗 is a product SLO, for example, “99% of unsuccessful attempts are reported within 𝑓 𝑗 .” A provider without an early-failure commitment sets 𝑓 𝑗 = ℎ𝑗 .
+
+Service-time budget. The timing fields allocate inference service time to one unit. They do not predict its realized duration or the task’s end-to-end latency. Before issuing 𝑢 , the runtime reserves time for tools, human interaction, downstream inference, validation, and finalization, and assigns the remaining amount as the unit’s 
+
+Spot slack 𝑆 𝑢 . Let 𝐿 𝐹 (𝑢 ) be the Firm service-time budget for the same unit. A menu point is feasible under the conservative check max {ℎ𝑗 , 𝑓 𝑗 + 𝐿 𝐹 (𝑢 )} ≤ 𝑆 𝑢 . (2) The successful path fits within ℎ𝑗 ; the failure path receives a no-tification by 𝑓 𝑗 and then one Firm budget. The provider absorbs request-length, batching, and queue uncertainty into the calibrated menu, while the runtime recomputes 𝑆 𝑢 after every accepted result, join, or feedback iteration. 
+
+Bill notation. For any fixed execution scope 𝐴 —one inference unit, one workflow stage, or one paired evaluation window—let 
+
+𝐵 𝐹 (𝐴 ) denote the customer bill when exactly the same work uses Firm, and let 𝐵 𝑆 (𝐴 ) denote the bill under a candidate Spot policy. This common notation keeps the single-unit, workflow-level, and provider-accounting analyses on the same monetary baseline. 
+
+Single-unit bill. Under (A3)–(A4), a successful Spot attempt costs a fraction 𝑟 of the Firm charge, while an unsuccessful attempt is free and the Firm fallback pays the full Firm charge. Hence 
+
+E[𝐵 𝑆 (𝑢 )] 
+
+𝐵 𝐹 (𝑢 ) = 𝑝𝑟 + ( 1 − 𝑝 ) = 1 − 𝑝 (1 − 𝑟 ). (3) Thus 𝑝 (1 − 𝑟 ) is the expected bill reduction as a fraction of the Firm bill for the same unit. A smaller failure deadline 𝑓 does not change Equation 3; it preserves more task budget for the Firm path. A longer horizon can raise 𝑝 , yet it also consumes more slack and can delay failure. The menu exposes this tradeoff rather than fixing one global best-effort tier. 
+
+## 4.2 Workflow-Level Analysis 
+
+Equation 3 describes one inference unit. The task completion rule determines how many Spot misses require Firm repair and how service-time uncertainty composes across units. We audited all primary cases in BrowseComp-Plus, Long-Horizon Terminal-Bench, LongDS-Bench, 𝜏 2-bench, MCPMark, and Terminal-Bench 2.0, for 1,535 cases total [6, 13, 17, 28, 29, 31]. The outcome-blind static characterization remains preliminary and subject to independent adjudication. Figure 1 shows four recurring structures and their independent coverage. 
+
+Analysis assumptions. The main comparison keeps the applica-tion fixed: All-Firm and SemSpot use the same task graph, infer-ence units, launch order, verifier, and cancellation rule. To isolate the completion rule, the closed-form bill expressions make two simplifying assumptions: branches are homogeneous and share the same (𝑝, 𝑟 ), and parallel Spot outcomes are independent, so the number of completed branches is 𝑋 ∼ Binomial (𝑁 , 𝑝 ). Real branches can differ in length and experience correlated scarcity; their bill and service-time tails must be measured from joint com-pletion traces. The timing discussion below concerns the inference service-time budget allocated to the stage, not the task’s end-to-end latency. For any scalar 𝑧 , (𝑧 )+ = max {𝑧, 0}, so (𝑘 − 𝑋 )+ is the number of results still missing after 𝑋 completions. The formulas assume simultaneous launch and omit early cancellation. 
+
+(1) Sequential and feedback chains. The corpus contains 485 strict serial-only cases (31.6%) and 85 feedback cases (5.5%, an over-lapping label). If 𝑚 ordered units use the same Spot point, the normalized expected bill is 
+
+𝑅 𝐵  
+
+> seq
+
+= E[𝐵 𝑆 (G seq )] 
+
+𝐵 𝐹 (G seq ) = 𝑟𝑝 + ( 1 − 𝑝 ) = 1 − 𝑝 (1 − 𝑟 ). (4) Failures normally arrive one at a time, so fallback concurrency is small. Their service times accumulate along the critical path. With heterogeneous units, the conservative budget is the sum of the selected per-unit budgets max {ℎ𝑖 , 𝑓 𝑖 + 𝐿 𝐹,𝑖 }. Feedback depth is unknown online, so the runtime replans after each iteration and moves later units to Firm as the remaining budget contracts. 
+
+(2) All-of-𝑁 joins. The audit identifies 60 all-required cases (3.9%). Every miss must be repaired, and the normalized expected bill again reduces to 
+
+𝑅 𝐵  
+
+> all
+
+= E[𝐵 𝑆 (G all )] 
+
+𝐵 𝐹 (G all ) = 𝑟𝑝 + E[𝑁 − 𝑋 ]
+
+𝑁 = 𝑟𝑝 + ( 1 − 𝑝 ). (5) The cost ratio matches the sequential case, while the time behav-ior differs. The stage completes at the slowest usable branch, and Spot misses can release several Firm fallbacks at the same join. Heterogeneous branch lengths and shared fallback queues create a long-tail maximum that must be measured jointly. Under the illus-trative homogeneous independent model and no time for fallback, stage completion is 𝑝 𝑁 ; a 99% all-of-eight target requires per-unit 
+
+𝑝 ≥ 99 .874%. All-required stages therefore need high completion probability, cohort limits, and explicit Firm reserve. 
+
+(3) Threshold and semantic merge. The audit identifies 739 semantic or threshold merges (48.1%). Suppose the same 𝑁 branches run under both policies and the verifier accepts after 𝑘 useful results. The normalized expected Spot bill is 
+
+𝑅 𝐵 𝑘,𝑁 = E[𝐵 𝑆 (G 𝑘,𝑁 )] 
+
+𝐵 𝐹 (G 𝑘,𝑁 ) = 𝑟𝑝 + E[( 𝑘 − 𝑋 )+]
+
+𝑁 . (6) The second term is the expected Firm top-up needed after the Spot horizon, normalized by the original 𝑁 -call All-Firm bill. It is no larger than 1 − 𝑝 because (𝑘 − 𝑋 )+ ≤ 𝑁 − 𝑋 ; the completion rule absorbs part of the Spot miss whenever 𝑘 < 𝑁 . The service-time behavior follows the 𝑘 th usable-result order statistic rather than the slowest branch. A semantic verifier can therefore cut off the long tail once sufficiency, diversity, or another completion predicate holds, 
+
+> 4Bridging Agent Semantics with Spot Capacity
+
+(a) Sequential / feedback 
+
+> 485 serial-only (31.6%); 85 feedback (5.5%)
+
+u1 u2 u3
+
+(b) Parallel all-of-N
+
+> 60 cases (3.9%)
+
+u1
+
+u2
+
+uN
+
+all 
+
+(c) Threshold / semantic merge 
+
+> 739 cases (48.1%)
+
+u1
+
+u2
+
+uN
+
+k / verifier 
+
+(d) One-of-N selection 
+
+> 14 cases (0.9%)
+
+u1
+
+u2
+
+uN
+
+1
+
+Figure 1: Four task completion structures found in the benchmark audit. Counts and percentages are independent preliminary labels over 1,535 cases and can overlap. 
+
+and should cancel remaining Spot and Firm work immediately. Increasing 𝑁 beyond the original task graph is a separate hedging policy and requires a separate baseline. 
+
+(4) One-of-𝑁 selection. The audit identifies 14 one/select stages (0.9%). The same 𝑁 candidates are launched in both policies. Ignor-ing early cancellation, the normalized expected Spot bill is 
+
+𝑅 𝐵  
+
+> 1,𝑁
+
+= E[𝐵 𝑆 (G 1,𝑁 )] 
+
+𝐵 𝐹 (G 1,𝑁 ) = 𝑟𝑝 + (1 − 𝑝 )𝑁 
+
+𝑁 . (7) The last term has a direct meaning: all 𝑁 Spot candidates miss with probability (1 − 𝑝 )𝑁 , which triggers one Firm fallback; division by 
+
+𝑁 normalizes that repair against the same 𝑁 -candidate All-Firm workflow. The stage service time is governed by the first usable 
+
+candidate, so redundancy can suppress the tail even when indi-vidual branches are heterogeneous. Service completion alone is insufficient—the native verifier determines whether a candidate is usable. Early cancel-on-accept can further reduce both bills, and its exact value must be measured with paired completion and valida-tion traces. The workflow analysis therefore adds information that the single-unit model cannot capture. Sequential stages accumulate failure delay; all-required stages expose the maximum and synchronized fallback burst; threshold stages replace the maximum with a 𝑘 th or-der statistic and reduce Firm top-up; selection stages replace it with the first accepted result. These distinctions determine which menu points remain useful after task-level time and capacity constraints are applied. 
+
+## 4.3 Designing A Viable SemSpot Menu 
+
+The single-unit and workflow analyses characterize the runtime side of the service. The platform must also determine whether a candidate menu point creates enough operational saving while preserving Firm objectives. We first measure the saving created by the platform policy, and then choose a price that divides it between the runtime and the platform. 
+
+Operational saving. Fix a paired evaluation window 𝑊 in which the all-Firm reference and the candidate SemSpot policy see the same arrival trace, task graph, model mix, capacity trace, and Firm SLO. Let 𝐵 𝐹 (𝑊 ) be the all-Firm customer bill, and let 𝐾 𝐹 (𝑊 ) and 
+
+𝐾 𝑆 (𝑊 ) be the platform’s aggregate operating cost under the two executions. To keep the notation compact, we write them as 𝐵 𝐹 ,
+
+𝐾 𝐹 , and 𝐾 𝑆 below. The spot-policy cost includes incomplete work, Firm fallback, reserved headroom, state handling, and measured interference with protected traffic. Batching, locality, and queue interactions are captured by paired replay or controlled deployment rather than assigned to an artificial per-request GPU cost. We define the normalized operational saving as 
+
+𝑣 = 𝐾 𝐹 − 𝐾 𝑆 
+
+𝐵 𝐹 
+
+. (8) Thus, 𝑣 measures how much platform cost the candidate policy removes, expressed as a fraction of the same all-Firm bill used by the runtime-side analysis. A policy with 𝑣 ≤ 0 creates no efficiency that can be shared through price. 
+
+Price allocation. For a homogeneous class with completion prob-ability 𝑝 , successful price ratio 𝑟 , and zero-charge unsuccessful attempts, the runtime receives an expected bill reduction of 𝑝 (1 −𝑟 )
+
+on the same normalized baseline. The platform retains the remain-der, 𝑣 − 𝑝 (1 − 𝑟 ), as incremental profit. Both sides gain when 0 < 𝑝 (1 − 𝑟 ) < 𝑣, (9) which yields the price interval max 
+
+
+
+0, 1 − 𝑣 𝑝 
+
+
+
+< 𝑟 < 1. (10) The lower boundary is the deepest successful-attempt discount that the measured operational saving can support. For heterogeneous workloads, the runtime saving becomes a bill-weighted average, while the same accounting identity applies. Figure 2 maps the accounting test back to the provider menu. The solid curve is the price floor for a reference policy, and the dashed curve shows how a larger 𝑣 permits a deeper discount. A point below its applicable floor gives the runtime more discount than the platform policy creates in operational saving. Points above the floor remain candidates rather than automatic choices: the  
+
+> 5Minchen Yu lower higher
+
+completion probability p        
+
+> successful Spot price ratio  r o1
+> o2
+> o3r= 1 (no discount)
+> reference floor r= 1 − v/p
+> larger vlowers the floor economic fail
+
+Figure 2: Economic filtering of a request-level SemSpot menu. Each horizon and platform policy produces a candidate (𝑝, 𝑟 )
+
+point and a measured normalized operational saving 𝑣 . A point is economically publishable only above 𝑟 = 1 − 𝑣 /𝑝 ;task-time, workflow, and Firm-protection constraints are applied separately. Curves and points are schematic. 
+
+runtime must still evaluate the local time budget and completion rule, and the platform must still preserve fallback capacity and Firm non-interference. 
+
+Takeaways. We summarize three takeaways. (1) The platform can increase 𝑣 through system-level optimization, including efficient scheduling, resource scaling, fast rejection, efficient KV manage-ment, and tighter fallback reservation, to reduce 𝐾 𝑆 relative to 
+
+𝐾 𝐹 . A larger 𝑣 directly widens the space for a useful discount. (2) Completion probability 𝑝 and price ratio 𝑟 must be designed jointly .Equation 10 gives their qualitative coupling for a measured 𝑣 : a menu point with a different horizon or control policy changes both 
+
+𝑝 and the price floor. (3) Economic feasibility is necessary but not sufficient . A low 𝑝 , late failure notification, correlated fallback, or an insufficient task-time budget can make a point unusable even when it lies above the economic floor. The final decision must also satisfy Equation 2, the workflow-specific tail behavior, fallback-capacity limits, and Firm-service protection. 
+
+## 5 Token-Level SemSpot 5.1 Motivation and scope 
+
+Request-level SemSpot treats an inference unit as atomic. After interruption, the runtime retries the unit from its original input on Firm. This boundary is simple and broadly applicable, but it can repeat a long prefill and substantial decode work. TraceLab reports coding-agent generation latency around 5.7 s at P50, 22.2 s at P90, and 1.4 min at P99, with median prefixes around 115K– 126K tokens and a reported P90 above 467K tokens for one agent family [40]. A production GitHub Copilot study reports median prompt, cached-prompt, and output sizes of roughly 68K, 63K, and 247 tokens [15]. Token-level SemSpot moves the recovery boundary inside a request. Input, cached-input, and output tokens remain the billing meter; “token-level” refers to the granularity of preserved execution progress. This profile requires specialized platform support for retaining and restoring model state, as well as runtime support for binding recovered progress to the exact input and inference configuration. We consider two complementary capabilities: state resume preserves physical inference progress, while verified segment commit preserves application-valid semantic progress. 
+
+## 5.2 State Resume 
+
+State resume extends familiar KV and prefix reuse across a spot-to-Firm transition. When a spot attempt is interrupted, the plat-form may retain or export prefix KV, generated-token KV, decoder position, and the serving metadata needed to continue the same inference unit. The public capability should expose only what the runtime needs: a state handle, its compatibility scope, lifetime, and restore outcome. Internal KV layout, paging, compression, transfer, and victim selection remain platform choices. A usable handle must bind the exact input snapshot and inference configuration, including model and version, tokenizer, quantization, adapter, region, and security domain. The runtime rejects a handle that no longer matches the selected Firm continuation. The service must also define deterministic behavior for early eviction, failed restore, destination unavailability, and unused state after normal completion. State retention is not free capacity. Retained KV and decoder state compete with active prefill, decode, memory, and transfer bandwidth. The platform must decide which states to keep, where to place them, and when to evict or export them while preserv-ing Firm headroom. Existing paging, migration, and preemptive-serving mechanisms can implement these actions; SemSpot makes the continuation and its observable semantics customer-visible. 
+
+## 5.3 Verified Segment Commit 
+
+State resume answers where model execution can continue, but an opaque state handle does not identify which partial outputs are already valid to the application. Agent workflows may need progress that survives the loss of provider-local state, can be con-sumed by a downstream stage, or can move to another execution context. Verified segment commit addresses this semantic boundary by recording a closed output object whose validity is established by the runtime. This complements state resume in three conditions. (1) Physical continuation does not certify application results. A KV cache or decoder handle cannot establish that partial output is complete, correct, or safe for downstream use. It cannot by itself represent a verified evidence item, an accepted patch, or a completed branch. (2) Physical state and semantic results have different lifetimes. A handle may expire or become incompatible after a model, region, quantization, adapter, or provider change. A closed, version-bound semantic object can remain useful after the physical state disappears. (3) The two capabilities remove different replay. State resume pre-serves physical inference work; verified segment commit preserves application-valid work. Their combination, aligned recovery, binds the latest verified segment to compatible KV or decoder state and avoids both model recomputation and regeneration or revalidation of accepted results. 
+
+Examples. We illustrate the applicability of verified segment com-mit with two examples. Following prior benchmarks [6–8], the 
+
+> 6Bridging Agent Semantics with Spot Capacity
+
+first example is a fixed-corpus request that emits one JSONL evi-dence record per line, with fields for a claim, source document, cited span, and relation. After each record closes, the runtime checks the schema, corpus revision, and cited span. If interruption occurs after four verified records, those records can feed downstream synthe-sis or a new request even if the state handle is unavailable. State resume can additionally avoid replaying the long prefix when a compatible handle survives. A second example is a long request that emits several complete patch candidates. If candidate 1 passes native tests before later generation is interrupted, state resume can continue the original request when the handle remains valid, whereas verified segment commit lets the runtime preserve and use the accepted patch even after the handle expires or execution moves elsewhere. Verified segment commit should be omitted when useful internal boundaries are rare, validation is expensive or non-monotone, or request splitting with prompt caching reaches the same frontier. Both capabilities require explicit compatibility, lifetime, terminal-result, and settlement semantics. 
+
+## 6 Open Problems 
+
+SemSpot connects two systems with complementary knowledge: the agent runtime understands task semantics, whereas the MaaS platform controls resource supply and physical execution. The central research question is how the two sides can exchange the minimum information required for service selection and recovery, without exposing a complete task graph or private platform state. 
+
+## 6.1 Agent Runtime 
+
+Task decomposition and spot eligibility. The runtime must de-compose a dynamic task into immutable inference units and identify which units can safely use a spot offer. This decision requires more than detecting model calls: the runtime must determine the input and task-state version consumed by each call, the completion rule of the surrounding stage, and whether partial output can affect shared state or external systems. Request-level SemSpot applies only when a failed spot attempt can be retried from the same input without duplicating an effect; token-level SemSpot additionally requires a valid internal recovery boundary. A central research problem is how to infer these properties from agent programs, schemas, validators, and tool interfaces. 
+
+Semantics-aware online routing. For every eligible inference unit, the runtime must choose among Firm, multiple spot offers, deferred execution, and token-level recovery. The choice depends on the current service-time budget, the unit’s position in the task, its completion rule, replay cost, available fallback capacity, and the uncertainty of the provider’s offer. These quantities change after verifier outcomes, sibling failures, joins, and feedback iterations, making routing a constrained online-control problem rather than a one-time workload classification. An important research question is which task semantics provide measurable benefit beyond client-side history and simple timeout or retry policies. 
+
+Workflow-level group control. Inference units within the same task cannot always be routed independently. For example, an all-of-
+
+𝑁 workflow stage should choose cohort width and reserve sufficient Firm fallback capacity for simultaneous misses. The research op-portunity is to lift serving control from per-request priority to task-level completion semantics. A compact representation of cohort identity, completion rule, fallback limit, and cancellation condition could enable structure-aware routing without exposing the com-plete workflow. The runtime must also prevent low-priced spot execution from creating unnecessary fan-out, redundant paid work, or synchronized Firm fallback. 
+
+Recovery validation. After a spot interruption, the runtime must decide whether to retry the entire inference unit on Firm, resume provider state, reuse a verified segment, or combine the latter two. A resume handle is valid only when its input, model, tokenizer, adapter, quantization, region, and security scope remain compatible with the continuation. A semantic segment is reusable only when it is closed, version-bound, independently validated, and not invali-dated by later task updates. This creates a research problem at the boundary between systems recovery and application correctness. The runtime needs a unified policy that compares whole-request replay, physical state restoration, and semantic reuse while account-ing for validation cost and stale-state risk. Multi-provider execu-tion makes this harder: verified semantic objects may be portable, whereas raw KV state will often remain provider-specific. 
+
+## 6.2 MaaS Platform 
+
+Offer construction. The platform should construct short-lived SemSpot menu based on time-varying resource availability. This is an online systems and product-design problem rather than static pricing. The platform must decide how long an offer remains valid, how to express uncertainty or confidence, and when a class is too unstable to publish. It should expose only non-dominated menu points whose completion behavior is calibrated and whose mea-sured saving remains positive after failed work, fallback, reserved headroom, and Firm interference are included. 
+
+Joint admission and fallback protection. Spot admission cannot be controlled independently of Firm service. A rise in protected demand may reclaim many spot attempts, which can then return immediately as Firm fallback traffic. This feedback loop is especially strong for all-required cohorts, while threshold and selection stages may need only a limited top-up or no fallback after their completion condition is met. The platform therefore needs admission policies that jointly reserve capacity for protected arrivals, active spot work, cleanup, and potential fallback. 
+
+Cluster scheduling and resource management. SemSpot pro-vides the platform with task-level semantics that are absent from ordinary request priorities, such as the remaining service-time budget, completion rule, branch redundancy, fallback requirement, and recovery cost. The platform can combine these semantics with its private view of resource availability to coordinate admis-sion, placement, batching, priority, and reclaim across both cluster-management and serving-control loops. The goal is to complete more task-relevant work with transient capacity while preserv-ing Firm service. This cross-layer design raises several research questions. The platform must translate compact and potentially uncertain task semantics into robust scheduling decisions. The run-time supplies constraints and decision-relevant hints, while the 
+
+> 7
+
+Minchen Yu 
+
+platform retains final authority over physical scheduling, resource allocation, and reclaim. 
+
+KV cache and state management. Token-level SemSpot turns KV cache and runtime state from an internal optimization into a customer-visible recovery capability. The platform must define stable state identity, compatibility scope, retention time, and restore outcome, while remaining free to choose the underlying paging, compression, placement, or migration mechanism. A state object may be kept in GPU memory, offloaded to host memory, transferred to another worker, or evicted with explicit absence. Retained state competes with active inference for memory and bandwidth, so preserving every interrupted request can reduce the very capacity that spot execution aims to expose. The key research question is when state reuse creates enough task-level value to justify its resource and management cost. 
+
+Observability and evaluation. Evaluating the service model re-quires paired runtime and platform traces under the same arrivals, resource pressure, and task events. Metrics should include task suc-cess, end-to-end completion, local service-time feasibility, effective bill, fallback count and burst, Firm interference, and recovery-state overhead. Such counterfactual evaluation is necessary to separate the value of the SemSpot contract from the quality of a particular scheduler or workload-specific implementation. 
+
+## 7 Related Work and Limitations 
+
+LLM serving and state management. JITServe and uncertainty-aware output-length work refine decisions with incomplete request information [35, 37]. Sarathi-Serve, DistServe, Splitwise, Torpor, FaaScale, and JANUS improve goodput, elasticity, or resource de-composition [1, 22, 32, 33, 36, 39]. SpotServe, FastServe, ConServe, Llumnix, and vLLM provide preemption, paging, migration, and state-management substrates [12, 18, 23, 26, 27]. These mechanisms can implement spot execution and state recovery; SemSpot specifies how such capabilities are exposed and composed as a service. 
+
+Agent execution and semantic recovery. Parrot, SGLang, Agen-tix, and Murakkab use program structure or semantic variables to optimize agent execution [4, 14, 16, 38]. ExoFlow and DART study workflow durability and semantic recovery [30, 41]. Model routers and cascades choose capability and quality [5, 19]; they complement SemSpot routing over execution service and recovery. SemSpot exports a compact subset of task constraints through a priced interface while leaving task correctness and effect authority in the runtime. 
+
+Limitations. SemSpot is useful only when normalized operational saving 𝑣 is positive and sufficiently stable. High Firm utilization can leave little spot capacity; incomplete work, fallback reserve, cleanup, and state retention can consume the saving. Token-level recovery can similarly collapse to ordinary caching or request split-ting when state is large, incompatible, or cheaper to recompute. The benchmark audit is preliminary, and the economic analysis remains a counterfactual design framework until validated with production traces and controlled MaaS experiments. 
+
+## 8 Conclusion 
+
+Agent workflows expose task semantics that are not directly re-flected in existing MaaS service contracts. We proposed SemSpot, a semantics-aware service model that connects these semantics with transient platform capacity through request-level spot offers and optional in-request recovery. Our analysis shows that its value depends on how workflow structure shapes fallback behavior and whether the platform creates sufficient operational saving to sus-tain the offered discount. This framing turns spot execution from a generic low-price option into a cross-layer service decision, and provides a basis for future runtime and platform designs. 
+
+## References 
+
+[1] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav Gulavani, Alexey Tumanov, and Ramachandran Ramjee. 2024. Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI) .117–134. [2] Amazon Web Services. 2026. Amazon EC2 Spot Instances. AWS Documen-tation. https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-spot-instances.html Accessed 2026-08-20. [3] Amazon Web Services. 2026. Service Tiers for Optimizing Performance and Cost. Amazon Bedrock Documentation. https://docs.aws.amazon.com/bedrock/latest/ userguide/service-tiers-inference.html Accessed 2026-08-20. [4] Gohar Irfan Chaudhry, Esha Choukse, Haoran Qiu, Inigo Goiri, Rodrigo Fonseca, Adam Belay, and Ricardo Bianchini. 2026. Murakkab: Resource-Efficient Agentic Workflow Orchestration in Cloud Platforms. In 20th USENIX Symposium on Operating Systems Design and Implementation (OSDI) . 567–587. [5] Lingjiao Chen, Matei Zaharia, and James Zou. 2023. FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance. arXiv preprint arXiv:2305.05176 (2023). [6] Zijian Chen, Xueguang Ma, Shengyao Zhuang, Ping Nie, Kai Zou, Andrew Liu, Joshua Green, Kshama Patel, Ruoxi Meng, Mingyi Su, Sahel Sharifymoghaddam, Yanxi Li, Haoran Hong, Xinyu Shi, Xuye Liu, Nandan Thakur, Crystina Zhang, Luyu Gao, Wenhu Chen, and Jimmy Lin. 2025. BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research Agent. arXiv preprint arXiv:2508.06600 (2025). [7] Yixin Dong, Charlie F. Ruan, Yaxing Cai, Ruihang Lai, Ziyi Xu, Yilong Zhao, and Tianqi Chen. 2025. XGrammar: Flexible and Efficient Structured Generation Engine for Large Language Models. arXiv preprint arXiv:2411.15100 (2025). [8] Saibo Geng, Hudson Cooper, Michał Moskal, Samuel Jenkins, Julian Berman, Nathan Ranchin, Robert West, Eric Horvitz, and Harsha Nori. 2025. Generating Structured Outputs from Language Models: Benchmark and Studies. arXiv preprint arXiv:2501.10868 (2025). [9] Google. 2026. Flex Inference. Gemini API Documentation. https://ai.google. dev/gemini-api/docs/flex-inference Preview; accessed 2026-08-20. [10] Google Cloud. 2026. Provisioned Throughput for Generative AI. Vertex AI Docu-mentation. https://cloud.google.com/vertex-ai/generative-ai/docs/provisioned-throughput/overview Accessed 2026-08-20. [11] Google Cloud. 2026. Spot VMs. Google Cloud Documentation. https://cloud. google.com/compute/docs/instances/spot Accessed 2026-08-20. [12] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the 29th ACM Symposium on Operating Systems Principles (SOSP) .611–626. [13] Zongxia Li, Zhongzhi Li, Yucheng Shi, Ruhan Wang, Junyao Yang, Zhichao Liu, Xiyang Wu, Anhao Li, Yue Yu, Ninghao Liu, Lichao Sun, Haotao Mi, and Leowei Liang. 2026. Long-Horizon-Terminal-Bench: Testing the Limits of Agents on Long-Horizon Terminal Tasks with Dense Reward-Based Grading. arXiv preprint arXiv:2607.08964 (2026). [14] Chaofan Lin, Zhenhua Han, Chengruidong Zhang, Yuqing Yang, Fan Yang, Chen Chen, and Lili Qiu. 2024. Parrot: Efficient Serving of LLM-Based Applications with Semantic Variable. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI) . 929–945. [15] Banruo Liu, Haoran Qiu, Íñigo Goiri, Rodrigo Fonseca, Ricardo Bianchini, and Esha Choukse. 2026. Agentic Coding in the Wild: Characterizing GitHub Copilot Traces at Production Scale. arXiv preprint arXiv:2608.00101 (2026). [16] Michael Luo, Xiaoxiang Shi, Colin Cai, Tianjun Zhang, Justin Wong, Yichuan Wang, Chi Wang, Yanping Huang, Zhifeng Chen, Joseph E. Gonzalez, and Ion Stoica. 2026. Agentix: An Efficient Serving Engine for LLM Agents as Gen-eral Programs. In 23rd USENIX Symposium on Networked Systems Design and Implementation (NSDI) . 2443–2459. [17] Mike A. Merrill, Alexander G. Shaw, Nicholas Carlini, et al. 2026. Terminal-Bench: Benchmarking Agents on Hard, Realistic Tasks in Command Line Interfaces. 
+
+arXiv preprint arXiv:2601.11868 (2026). 8Bridging Agent Semantics with Spot Capacity 
+
+[18] Xupeng Miao, Chunan Shi, Jiangfei Duan, Xiaoli Xi, Dahua Lin, Bin Cui, and Zhihao Jia. 2024. SpotServe: Serving Generative Large Language Models on Preemptible Instances. In Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS) . 1112–1127. [19] Isaac Ong, Amjad Almahairi, Vincent Wu, Wei-Lin Chiang, Tianhao Wu, Joseph E. Gonzalez, M. Waleed Kadous, and Ion Stoica. 2024. RouteLLM: Learning to Route LLMs with Preference Data. arXiv preprint arXiv:2406.18665 (2024). [20] OpenAI. 2026. Batch API. OpenAI API Documentation. https://platform.openai. com/docs/guides/batch Accessed 2026-08-20. [21] OpenAI. 2026. Flex Processing. OpenAI API Documentation. https://developers. openai.com/api/docs/guides/flex-processing Accessed 2026-08-20. [22] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Inigo Goiri, Saeed Maleki, and Ricardo Bianchini. 2024. Splitwise: Efficient Generative LLM Infer-ence Using Phase Splitting. In 51st Annual International Symposium on Computer Architecture (ISCA) .[23] Yifan Qiao, Shu Anzai, Shan Yu, Haoran Ma, Shuo Yang, Yang Wang, Miryung Kim, Yongji Wu, Yang Zhou, Jiarong Xing, Joseph E. Gonzalez, Ion Stoica, and Harry Xu. 2025. ConServe: Fine-Grained GPU Harvesting for LLM Online and Offline Co-Serving. arXiv preprint arXiv:2410.01228 (2025). [24] Prateek Sharma, David Irwin, and Prashant Shenoy. 2015. SpotCheck: Designing a Derivative IaaS Cloud on the Spot Market. In Proceedings of the Tenth European Conference on Computer Systems (EuroSys) .[25] Supreeth Subramanya, Amr Rizk, and David Irwin. 2016. Cloud Spot Markets Are Not Sustainable: The Case for Transient Guarantees. In 8th USENIX Workshop on Hot Topics in Cloud Computing (HotCloud) .[26] Biao Sun, Ziming Huang, Hanyu Zhao, Wencong Xiao, Xinyi Zhang, Yong Li, and Wei Lin. 2024. Llumnix: Dynamic Scheduling for Large Language Model Serving. arXiv preprint arXiv:2406.03243 (2024). [27] Bingyang Wu, Yinmin Zhong, Zili Zhang, Shengyu Liu, Fangyue Liu, Yuanhang Sun, Gang Huang, Xuanzhe Liu, and Xin Jin. 2026. FastServe: Iteration-Level Preemptive Scheduling for Large Language Model Inference. In 23rd USENIX Symposium on Networked Systems Design and Implementation (NSDI) . 57–74. [28] Zijian Wu, Xiangyan Liu, Xinyuan Zhang, Lingjun Chen, Fanqing Meng, Lingx-iao Du, Yiran Zhao, Fanshi Zhang, Yaoqi Ye, Jiawei Wang, Zirui Wang, Jinjie Ni, Yufan Yang, Arvin Xu, and Michael Qizhe Shieh. 2025. MCPMark: A Bench-mark for Stress-Testing Realistic and Comprehensive MCP Use. arXiv preprint arXiv:2509.24002 (2025). [29] Kewei Xu, Xiaoben Lu, Shuofei Qiao, Zihan Ding, Haoming Xu, Lei Liang, and Ningyu Zhang. 2026. LongDS-Bench: On the Failure of Long-Horizon Agentic Data Analysis. arXiv preprint arXiv:2605.30434 (2026). [30] Ke Yang, Panpan Li, Zonghan Wu, Kejin Xu, Huaxi Huang, and Xiaoshui Huang. 2026. DART: Semantic Recoverability for Structured Tool Agents. arXiv preprint arXiv:2605.23311 (2026). [31] Shunyu Yao, Noah Shinn, Pedram Razavi, and Karthik Narasimhan. 2025. 𝜏 -Bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains. In International Conference on Learning Representations (ICLR) .[32] Minchen Yu, Ao Wang, Dong Chen, Haoxuan Yu, Xiaonan Luo, Zhuohao Li, Wei Wang, Ruichuan Chen, Dapeng Nie, Haoran Yang, and Yu Ding. 2025. Tor-por: GPU-Enabled Serverless Computing for Low-Latency, Resource-Efficient Inference. In 2025 USENIX Annual Technical Conference (USENIX ATC) . 597–613. [33] Minchen Yu, Rui Yang, Chaobo Jia, Zhaoyuan Su, Sheng Yao, Tingfeng Lan, Yuchen Yang, Zirui Wang, Yue Cheng, Wei Wang, Ao Wang, and Ruichuan Chen. 2026. FaaScale: Unlocking Fast LLM Scaling for Serverless Inference. In 
+
+Proceedings of Machine Learning and Systems (MLSys) .[34] Yichao Yuan, Ankita Nayak, Souvik Kundu, and Nishil Talati. 2026. Agentic AI Workload Characteristics. arXiv preprint arXiv:2605.26297 (2026). [35] Wei Zhang, Zhiyu Wu, Yi Mu, Rui Ning, Banruo Liu, Nikhil Sarda, Myungjin Lee, and Fan Lai. 2026. JITServe: SLO-aware LLM Serving with Imprecise Re-quest Information. In 23rd USENIX Symposium on Networked Systems Design and Implementation (NSDI 26) . USENIX Association, 825–848. [36] Zhexiang Zhang, Ye Wang, Yumiao Zhao, Jiayu Xiao, Qianjing Yang, Xiangyu Wang, Jingzhe Jiang, Qizhen Weng, Ruichuan Chen, Shaohuai Shi, Adel N. Toosi, Yin Chen, and Minchen Yu. 2026. JANUS: Disaggregating Attention and Experts for Scalable MoE Inference. arXiv preprint arXiv:2512.13525 (2026). [37] Haoyu Zheng, Yongqiang Zhang, Fangcheng Fu, Xiaokai Zhou, Hao Luo, Hongchao Zhu, Yuanyuan Zhu, Hao Wang, Xiao Yan, and Jiawei Jiang. 2026. Scheduling LLM Inference with Uncertainty-Aware Output Length Predictions. 
+
+arXiv preprint arXiv:2604.00499 (2026). [38] Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody Hao Yu, Shiyi Cao, Christos Kozyrakis, Ion Stoica, Joseph E. Gonzalez, Clark Barrett, and Ying Sheng. 2024. SGLang: Efficient Execution of Structured Language Model Programs. In Advances in Neural Information Processing Systems ,Vol. 37. 62557–62583. [39] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xuanzhe Liu, Xin Jin, and Hao Zhang. 2024. DistServe: Disaggregating Prefill and Decoding for Goodput-Optimized Large Language Model Serving. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI) . 193–210. [40] Kan Zhu, Mathew Jacob, Chenxi Ma, Yi Pan, Stephanie Wang, Arvind Krish-namurthy, and Baris Kasikci. 2026. TraceLab: Characterizing Coding Agent Workloads for LLM Serving. arXiv preprint arXiv:2606.30560 (2026). [41] Siyuan Zhuang, Stephanie Wang, Eric Liang, Yi Cheng, and Ion Stoica. 2023. ExoFlow: A Universal Workflow System for Exactly-Once DAGs. In 17th USENIX Symposium on Operating Systems Design and Implementation (OSDI 23) . USENIX Association, 269–286. 9

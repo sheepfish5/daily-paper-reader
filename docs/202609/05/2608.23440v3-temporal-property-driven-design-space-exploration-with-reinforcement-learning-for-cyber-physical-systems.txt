@@ -1,0 +1,250 @@
+Title: Temporal Property-driven Design Space Exploration with Reinforcement Learning for Cyber-Physical Systems
+
+URL Source: https://arxiv.org/pdf/2608.23440v3
+
+Published Time: Tue, 01 Sep 2026 01:14:03 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Temporal Property-driven Design Space Exploration with Reinforcement Learning for Cyber-Physical Systems 
+
+Tagir Fabarisov 
+
+SnT, University of Luxembourg 
+
+tagir.fabarisov@uni.lu 
+
+Maxime Cordy 
+
+SnT, University of Luxembourg 
+
+maxime.cordy@uni.lu 
+
+Abstract —Design-space exploration of configurable Cyber-Physical Systems (CPS) requires executable evaluation when design choices affect timing, fault propagation, recovery behavior, and temporal-property satisfaction. Repeated stochastic execu-tions make exhaustive exploration impractical for large design spaces. This paper presents a temporal-property-driven CPS design workflow using Reinforcement Learning (RL). At design time, the RL agent selects subsystem alternatives to assemble a candidate system model. The model is then evaluated through simulation, during which online temporal-property monitors observe runtime traces and produce functional-property violation indicators. These indicators are combined with evaluated non-functional terms for budget, recoverability, sustained compliance, and operational use to calculate the reward used for subsequent candidate selection. The workflow is evaluated on a methane-sensitive mine-pump CPS. The corresponding executable case-study model is provided as additional contribution. RL-guided search identifies the highest-reward design observed in the experiments after 26 episodes (corresponds to 130 executable simulations). These designs were reached with fewer simulations than surrogate-guided Bayesian Optimization and population-based Genetic Algorithm baselines under the same executable model and reward formulation. Ablation study results indicate that value-based feedback and reuse of previous simulation traces contribute to this reduction. 
+
+Index Terms —Cyber-Physical Systems, design-space explo-ration, reinforcement learning, temporal-property monitoring, fault injection, Simulink 
+
+I. I NTRODUCTION 
+
+Configurable Cyber-Physical Systems (CPS) architectures contain design choices related to component selection, sub-system composition, software-to-hardware mappings, and re-covery mechanisms [1]. These alternatives affect both static properties, including cost, and execution-dependent proper-ties, including timing, fault propagation, recovery behavior, and satisfaction of temporal requirements [2]. Design-space exploration cannot rely only on static configuration data. A candidate design may satisfy budget or nominal dependability constraints but violate behavioral requirements once stochastic 
+
+Accepted manuscript for IECON 2026—52nd Annual Conference of the IEEE Industrial Electronics Society, Doha, Qatar, 18–21 October 2026. 
+
+© 2026 IEEE. Personal use of this material is permitted. Permission from IEEE must be obtained for all other uses, in any current or future media, including reprinting/republishing this material for advertising or promotional purposes, creating new collective works, for resale or redistribution to servers or lists, or reuse of any copyrighted component of this work in other works. 
+
+faults, recovery delays, controller decisions, and subsystem in-teractions are considered during execution [3]. Runtime traces and temporal-property monitoring make these effects observ-able during simulation, but exhaustive evaluation becomes impractical when many design choices must be explored [4], [5]. This paper presents a Reinforcement Learning (RL)-guided methodology for temporal-property-driven CPS design-space exploration. Candidate system models are assembled from subsystem variants and evaluated through simulation. The sim-ulations include stochastic environmental and fault behavior for uncertainty modeling. The RL agent selects candidate designs at design time and does not control the CPS during operation. During each simulation, online temporal-property monitors produce functional-property violation indicators from runtime signals. These indicators and the evaluated non-functional terms are used to calculate the reward. The design vectors, runtime traces, monitor outputs, and rewards from successful and unsuccessful candidates form evaluation evi-dence. This evidence can support structured interpretation and subsequent candidate selection in repeated design-exploration cycles. The study examines whether previous simulation traces and temporal-property outcomes can be reused through policy learning to reduce the simulation effort required to reach a high-quality design. RL-guided search is compared with Genetic Algorithm (GA)-based and Bayesian Optimization (BO)-based search under the same executable model and reward formulation. GA uses observed rewards for population selection, BO updates a surrogate model from previous eval-uations, and RL reuses stored transitions to update its design-selection policy and value estimates. 
+
+Contribution. The contributions are: (i) an RL-guided work-flow for temporal-property-driven CPS design-space explo-ration, comprising design-space configuration, behavioral sim-ulation, online temporal-property monitoring, reward cal-culation, and candidate-design selection; (ii) an executable MATLAB/Simulink CPS case study with dependability- and recoverability-related subsystem variants and stochastic envi-ronment simulations for uncertainty modeling. The evaluation compares RL-guided search with GA and BO and includes ablation experiments on value-based feedback and reuse of previous simulation traces. RL reaches the highest-reward arXiv:2608.23440v3 [eess.SY] 30 Aug 2026 design observed in the experiments after 26 episodes, cor-responding to 130 executable simulations. BO achieves the highest final rewards among the search baselines, whereas GA provides rapid initial progress but more frequently converges to lower-reward regions. II. R ESEARCH GAP 
+
+Design-space exploration for configurable CPS must ac-count for interacting choices related to components, sens-ing units, controller logic, communication links, software-to-hardware mappings, and recovery mechanisms. Properties such as cost or nominal component reliability can be estimated from configuration data [6], [7]. Timing, fault propagation, re-covery behavior, and temporal requirement satisfaction depend on execution under operating conditions. Configurations with similar static attributes may produce different execution traces and property-satisfaction outcomes [2]. Trace-based temporal-property evaluation addresses this problem by executing can-didate designs and monitoring their runtime behavior [3], [5]. However, repeated executions may be required when fault occurrence, recovery timing, or environmental behavior vary across runs [8], [9]. Exhaustive evaluation therefore becomes impractical for design spaces with many variation points [10]. A search mechanism is needed to select the next candidate designs and regions for further refinement [4], [6]. Existing methods for reducing the number of evaluated can-didates include analytical models, heuristic sampling, meta-heuristic search, BO, and learning-based approaches [11]–[14]. Metaheuristic methods use simulation outcomes to rank can-didate designs by their observed rewards [15]. BO constructs a surrogate model to guide future evaluations [14]. Temporal-property verification and monitoring determine whether run-time behavior satisfies the required properties, but do not define how observed violations and satisfaction outcomes should influence subsequent design decisions [16]. This paper addresses this gap by coupling temporal-property evaluation with RL-guided design exploration. The proposed approach records evidence from successful and unsuccessful executable evaluations, including simulation traces and temporal-property outcomes. The corresponding state–action–reward experience is reused to guide subsequent design choices instead of eval-uating configurations exhaustively or relying only on static design information. 
+
+Hypothesis. RL is evaluated for temporal-property-driven CPS design-space exploration as a mechanism for reusing ex-perience from previous executable evaluations to guide design choices. GA and BO also reuse information from previous evaluations through reward-based ranking and surrogate mod-elling, respectively, but they do not learn a design-selection policy from accumulated state–action–reward experience. The hypothesis is that this policy-based reuse reduces the number of executable simulations required to reach a high-quality de-sign. Section V evaluates this hypothesis through comparisons with GA-based and BO-based search and through ablation studies of RL mechanisms. III. M OTIVATING EXAMPLE 
+
+The motivating example is a mine-shaft pumping CPS based on the mine-pump benchmark scenario commonly used for variability-aware and temporal-logic-based verification of CPS behavior [13], [17]. The implemented case study includes stochastic environmental behavior. The system represents a water extraction setup for underground mining environments. It contains a water pump, methane sensing, water-level sens-ing, and a controller. Its operation combines two objectives: water must be removed from the shaft when the water level requires pumping, and pump operation must be prevented when methane concentration exceeds the safety threshold. The executable mine-pump case-study model is made pub-licly available as a contribution of this work. 1 The current implementation is the first version of a case study that will be extended in subsequent work. The case study will serve as a testbed for next-generation CPS with dynamic uncer-tainty, context shifts, and distributed sensing. Such systems require the more advanced exploration methods discussed in Section VI [4]. The normal operating sequence starts in Stopped and moves to Ready once the system is online. If methane remains below the threshold and the water level exceeds the high-water threshold, the controller enables pumping and enters Running .Pumping stops in WaterLowStopped when the water level drops below the low-water threshold. If methane exceeds the safety threshold, the controller enters MethaneHighStopped ;restart is permitted only after the methane level falls below the restart threshold and restart permission is available. The case study is implemented in Simulink/Stateflow. Stateflow defines the controller modes and transitions, while Simulink represents the physical process, signal propagation, and subsystem inter-actions. Figure 1 presents the corresponding state diagram. Fault injection uses our model-based mechanisms [18]–[20].                    
+
+> 1The introduced mine-pump case study model is avail-able at: https://www.mathworks.com/matlabcentral/fileexchange/ 184555-mine-pump-cps-case-study-for-temporal-property-driven-dse. The model builds on FIBlock, available at: https://www.mathworks.com/ matlabcentral/fileexchange/75539-fault-injection-block-fiblock.
+> Stopped
+> p= 0
+> Ready
+> p= 0
+> Running
+> p= 1
+> MethaneHigh Stopped
+> p= 0
+> WaterLow Stopped
+> p= 0
+> on ¬on m < θ m∧h > θ h
+> m > θ m
+> m < θ r∧rh < θ l
+> h > θ h
+> ¬on ¬on
+> ¬on
+
+Fig. 1: Control logic of the mine-pump controller. Here, p
+
+denotes pump activation, on system availability, m methane concentration, h water level, r restart permission, and θm, θr ,
+
+θh, and θl denote the methane shutdown, methane restart, high-water, and low-water thresholds, respectively. RL-based design search Executable behavioral evaluation 
+
+Temporal-property evaluation 
+
+Behavioral simulation 
+
+Design-space con fi guration 
+
+Executable CPS model Simulink / State fl ow FI and recovery behavior Runtime traces signals, modes, faults recovery, timing Online property monitors Boolean and bounded signal properties violation indicators 
+
+Candidate alternatives simulation execution trace input reward feedback Implementation mapping next design choice temporal properties design objectives 
+
+Design space 
+
+partially known design choices candidate alternatives 
+
+Selected candidate designs 
+
+subsystem alternatives con fi guration vector 
+
+System requirements 
+
+functional requirements quality requirements 
+
+RL agent 
+
+design-selection policy feedback-based update 
+
+Reward computation 
+
+property indicators budget / compliance / use Property outcomes Fig. 2: Workflow of the proposed RL-guided CPS Design-Space Exploration methodology. Water pump simulation - pumping out water away from the mine shaft Methane accumulating and dissipating in the mine shaft Water flowing into the mine shaft 
+
+Methane level Water level     
+
+> f(x) = 0 33.64 Total Head Pa to bar 0.02004 cu m/s cu m / s 1-D T(u) 2979 Power (W) xx÷0.3697 Efficiency InitialMethaneLevel
+> mi_rate1 +++↯
+> Idata Iflag Fdata Fflag
+> SignalDelayFault MethaneExceed md_rate1 ActualMethaneLevel WaterIntake FaultyMethaneSensor
+> ↯
+> Idata Iflag Fdata Fflag
+> NoisySignalFault PumpingOut −+Water In and Out xRunningWaterPump
+> time systemOnlineSignal allowRestartSignal methaneLevel waterLevel pumpRunning stuck
+> MineWaterPumpController WaterExceed WaterLevelSensor +++CurrentWaterLevel
+> ++> 0.5 MethaneInflowRate mi_rate2 ++> 0.5 MethaneDecayRate md_rate2 mi_rate3 > 0.5 MethaneInflowRate2 mi_rate4 1500 200 300 400 500 600
+
+*, 0 FaultInjectedFlag ++> 1 
+
+> ↯
+> Idata Iflag Fdata Fflag
+> FaultyWaterPump systemOnline allowRestart
+> ↯
+> Idata Iflag Fdata Fflag
+> ErroneousControlSignal
+> simTime pumpOn actualMethaneLevel erroneousMethaneLevel waterLevel stuckFlag ltl1 ltl2 ltl3 ltl4 ltl5
+> Properties for verification 00100
+> wQ
+
+Fig. 3: Executable Simulink/Stateflow model of the mine-pump CPS used for temporal-property-driven design-space exploration. The model includes the physical process, sensing and actuation paths, model-based fault-injection mechanisms, Stateflow control logic, temporal-property monitors, and reward-related signals. IV. P ROPOSED METHODOLOGY 
+
+The proposed methodology addresses CPS design-space exploration as a learning-based search problem over candidate designs. The method assumes as input: (i) a design space X
+
+containing available subsystem variants; (ii) an executable CPS model M (x) that can instantiate and simulate a candidate design x ∈ X ; (iii) functional requirements expressed as signal-based temporal properties over execution traces; and (iv) non-functional design objectives, such as budget, depend-ability, recoverability, and operational-use criteria. The search targets a high-reward design that satisfies the required temporal behavior and design constraints with a reduced number of executable simulations. In the RL formulation, an action a
+
+corresponds to selecting or updating a candidate design; it is not a runtime control action of the CPS. The selected design is applied to the executable model and simulated under the considered operating conditions. The simulation produces a runtime trace σ containing signals, states, events, fault effects, recovery behavior, timing information, and online monitor outputs. During execution, custom online temporal-property monitors evaluate the relevant signals and produce property-violation indicators. These indicators and the evaluated non-functional terms are combined into the reward value r.The RL agent receives an observation s from the executable evaluation environment and selects the next design action according to its current policy. The observation represents the information available to the search process for design selection rather than the complete runtime state of the CPS. For this case study the observation consists of the water and methane levels. The agent action is mapped to the six-dimensional candidate design vector. The selected action changes the candidate de-sign to be evaluated, not the runtime pump-control command. After each evaluation, the transition information (s, a, r, s ′)
+
+is used to update the policy and, for value-based RL, the expected value of design actions. Simulation outcomes are used to update a design-selection policy rather than only for candidate ranking or surrogate-model updates. The transitions associated with previous simulation traces are reused at the level of design choices, and subsequent candidates are not selected as independent samples. Functional and non-functional requirements are assumed to be available for the target CPS. Functional requirements are translated into signal-based temporal properties over the observable variables exposed by the executable model. This translation depends on the available control, sensing, actuation, and state variables, since only observable or logged signals can be evaluated during execution. The property set is not fixed to the mine-pump case study; for another CPS, different temporal properties can be derived from its functional require-ments and evaluated over the corresponding runtime traces. Non-functional requirements are represented through reward terms such as budget, resource consumption, dependability, recoverability, or operational-use criteria. In this work, the methodology is instantiated in MAT-LAB/Simulink for the mine-pump CPS. The implementa-tion consists of four components: (i) design-space configu-ration; (ii) behavioral simulation; (iii) temporal-property eval-uation; and (iv) RL-based design search. Figure 2 provides schematics of their interaction through candidate selection, executable evaluation, trace monitoring, reward computation, and feedback-based design search. The following subsections define these components and their case-study instantiation. 
+
+A. Design space configuration 
+
+The design space represents the partially known set of CPS designs explored by the search process. Each point in this space represents one candidate design assembled from a set of available design choices. Depending on the target CPS, these choices may correspond to subsystem selection, parameter values, software-to-hardware mappings, communi-cation mechanisms, controller strategies, fault-handling poli-cies, or dependability-related properties. A candidate design can be represented as a configuration vector whose entries correspond to individual design choices. These choices are behaviorally interdependent. A change in one subsystem can modify the conditions under which other subsystems operate and can change the execution dynamics of the CPS. Static configuration values and isolated component scores are in-sufficient for ranking candidate designs, since structurally similar designs may produce different runtime traces and different temporal-property outcomes. The three configurable subsystems (controller, pump actuator, and methane sensor) can each be instantiated through alternative candidates along one dependability-related and one recoverability-related design dimension. With ten discrete levels per dimension, the number of encoded candidate designs is 
+
+|X | = (10 dep × 10 rec )3 = 100 3 = 10 6 = 1 ,000 ,000 . (1) The design count reflects only static combinations of de-sign choices. Candidate suitability is determined through ex-ecutable evaluation, where different fault and recovery tra-jectories can produce different behavioral outcomes for the same encoded design. For the implemented case study, each candidate design is encoded as a six-dimensional configuration vector: 
+
+x = [ xdep C , x dep P , x dep S , x rec C , x rec P , x rec S ],
+
+where C, P , and S denote the controller, pump actuator, and methane sensor, respectively. The first three entries encode dependability-related choices, and the last three entries encode recoverability-related choices. Each entry takes a discrete value in the range 1–10 . The integer levels are abstract design classes used to evaluate the search process. They represent ordered subsystem alternatives with different dependability, recoverability, and cost effects, not direct physical component identifiers. In an industrial study, the same encoding can be re-placed by concrete catalog components, architectural options, or parameter ranges. The encoded choices also determine the cost of the assembled design. Let 
+
+xdep = [ xdep C , x dep P , x dep S ] and xrec = [ xrec C , x rec P , x rec S ]
+
+denote the dependability and recoverability parts of the con-figuration vector. The implementation maps these choices to design costs as 
+
+Ck(x) = X
+
+> i∈{ C,P,S }
+
+α  11 − xki
+
+2 , k ∈ { dep , rec }. (2) The coefficient α scales the encoded design choices to the budget range used in the experiment. In this case study, a normalized budget limit of 100 is used for both dependability-related and recoverability-related choices, with α = 1.2.This setting keeps candidate costs within a range suitable for evaluating the search process while still penalizing unfavorable subsystem choices sufficiently. The budget is used as an experimental design constraint, not as a physical procurement value. In other CPS design studies, the same formulation can be connected to real cost, mass, power, or resource budgets, as commonly done in multidisciplinary architecture optimization of systems such as CubeSats [6]. 
+
+B. Behavioral simulation execution 
+
+The behavioral simulation component is the executable counterpart of the design space. A selected configuration is assessed as a running CPS interacting with its operating context, rather than as a static combination of component properties. The simulation includes the configured system, physical process, sensing and actuation paths, controller logic, environmental dynamics, and non-nominal behavior such as faults and recovery. It exposes the execution behavior produced by a selected design. The main output is a runtime trace σ, defined as a time-indexed record of the simulated execution. In the implemented case study, σ includes simulation time, water level, actual and erroneous methane signals, pump activation, controller mode, fault indicators, stuck or progress flags, recovery-related behavior, and pump usage. These signals capture temporal effects that can make a design unsuitable, including fault timing, delayed recovery, subsystem interaction, or late con-troller response. Dependability and recoverability assumptions are represented through model-based mechanisms [18], [19], including FIBlock-based faults in sensing, control, commu-nication, and actuation paths. Since environmental dynamics, fault occurrence, and recovery may be stochastic, repeated exe-cutions of the same configuration can produce different traces. During each execution, the online temporal-property monitors observe the relevant runtime signals. The trace records these signals together with the resulting monitor outputs. 
+
+C. Temporal-property evaluation 
+
+The temporal-property evaluation component monitors run-time behavior against the functional requirements. Functional requirements are expressed as temporal properties over the signals available in the executable model. The monitored requirements combine LTL-style Boolean temporal structure with STL-style predicates and explicit time bounds over real-valued simulation signals. During simulation, custom online monitors evaluate these properties directly from the runtime trace. The implementation uses a MATLAB Function block that monitors the runtime trace σ generated by the Simulink model during execution. The block receives the simulation time t,pump activation signal p, actual methane level m, erroneous methane signal ˆm, water level h, and stuck flag z. It returns five Boolean violation indicators sp 1, . . . , sp 5, which provide the temporal-property component of the evaluation later com-bined with non-functional terms such as cost, recoverability, and operational use. Let mcrit denote the critical methane threshold, msafe the methane level below which pumping is considered safe, hlow and hhigh the low- and high-water thresholds, and τ the reaction-time bound. The monitored properties are: 
+
+φ1 = G (m > m crit → ¬ p) ,φ2 = G (( h > h high ∧ m < m safe ) → F≤τ p) ,φ3 = G (( h < h low ∨ m > m safe ) → F≤10 τ ¬p) ,φ4 = G (( h > h high ∧ m < m safe ) → ¬ G≤τ ¬p) ,φ5 = G¬z. 
+
+Property φ1 specifies methane-related safety: the pump must not remain active under hazardous methane conditions. Property φ2 specifies reactivity by requiring pump activa-tion within the reaction-time bound when water is high and methane is safe. Property φ3 specifies fail-safe shutdown when water becomes low or methane rises above the safe threshold. Property φ4 detects prolonged inactivity under safe high-water conditions, and φ5 detects frozen or unrespon-sive executions through the stuck flag. For bounded-response properties, the implementation stores trigger times and raises a Boolean violation when the required response does not occur within the corresponding time bound. The resulting indicators sp 1, . . . , sp 5 are passed to the reward calculation, where repeated violations and sustained compliant behavior are evaluated over the simulation horizon. 
+
+D. RL exploration 
+
+The RL component performs design-space search. It does not control the mine-pump during operation; the pump remains controlled by the Stateflow controller. Instead, the RL agent selects candidate designs to be evaluated in the executable model. In the RL formulation, the executable CPS model, temporal-property monitors, and reward calculation form the environment. At each search step, the agent observes the current search context st, selects a design action at, receives reward feedback rt, and updates its policy from the resulting transition (st, a t, r t, s t+1 ). The action at represents a design-space decision. In the implemented case study, it is mapped to the six-dimensional candidate design vector xt defined in Section IV-A. The action selects or updates dependability-related and recoverability-related design choices for the con-troller, pump actuator, and methane sensor. It is not a runtime command sent to the pump. The observation st represents the information available to the search process. In this case study, 
+
+st contains the water and methane levels. These levels are used by the agent as the current search context for selecting the next candidate design; the full CPS execution state remains internal to the Simulink model and is recorded in the runtime trace σ.A Deep Deterministic Policy Gradient (DDPG) agent is used as the main RL mechanism [21]. DDPG is used here as an actor–critic mechanism for bounded design-action selection, not as a runtime controller. The actor represents the design-selection policy and maps observations to design actions. The critic estimates the expected value of an action under the current observation. The design variables are encoded as bounded integer levels between 1 and 10. DDPG operates on a continuous action representation, and the resulting actions are mapped to the corresponding admissible design levels before simulation. A continuous representation was selected because it preserves proximity relationships between neighboring de-sign alternatives. Candidate designs that differ by one level in a single design dimension remain closer than designs that differ across multiple dimensions. For example, a design encoded as 
+
+(10 , 2, 10 , 10 , 10 , 2) is more similar to (9 , 2, 10 , 10 , 10 , 2) than to (1 , 9, 1, 1, 1, 9) . The critic can therefore generalize value estimates across neighboring regions of the design space rather than treating all design configurations as unrelated discrete choices. The agent stores previously evaluated transitions and reuses them during training. The critic estimates the expected value of design actions and guides policy updates. DDPG com-bines policy learning with explicit value-function estimation, making it suitable for evaluating the influence of learned value estimates on design-space exploration. The reward combines functional and non-functional evalu-ation results. Functional requirements are represented by the Boolean temporal-property violation indicators sp 1, . . . , sp 5,whose repeated activations are accumulated and severity-weighted over simulation time. The non-functional criteria contribute budget-related terms, recoverability-related terms, sustained-compliance rewards, and an end-of-simulation operational-use bonus. The reward signal is computed as 
+
+R(t) = Rdep (t) − Pdep (t) + Rrec (t) − Prec (t)
+
+− Pφ(t) + Rcomp (t) + Ruse (t). (3) Here, Rdep and Pdep refer to dependability-related budget fit, Rrec and Prec to recoverability-related budget fit, Pφ to temporal-property violations, Rcomp to sustained compliant behavior, and Ruse to the final operational-use bonus. The budget terms use the cost mappings introduced in Section IV-A and penalize both over-budget designs and designs below the minimum design threshold. The temporal-property penalty uses the violation indicators from Section IV-C: 
+
+Pφ(t) = 
+
+> 5
+
+X
+
+> i=1
+
+wisp i(t), w = [5 .0, 1.5, 4.2, 1.0, 1.8] .
+
+The weights reflect the relative severity assigned to the monitored violations in this case study and can be adapted to the priorities of another CPS design problem. Cooldown intervals control the repeated accumulation of property vi-olations and sustained-compliance rewards over simulation time. The reward combines Boolean monitor outputs with time-accumulated temporal and behavioral evidence over the simulation horizon. V. E XPERIMENTS AND DISCUSSION 
+
+The experiments evaluate the hypothesis stated in Section II: experience accumulated across previous simulation traces can be reused to reduce the simulation effort required for design-space exploration. The evaluation compares RL-guided design search with GA-based and BO-based search under the same executable setup and then uses ablation variants to identify which RL mechanisms explain the observed performance differences. A brute-force baseline is not used since the implemented design space contains 10 6 encoded candidate designs before repeated stochastic executions are considered. The evaluation focuses on representative population-based, surrogate-guided, and RL-guided search strategies, together with ablation variants that assess the role of value-based feedback and reuse of previous execution traces. 
+
+A. Experimental setup 
+
+The experiments use the mine-pump CPS introduced in Section III and the six-dimensional design encoding defined in Section IV-A. Each evaluated design is executed in the same stochastic Simulink model and assessed using the same temporal-property indicators and reward calculation from Sec-tion IV-D. The evaluation consists of a comparative study and an ablation study. The comparative study evaluates RL-guided design search against GA-based and BO-based search. The ablation study investigates which RL mechanisms contribute to the observed performance differences. All methods are evaluated under a common executable model, design en-coding, and reward formulation. GA-based search is used as a representative population-based baseline, whereas BO is used as a representative surrogate-guided baseline. Both methods operate on the same encoded design space and use the same reward calculation as the RL-guided approach. The comparison evaluates simulation effort and achieved reward quality across the considered search mechanisms. Let ¯Rn and 
+
+sn denote the sample mean and sample standard deviation of the final best reward over n independent optimization runs. The relative half-width of the normal-approximation 95% 
+
+confidence interval is 
+
+δn = 1.96 sn
+
+√n | ¯Rn| .
+
+BO and GA were each executed for at least 20 runs and stopped when δn ≤ 0.10 (subject to a maximum of 50 runs). The main comparison considers three design exploration methods: 1) RL-guided design search using the DDPG agent de-scribed in Section IV-D; 2) GA-based search using the same encoded design space and reward calculation; 3) BO-based search using the same encoded design space and reward calculation. The ablation study investigates which RL mechanisms con-tribute to the observed performance differences: 1) actor-only RL without a Q-function, used to assess the role of value-based feedback; 2) Q-informed GA, where previous evaluations are used to estimate candidate quality before simulation. The evaluation considers both simulation effort and achieved reward quality. Simulation effort is measured as the number of executable Simulink evaluations required before a method identifies a high-reward design. Reward quality is assessed through the best design reward obtained during the search process. 0 50 100 150 Simulink evaluation -2 -1.5 -1 -0.5 00.5 11.5 22.5 Mean best-so-far reward  
+
+> #10 5BO vs GA mean best-so-far reward
+> 190k 200k BO 95% CI GA 95% CI BO-LCB GA
+
+(a) Best-so-far reward progression. RL BO GA GA+Q RL-no-Q 00.5 11.5 2Best reward   
+
+> #10 5Distribution of final best rewards
+> 190k 200k
+
+(b) Distribution of final best rewards. -3 -2.5 -2 -1.5 -1 -0.5 0 0.5 1 1.5 2Reward #10 500.02 0.04 0.06 0.08 0.1 0.12 Fraction of evaluated designs 
+
+> BO vs GA reward distribution of evaluated designs
+> 190k 200k BO-LCB GA
+
+(c) Reward distribution of evaluated designs. 
+
+Fig. 4: Comparative and ablation results for simulation-based CPS design search. (a) Search efficiency measured by the best reward obtained as a function of the evaluation budget for BO and GA. (b) Distribution of final best rewards across the evaluated search variants. (c) Distribution of rewards observed during search for BO and GA. 
+
+B. Comparative evaluation 
+
+The comparative study evaluates RL-guided design search against GA-based and BO-based search under the common executable evaluation setup defined in Section V-A. All meth-ods use the same encoded design space, temporal-property indicators, and reward calculation. 
+
+Observation 1: BO achieves higher reward quality and consistency than GA. Figure 4a compares the best-so-far reward progression of BO and GA as a function of the evaluation budget. Both methods improve rapidly during the initial evaluations. BO exhibits continued improvement over a larger portion of the evaluation budget, whereas GA shows slower reward growth. Figure 4b summarizes the distribution of final best rewards obtained across independent optimization runs. BO achieved a mean best reward of 176,765 and a median best reward of 196,504, compared with 130,993 and 118,931 for GA, respectively. The best solutions discovered by both methods were similar, reaching approximately 209,000 reward units. The effect size between the two methods was large ( d = 0 .98 ). Both the rank-sum test ( p = 4 .94 ×10 −4) and the two-sample t-test ( p = 1 .55 × 10 −4) indicated statistically significant differences. Figure 4c presents the distribution of rewards observed during search. BO evaluated a larger proportion of designs in high-reward regions, whereas GA evaluated a larger proportion of designs in lower-reward regions. BO achieved rewards above 190,000 in 68% of runs and rewards above 200,000 in 36% of runs. The corresponding success rates for GA were 24% and 10%, respectively. BO satisfied the stopping criterion after 25 runs with δ25 = 0.09756 . GA reached the 50 -run cap with δ50 = 0 .1019 .
+
+Observation 2: RL reaches high-reward designs with fewer executable evaluations. The RL-guided workflow iden-tified the highest-reward design found after 26 episodes and converged within 32 episodes. Under the simulation account-ing used in this experiment, this corresponds to 130 executable simulations. The reduction does not originate from differences in the cost of individual evaluations. All methods execute the same Simulink model and use the same temporal-property indicators and reward calculation. 
+
+C. Ablation and mechanism analysis 
+
+The empirical evaluation showed that the RL-guided work-flow exhibits a different optimization behavior than the GA-based and BO-based search methods. The ablation study investigates which RL mechanisms contribute to the observed differences. The ablation study evaluates two components of the RL workflow: reuse of previous simulation outcomes and value-based feedback for design-action selection. In DDPG, previous interactions are stored as tuples (st, a t, r t, s t+1 ) and reused during training. The critic provides value-based feed-back by estimating the expected cumulative reward associated with a design action. The actor uses this estimate to update the design-selection policy. 
+
+Observation 3: Learned value estimates improve design-space exploration. Figure 4b includes the full RL workflow, the actor-only RL variant, the standard GA, and the Q-informed GA variant. Removing the Q-function leads to slower and less stable learning. Although the actor-only variant con-tinues to improve over time, it requires more episodes to reach high-reward designs and exhibits less consistent performance. The Q-informed variant uses previously evaluated candidates to estimate the expected reward of new candidates before simulation. This modification improves search performance compared with the standard reward-driven GA. Learned value estimates derived from previous evaluations improve search effectiveness. Similar principles are also present in BO, where a surrogate model is updated using previous observations, and in RL, where replay and critic updates reuse prior experience. The methods differ in how this information is incorporated into the search process. 
+
+Observation 4: The combination of replay, value esti-mation, and policy learning contributes to the observed performance improvements. Neither the actor-only RL vari-ant nor the Q-informed GA variant reproduces the behavior of the full RL workflow. The actor-only variant lacks critic-based value estimation, while the Q-informed GA variant uses value estimates only to guide candidate selection within a population-based search process. In contrast, the full RL work-flow combines replay-based experience reuse, critic-guided value estimation, and policy optimization within a single learning framework. The actor-only RL variant isolates policy learning without critic guidance. The Q-informed GA variant isolates value estimation within a population-based search process. The full RL workflow combines both mechanisms together with replay-based experience reuse. VI. C ONCLUSION AND FUTURE WORK 
+
+This paper presented an RL-guided workflow for temporal-property-driven design-space exploration of configurable CPS. Candidate designs are assembled from subsystem alterna-tives and evaluated through executable simulation. During each evaluation, online temporal-property monitors produce functional-property violation indicators from the runtime trace. These indicators and the evaluated non-functional terms de-termine the reward. The model-based workflow comprises design-space configuration, behavioral simulation, temporal-property monitoring, reward calculation, and candidate-design selection. The executable mine-pump CPS model is made publicly available. The evaluation compared RL-guided search with GA and BO under the same executable model, temporal-property indicators, and reward formulation. BO achieved higher final reward quality and rates of high-reward solutions than GA. RL reached the highest-reward design identified in the experiments with fewer executable simulations than the baselines. The ablation study showed that value estimation, replay-based experience reuse, and policy learning contribute to search performance. Because RL training is substantially more computationally expensive, the same repeated-run sta-tistical protocol was not applied to all three methods: RL was evaluated through the available training campaign, whereas GA and BO were assessed over repeated runs. This limits statistical comparability and motivates a broader evaluation with systematic evidence collection. BO, Q-informed GA, and RL reuse previous executable evaluations through different mechanisms. Two complemen-tary lines of work are currently pursued. The first structures and interprets evidence from successful and unsuccessful can-didates, including design vectors, simulation traces, monitor outputs, temporal-property outcomes, and rewards, to synthe-size new design candidates. The second automates candidate execution, evidence collection, and reuse of new evidence across repeated design-exploration cycles. This extends the present approach beyond a single DSE campaign. The mine-pump case study will be extended to more complex CPS behavior. Scalability will be evaluated with larger design spaces and additional temporal properties, and generalizability beyond MATLAB/Simulink will be assessed using further executable CPS case studies, including Python. 
+
+Acknowledgment: This work is supported by the Luxembourg National Research Funds (FNR) through the project grant C23/IS/18177547/VARIANCE. REFERENCES [1] M. Adil, A. Farouk, H. Abulkasim, A. Ali, H. Song, and Z. Jin, “Ng-icps: next generation industrial-cps, security threats in the era of artificial intelligence, and open challenges with future research directions,” IEEE Internet of Things Journal , vol. 12, no. 2, pp. 1343–1367, 2024. [2] B. Dafflon, N. Moalla, and Y. Ouzrout, “The challenges, approaches, and used techniques of cps for manufacturing in industry 4.0: a lit-erature review,” The International Journal of Advanced Manufacturing Technology , vol. 113, no. 7, pp. 2395–2412, 2021. [3] W. Zhou, Y. Zhao, Y. Zhang, Y. Wang, and M. Yin, “A comprehensive survey of uppaal-assisted formal modeling and verification,” Software: Practice and Experience , vol. 55, no. 2, pp. 272–297, 2025. [4] A. Morozov, T. Fabarisov, S. Vock, G. Siedel, V. Bolbot, and S. Voß, “Risk and reliability evaluation of future industrial automation systems: A systematic literature review and research agenda,” ASCE-ASME J Risk and Uncert in Engrg Sys Part B Mech Engrg , pp. 1–44, 2026. [5] M. Krichen, “Formal methods for cyber-physical systems,” in Reliability in Cyber-Physical Systems: The Human Factor Perspective . Springer, 2026, pp. 269–282. [6] M. Wijaya, S. Lazreg, T. Fabarisov, A. Hein, and M. Cordy, “Perfor-mance prediction of cyber-physical systems product lines in dynamic environments,” in Proceedings of the 2025 29th ACM International Systems and Software Product Line Conference-Volume A , 2025, pp. 184–189. [7] J. Cederbladh, A. Cicchetti, and J. Suryadevara, “Early validation and verification of system behaviour in model-based systems engineering: A systematic literature review,” ACM Transactions on Software Engineer-ing and Methodology , vol. 33, no. 3, pp. 1–67, 2024. [8] D. Calvanese, G. De Giacomo, M. Montali, F. Patrizi et al. , “Verification and monitoring for first-order ltl with persistence-preserving quantifi-cation over finite and infinite traces,” in IJCAI . International Joint Conferences on Artificial Intelligence, 2022, pp. 2553–2560. [9] K. Y. Rozier and M. Y. Vardi, “Ltl satisfiability checking,” in Interna-tional SPIN Workshop on Model Checking of Software . Springer, 2007, pp. 149–167. [10] E. VIGAN ` O, “Smt-based trace checking of cps properties,” Ph.D. dissertation, Politecnico di Milano, 2019. [11] Z. Y. Taha, A. A. Abdullah, and T. A. Rashid, “Optimizing feature se-lection with genetic algorithms: A review of methods and applications,” 
+
+Knowledge and Information Systems , vol. 67, no. 11, pp. 9739–9778, 2025. [12] V. G. Naik, T. Fabarisov, and A. Morozov, “Machine learning based search for access points in anomaly detection model,” in ASME Inter-national Mechanical Engineering Congress and Exposition , vol. 87707. American Society of Mechanical Engineers, 2023, p. V013T15A019. [13] M. Cordy, S. Lazreg, A. Legay, and P. Y. Schobbens, “Towards strengthening formal specifications with mutation model checking,” in 
+
+Proceedings of the 31st ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering ,2023, pp. 2102–2106. [14] J. Deshmukh, M. Horvat, X. Jin, R. Majumdar, and V. S. Prabhu, “Testing cyber-physical systems through bayesian optimization,” ACM Transactions on Embedded Computing Systems (TECS) , vol. 16, no. 5s, pp. 1–18, 2017. [15] A. Banerjee and V. Choppella, “Challenges and opportunities in the industrial usage controller synthesis tools: A review of ltl-based open-source tools for automated control design,” Results in Control and Optimization , vol. 18, p. 100511, 2025. [16] E. Bartocci, R. Bloem, B. Maderbacher, N. Manjunath, and D. Niˇ ckovi´ c, “Adaptive testing for specification coverage in cps models,” IFAC-PapersOnLine , vol. 54, no. 5, pp. 229–234, 2021. [17] A. Classen, M. Cordy, P.-Y. Schobbens, P. Heymans, A. Legay, and J.-F. Raskin, “Featured transition systems: Foundations for verifying variability-intensive systems and their application to ltl model checking,” 
+
+IEEE Transactions on Software Engineering , vol. 39, no. 8, pp. 1069– 1089, 2012. [18] T. Fabarisov, I. Mamaev, A. Morozov, and K. Janschek, “Model-based fault injection experiments for the safety analysis of exoskeleton system,” arXiv preprint arXiv:2101.01283 , 2021. [19] T. Fabarisov, V. G. Naik, A. A. Attar, and A. Morozov, “Remedy: Automated design and deployment of hybrid deep learning-based er-ror detectors,” in IECON 2023-49th Annual Conference of the IEEE Industrial Electronics Society . IEEE, 2023, pp. 1–8. [20] M. Moradi, T. Fabarisov, O. Kilincceker, M. Challenger, and J. Denil, “Optimization methods for model-implemented fault injection in cyber-physical systems: A systematic literature review,” Journal of Systems and Software , p. 112957, 2026. [21] H. Tan, “Reinforcement learning with deep deterministic policy gradi-ent,” in 2021 International conference on artificial intelligence, big data and algorithms (CAIBDA) . IEEE, 2021, pp. 82–85.
