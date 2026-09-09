@@ -1,0 +1,734 @@
+Title: Latency-Aware Orchestration for Multi-Agent LLM Workflows on Heterogeneous GPUs
+
+URL Source: https://arxiv.org/pdf/2609.03335v1
+
+Published Time: Fri, 04 Sep 2026 00:29:07 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Latency-Aware Orchestration for Multi-Agent LLM Workflows on Heterogeneous GPUs 
+
+## Jinghao Wang 1, Yifeng Zhang 1, Xiao Zhou 1, Yao Lu 1, Yihui Zhang 1, Xiaoyang Sun 2, Tianyu Wo 1,Xu Wang 1, Chunming Hu 1, Renyu Yang 1
+
+> 1
+
+Beihang University, Beijing, China 2University of Leeds, Leeds, United Kingdom 
+
+## Abstract 
+
+Concurrent multi-agent workflows expose future dependen-cies and serving-state requirements while running on hetero-geneous GPU pools with time-varying load, model residency, and resource availability. The logical workflow defines the required computation, whereas its physical scheduling units, model-lifecycle actions, resource ordering, and placement must be selected according to the observed pool state. We present a prediction-guided runtime that uses workflow fore-casts to construct and optimize a physical execution graph. Predictor estimates device-specific activation latency, peak memory, and model-loading cost, then propagates these pre-dictions through workflow dependencies to forecast activa-tion readiness and future model demand. Constructor builds semantics-preserving fusion and model-lifecycle alternatives, while Scheduler jointly optimizes their selection, placement, and execution order based on the live pool state. Across a workload spanning three workflow scenarios on a heteroge-neous GPU pool, our system reduces end-to-end makespan and overall p95 completion latency under burst arrivals by up to 36.8% and 25.9%, respectively, over state-of-the-art workflow schedulers. It also saves up to 24.63 GPU-s per completed session. 
+
+Keywords: Multi-Agent Workflows, LLM Serving, Graph Optimization, Heterogeneous GPUs, Adaptive Scheduling 
+
+## 1 Introduction 
+
+LLMs such as DeepSeek [15], Qwen [41], and LLaMA [36] increasingly power compound AI systems that orchestrate model calls, tools, and control flow [46]. LangGraph [23], AutoGen [40], and AgentScope [11] express these applica-tions as stateful Agent graphs. Software-development sys-tems coordinate planners, coders, testers, and reviewers [16, 30], while information-seeking systems dispatch parallel re-searchers and integrate their results [4]. Serving these appli-cations therefore means executing concurrent multi-Agent workflows whose dependencies, model state, and resource demands unfold over time. Agent workflows increasingly process confidential inputs and proprietary data, making private deployment a prac-tical requirement in privacy-sensitive sectors [5, 20]. Cost constraints keep these deployments on small, non-elastic GPU pools; fixed capacity and device heterogeneity make physical execution a first-order decision. Agent roles invoke different models and request shapes, and the same activa-tion can vary substantially in latency, memory demand, and feasibility across GPUs [38]. A flexible review Agent can oc-cupy the only high-capacity GPU required by a long-context synthesizer; model weights, KV caches, prefixes, and engine state can meanwhile remain useful to later activations. Be-cause model upgrades and incremental GPU procurement also leave sparse model–device measurements, the runtime must decide not only when an Agent can run, but how and 
+
+where to realize it. Workflow progress exposes many physical choices before every downstream Agent becomes runnable. Once its branch, role, model, and eligible devices are determined, the runtime can prefetch its deployment or retain and reclaim resident replicas while a predecessor still runs. It can also fuse con-secutive same-deployment activations, order independent units to avoid resource conflicts, and coordinate compatible model lifecycles across workflows. These choices preserve the logical workflow but change loading, residency, peak memory, and critical-path time; poor choices instead evict useful models or occupy a scarce GPU. Prior systems schedule or place agent calls [17, 26, 27, 39], reduce model-loading overhead [9], anticipate KV reuse [29, 49], or predict isolated executions [38]. Existing planners couple several decisions but exclude admission-boundary transformations from joint lifecycle, ordering, placement, and cumulative-memory planning. They therefore do not jointly evaluate a transformation’s cumulative effects on ready work, scarce devices, memory, and resident state. The runtime must expose each resolved cross-workflow window, forecast readiness and device-specific costs, con-struct legal physical alternatives, and build a feasible graph– schedule plan that adapts to workflow events and telemetry. 
+
+Challenge 1: constructing legal physical executions. 
+
+A logical agent graph fixes dependencies, roles, tool seman-tics, and externally visible effects, but leaves open how each activation is realized physically. The runtime must construct a bounded set of useful same-deployment fusions and model-lifecycle realizations while preserving logical dependencies, request isolation, and completed results. 
+
+Challenge 2: cross-device performance prediction. 
+
+Physical-graph cost depends jointly on activation readiness, device-specific execution time, model-transition time, peak memory, and future deployment reuse. Exhaustive profiling does not scale across models, devices, sequence lengths, and 
+
+> 1arXiv:2609.03335v1 [cs.DC] 3 Sep 2026 Wang et al.
+
+serving configurations, while underestimation can reverse a device ranking or make an infeasible timeline appear feasible. 
+
+Challenge 3: feasible online graph–schedule con-struction. An alternative that is cheap in isolation can delay ready work, consume the only suitable GPU for a constrained agent, or violate capacity after model, request, engine, and transitional memory demands accumulate. The runtime must choose graph structure, placement, resource order, and state lifetime together, commit only a small executable prefix, and revise the uncommitted suffix when arrivals, tool returns, or telemetry invalidate the plan. Our system uses a resolved but not-yet-runnable work-flow window to prepare physical execution without changing logical semantics. At each scheduling event, Predictor fore-casts activation–device costs and release times; Constructor enumerates legal fusion and model-lifecycle alternatives, in-cluding compatible actions shared across workflows; and Scheduler builds a feasible graph–schedule plan while pro-tecting ready work. Our system commits only through the next execution boundary and revises uncommitted physical decisions as workflow events and vLLM telemetry arrive, while preserving logical dependencies and results. The main contributions of this work are 1:
+
+• Graph construction. We construct bounded physi-cal alternatives for concurrent multi-agent workflows through same-deployment chain fusion and compati-ble model-lifecycle actions, and expose them for joint planning with resource ordering and placement. 
+
+• Cross-device performance prediction. Predictor estimates device-specific execution time, peak mem-ory, and model-loading time and propagates these values through workflow dependencies to forecast activation readiness. 
+
+• Adaptive scheduling. Scheduler constructs a feasible physical graph and schedule under live pool state and cumulative memory constraints, protects ready work, and reranks affected uncommitted decisions using runtime feedback. 
+
+## 2 Background and Motivation 
+
+2.1 Agent Workflows and Serving State 
+
+Multi-Agent workflows interleave model calls with inter-agent messages, tool results, and control-flow decisions, caus-ing their execution graphs to emerge incrementally at run-time [27, 40]. We call each execution of a model node an 
+
+activation . Each activation combines a role prompt, request input, and predecessor context; a repair round is therefore a new activation even when it reuses the same role and model. As the graph unfolds, downstream activations often be-come visible before they can run. An activation is ready after all required predecessors complete and near-ready when its branch, role, model, immutable input prefix, and eligible            
+
+> 1Code and data will be released upon acceptance. (b) GPU-time distribution
+> 01,000 2,000 3,000 GPU time (GPU-s) Parrot Kairos
+> 949 1,021 858 1,138 1,195 1,240
+> 319 GPU-s | 10.5% of total 398 GPU-s | 11.5% of total
+> Generation Idle resident Loading Other Earlier-start opportunity
+> (a) Waiting for model availability
+> 025 50 75 100% Share of request waiting time (%) Parrot Kairos
+> 40.1% 33.9% 45.4% 43.4% 85.5% 77.3%
+> Requested model loading Model load cannot start
+
+Figure 1. Model-lifecycle inefficiency under request-only scheduling. (a) Waiting for model availability. (b) GPU-time distribution; hatching marks loading that can start before request readiness. devices are known, every predecessor is complete or run-ning, and at least one remains running. A fan-in synthesizer can be near-ready while its inputs are produced, whereas a repair activation remains unknown until a test selects its branch. Ready activations and immediate near-ready suc-cessors form a bounded window that exposes useful future structure without assuming unresolved branches. Private multi-Agent deployments keep sensitive inputs within organizational infrastructure [5, 20], where cost con-straints limit spare capacity and elastic expansion. Concur-rent workflows therefore share a small, fixed GPU pool whose devices may differ in compute throughput, memory capacity, and resident state. In this setting, early visibility matters because the same activation can incur different phys-ical costs across devices. The logical graph determines when a result may be consumed, while resident weights, KV cache, prefixes, engine state, and device capacity determine how the activation can be realized. Retaining a deployment for a visible near-ready successor can avoid reloading; without one, the replica merely occupies scarce memory. Workflow progress therefore links readiness to model residency and device placement, enabling planning beyond individual re-quests. 
+
+2.2 Limits of Request-Level Execution 
+
+Existing workflow schedulers expose dependencies or pri-oritize requests but still act on individual model calls once they become ready [3, 26, 35]. They can reorder ready work, 
+
+> 2
+
+but do not jointly manage the backend working set or pre-serve physical continuity across logical node boundaries. We isolate these two limitations on a common serving substrate. 
+
+Workflow scheduling remains decoupled from model lifecycle management. Workflow information can change which ready request runs next, but not when the model required by a downstream node becomes available. We eval-uate Parrot and Kairos on a common serving substrate and measure the resulting model-availability delay and lifecycle overhead. Figure 1(a) decomposes model-availability delay into time spent waiting for an ongoing load and time during which the required load cannot start; together they account for 77.3–85.5% of request waiting under both baselines. Chang-ing request priority therefore does not remove the dominant source of waiting. Figure 1(b) shows that model loading con-sumes more GPU time than token generation, while idle residency occupies another 28.1–33.0% of total GPU time. The hatched segments identify loading that workflow de-pendencies expose before request readiness, accounting for 10.5–11.5% of total GPU time. This interval is an opportunity bound rather than a measured speedup. The limitation is therefore not a particular request priority, but the separation between workflow scheduling and model lifecycle manage-ment. Addressing it requires treating model availability as part of workflow execution rather than as a reaction to each ready request. 
+
+Logical node boundaries create repeated physical ad-mission. Dependency-aware scheduling still treats each model call as an independent scheduling unit. When ad-jacent nodes require identical model and serving configura-tions, every successor releases, requeues, and reacquires the backend. We measure this boundary for Parrot and Kairos while holding placement, admission, batching, and model-lifecycle mechanisms constant. QMSum has two parallel three-node Qwen3-4B lanes followed by three Qwen3-8B aggregation nodes; six of nine calls have a same-model suc-cessor [50]. A concurrent four-model MBPP repair workflow creates residency pressure on one A100-40GB and two V100-32GB GPUs [1]. Three repetitions yield 30 QMSum sessions per baseline. Figure 2 shows a small median component—2.7–3.8 s, or 2–3%—but a large tail component: 97.1–155.1 s, or 39–42%, in the p95 sessions. Trace-confirmed loading accounts for 65.9 s and 130.7 s of the two p95 segments. Both baselines repeat admission at the same logical boundaries, identifying the physical boundary as the source of the delay. Fusion changes the admission unit: the chain competes at its head and retains separate generations under one backend admis-sion. The fixed-trace components measure this opportunity; Section 4.5 reports the resulting net speedup under changed residency and interference. Unfused nodes A B C 3 acquires Fused nodes A → B → C 1 acquire 0 100 200 300 400 End-to-end latency (s) Parrot p50 Parrot p95 Kairos p50 Kairos p95 132s total 2.7s (2%) 247s total 97s (39%) 144s total 3.8s (3%) 366s total 155s (42%) other E2E re-acquire wait (a) Node fusion removes re-acquires (b) Re-acquire wait in E2E latency 
+
+Figure 2. Repeated admission at same-model node bound-aries. Highlighted segments are fixed-trace contributions of successor acquire waits, not measured fusion speedups. 
+
+2.3 Opportunity for Physical-Graph Execution 
+
+The experiments expose two axes absent from request sched-uling: state lifetime and the physical scheduling unit. The realized logical window fixes dependencies and visible re-sults, but not scheduling-unit boundaries, model-lifecycle actions, resource order, or placement. These choices form a mutable physical execution graph. 
+
+Near-ready preparation. Near-readiness makes model weights, serving configuration, and an immutable prefix de-terminate before the remaining predecessors complete. This interval exposes a preparation stage; Scheduler admits it only from residual capacity. Its generation and any external side effect still wait for the original logical dependencies. Consec-utive nodes with identical model and serving configurations form one admitted unit while retaining separate prompts, generations, results, and commit points. Across workflows, requests with matching model and serving configurations and authorized isolation share one inference backend and its model residency; private KV state, completion events, and semantic graphs remain separate. Preparation, fusion, and cross-workflow sharing preserve workflow dependencies while changing physical realization. 
+
+Evaluate choices against cumulative heterogeneous state. A transformation that appears cheap in isolation be-comes infeasible when its cumulative profile exceeds pool capacity. Loading exceeds memory when old weights, re-tained KV, engine buffers, and incoming state coexist, even if the final set fits. Placing a flexible activation on the only high-capacity GPU blocks a constrained successor; resource ordering preserves that device and reduces replacement and loading work. vLLM further reacts to KV pressure through queueing, preemption, and recomputation [22, 37]. Physical 
+
+> 3
+
+Wang et al. 
+
+alternatives therefore require device-specific, time-varying resource profiles that capture their cumulative effects. The runtime must predict sparse model–device profiles, construct bounded legal alternatives across workflows, and jointly select graph structure, placement, resource order, and state lifetime under live pool state. It must also limit com-mitment: tool returns, branch outcomes, completions, and serving telemetry invalidate future costs while the logical workflow remains unchanged. Predictor, Constructor, and Scheduler address these three requirements as the prediction, construction, and adaptive-selection stages of our system. 
+
+## 3 Design 
+
+3.1 Overview 
+
+Each multi-Agent workflow specifies what must happen and which results become visible, but leaves open how its model calls should share execution boundaries, replicas, or GPUs. Figure 3 shows how our system jointly turns these logical workflows into an executable graph–schedule plan. Predictor estimates run time, peak memory, and loading time for each model–request configuration on every GPU type. Guided by these estimates, Constructor fuses com-patible same-deployment chains and exposes reusable or shared lifecycle actions without changing workflow seman-tics. Scheduler incrementally constructs a feasible physical graph and schedule by ranking lifecycle, replica, placement, and resource-order decisions on a common timeline, then commits the next executable prefix. As calls complete and replica state changes, the same process revises the uncom-mitted suffix. 
+
+3.2 Logical–Physical Execution Model 
+
+At time 𝑡 , the scheduler observes the resolved portion 𝐿 𝑤 𝑡 =
+
+⟨𝑉 𝑤 𝑡 , 𝐸 𝑤 𝑡 ⟩ of each active workflow 𝑤 ∈ Ω𝑡 , where each ac-tivation is a distinct invocation. Constructor converts their union 𝐿 𝑡 = Ò𝑤 ∈Ω𝑡 𝐿 𝑤 𝑡 into the fusion-normalized graph 𝐺 0
+
+𝑡 .Let 𝐹 𝑡 and 𝑁 𝑡 denote its ready and near-ready units. A unit belongs to 𝐹 𝑡 when all predecessors have completed; it be-longs to 𝑁 𝑡 when every predecessor has completed or is running and at least one remains running. Completion esti-mates for running predecessors come from the scheduler’s committed timeline. These sets define the planning window 
+
+W𝑡 = 𝐺 0
+
+𝑡 [𝐹 𝑡 ∪ 𝑁 𝑡 ]. A branch enters only after its control result resolves, so the window contains work on determined logical paths. The window identifies what may execute next, but not how deployments become available or where units run. This dis-tinction separates the logical frontier exposed by workflow progress from the physical choices made by the runtime. Let 
+
+𝑈 0
+
+𝑡 = 𝑉 (W 𝑡 ). A physical realization is 𝐺 𝑝 𝑡 = ⟨𝑈 0
+
+𝑡 ∪ 𝐻 𝑝 𝑡 , 𝐸 𝐿,𝑝 𝑡 ⟩.Here, 𝐻 𝑝 𝑡 contains device-symbolic loading, prefetching, and reclamation actions, while 𝐸 𝐿,𝑝 𝑡 preserves logical dependen-cies and places each action before its consumers. The same Inputs at scheduling tick  t                                             
+
+> Resolved planning window Wt(visible)
+> Q8 Q8 Q8 Q14
+> tool Q8
+> Q8 tool Q8 Q14
+> Ready ( Ft)Near-ready ( Nt)
+> Models &
+> Requests
+> Sparse
+> Measurement
+> GPU
+> Attributes
+> Capacity &
+> Availability
+> Resident /
+> Loading
+> Replicas
+> Active Grants /
+> Queues
+> Workflow
+> Progress
+> 1Prediction
+> Predict device-aware execution and lifecycle
+> costs
+> model graph request rdevice hg
+> predict
+> prediction table Ct
+> run time peak memory load time
+> T  run M  peak T  load
+> Ct
+> prediction
+> table
+> 2Physical Variants
+> Construct semantics-preserving
+> physical graph variants.
+> A. Same-workflow fusion
+> Q8 Q8 ⇒Q8 Q8
+> B. Shared lifecycle action
+> one shared load Q8 | Q8
+> Q8
+> 3Joint Selection
+> prediction table Ct+ snapshot St
+> feasible graph–schedule pairs
+> (binding · placement · resource order)
+> select joint plan
+> commit next prefix
+> dispatch Γ t, A t
+> GPU / vLLM pool (live)
+> g0 grant resident loading free
+> g1 grant resident loading free
+> events + telemetry
+> completions · branches ·
+> Refresh Wt+1 ,St+1
+> update window and
+> Re-optimize
+> unissued suffix
+> Sparse profiles (historical) Pool snapshot St(live)
+> compatible demand
+> requests isolated
+> Jointly select graph structure, replica binding,
+> GPU placement, and resource order.
+> Gt
+> candidate
+> graphs
+
+Figure 3. Our system combines semantics-preserving same-workflow fusion, shared lifecycle actions across isolated workflows, device-aware predictions, and live pool state to construct and incrementally commit a feasible graph– schedule plan. logical window may therefore admit several realizations: reuse a resident replica, load a new one, or reclaim an idle replica before loading. The graph prescribes the required lifecycle actions; its schedule 𝜋 assigns devices, replicas, and reclamation victims, orders resource conflicts, and predicts start and completion times. Snapshot 𝑆 𝑡 records GPU capacities, resident and loading replicas, active grants and queues, and workflow progress. A deployment identity 𝑑 combines a resolved model and version with its serving configuration. Unit 𝑢 requires iden-tity 𝑑 (𝑢 ) and model 𝑚 (𝑢 ) = 𝑚 (𝑑 (𝑢 )) ; units with the same identity may reuse a replica while retaining per-activation request state and outputs. An execution grant admits a unit to a selected replica, and its lease prevents that replica from being reclaimed until the unit completes. The next grant completion or model-lifecycle transition forms an execution boundary, where 𝑆 𝑡 
+
+is refreshed and the unissued suffix may be revised. The invariants above define an admissible domain G𝑡 : ev-ery member is acyclic, preserves logical dependencies and visible values, respects deployment identity, and orders life-cycle actions before consumers. At each tick, Scheduler in-crementally constructs a feasible (𝐺 𝑡 , 𝜋 𝑡 ) and dispatches its next executable prefix; arrivals, completions, predecessor up-dates, and model transitions refresh the window and rerank the uncommitted work. 
+
+3.3 Predictor: Device-Aware Prediction 
+
+Rather than predicting workflow-level latency, Predictor maps model structure G𝑚 , request configuration 𝑟 , and de-vice attributes h𝑔 to 
+
+b𝑇 run 
+
+𝑚,𝑟,𝑔 , b𝑀 peak 
+
+𝑚,𝑟,𝑔 , b𝑇 load 
+
+𝑑,𝑔 
+
+
+
+= Predict (G 𝑚 , 𝑟, h𝑔 ). (1) Here, 𝑑 denotes the deployment identity for model 𝑚 . The mapping yields consistent execution-cost estimates for each activation across model configurations and eligible devices, 
+
+4while separating request-dependent execution costs from deployment-specific model-loading overhead. Run time sup-ports placement and completion-time comparison, peak mem-ory supports admission, and loading time prices loading, prefetching, and reclamation. 
+
+Graph–device prediction. Predictor represents each model as an operator data-flow graph. Nodes describe operator type, arithmetic work, parameter size, and tensor shapes, while edges capture tensor dependencies and transferred data. Re-quest features characterize the serving phase, batch size, and sequence lengths; device features characterize compute ca-pability, memory capacity, and bandwidth. A graph encoder exchanges information along tensor edges and combines the pooled graph representation with the request and device context. Target-specific heads produce the three estimates in Equation 1, capturing request-dependent execution shapes and performance differences across heterogeneous GPUs. 
+
+Cached profiles and runtime feedback. Offline infer-ence materializes run-time and memory profiles C𝜅 indexed by 𝜅 = (𝑑, 𝑔, 𝑏, ℓ in , ℓ out ), together with loading profiles Cload  
+
+> 𝑑,𝑔
+
+.At runtime, the input lookup selects the smallest bucket cov-ering the observed prompt. Timing uses the smallest output bucket covering the empirical 90th-percentile output length of recent completions of the same logical workflow node, falling back to its configured limit when no history exists. Admission always uses the bucket covering the configured output limit. Both paths therefore use cached lookups rather than executing the graph encoder on the scheduling path. The memory reserved for admission is 𝑀 adm  
+
+> 𝜅
+
+(𝑡 ) = b𝑀 peak  
+
+> 𝜅
+
++
+
+𝜖 𝑀 + 𝜌 𝜅 (𝑡 ), where 𝜖 𝑀 covers unmodeled variation and 𝜌 𝜅 (𝑡 )
+
+increases after an observed out-of-memory failure. Runtime history can therefore refine completion estimates without reducing the memory reserved for feasibility. 
+
+Forecasting. Execution estimates become workflow-level timing information by propagating them through logical dependencies. The predicted release of unit 𝑢 is 
+
+b𝑟 𝑢 =
+
+
+
+𝑡, 𝑢 ∈ 𝐹 𝑡 ,
+
+max     
+
+> 𝑣 ∈pred 𝐺 0
+> 𝑡 (𝑢 )
+
+b𝑐 𝑣 , 𝑢 ∈ 𝑁 𝑡 . (2) Constructor sums the predicted run times of activations fused into one scheduling unit. Scheduler then combines re-lease time, loading, execution, replica queues, and resource precedence into candidate-specific completion times. Ob-served completions update downstream releases and order-ing decisions, while live pool state and cumulative-memory checks determine final feasibility. 
+
+3.4 Constructor: Physical-Graph Construction 
+
+Given the planning window and Predictor’s device estimates, Constructor forms physical candidates in two stages. It first contracts logical nodes that can share a backend grant within each workflow; after fusion, it derives the lifecycle actions required by the resulting units and coalesces compatible actions across workflows. For 𝐿 𝑡 = (𝑉 𝑡 , 𝐸 𝑡 ), an edge (𝑢, 𝑣 )
+
+belongs to a maximal fusible chain when 
+
+𝑢, 𝑣 ∈ 𝑉 A, succ 𝐿 𝑡 (𝑢 ) = {𝑣 }, pred 𝐿 𝑡 (𝑣 ) = {𝑢 },𝑑 (𝑢 ) = 𝑑 (𝑣 ), 𝜃 (𝑢 ) ∼ cfg 𝜃 (𝑣 ). (3) Here, 𝑉 A denotes Agent nodes, 𝑑 (·) the deployment identity, and ∼cfg configuration compatibility up to output-length lim-its. The one-to-one condition keeps branches and joins at chain boundaries. Contracting each maximal eligible chain yields 𝐺 0 
+
+> 𝑡
+
+= Fuse (𝐿 𝑡 ). For 𝑐 = (𝑣 1, . . . , 𝑣 ℎ ), external depen-dencies attach to its endpoints, while 𝑣 1 ≺ · · · ≺ 𝑣 ℎ executes under one grant and replica lease. Each activation retains its request configuration and passes its output to the next, preserving the original data flow. In QMSum, three consecutive aggregation nodes use the same Qwen3-8B deployment and become 𝑐 = (𝑣 1, 𝑣 2, 𝑣 3). The fused unit requires one grant on one replica, which remains available across all three activations, while their prompts, generations, and logical outputs remain distinct. Because an earlier activation’s output may become part of a later activation’s input context, admission covers the largest context exposed along the complete chain. For ac-tivation 𝑣 𝑖 , let 𝑃 𝑖 be a bound on its fixed tokenized input, let A𝑖 ⊆ {1, . . . , 𝑖 − 1} index the earlier outputs it con-sumes, and let 𝑂 𝑖 be its output limit; its input envelope is 
+
+𝐼 𝑖 = 𝑃 𝑖 + Í𝑗 ∈ A 𝑖 𝑂 𝑗 . Constructor assigns 
+
+𝐼 adm  
+
+> 𝑐
+
+= max   
+
+> 1≤𝑖 ≤ℎ
+
+𝐼 𝑖 , 𝑂 adm  
+
+> 𝑐
+
+= max   
+
+> 1≤𝑖 ≤ℎ
+
+𝑂 𝑖 ,
+
+b𝑇 run  
+
+> 𝑐,𝑔
+
+=
+
+> ℎ
+
+∑︁ 
+
+> 𝑖 =1
+
+b𝑇 run     
+
+> 𝑚 (𝑐 ),𝑟 𝑖 ,𝑔
+
+.
+
+(4) Here, 𝑟 𝑖 is the request configuration of 𝑣 𝑖 . The bounds 𝐼 adm 
+
+> 𝑐
+
+and 𝑂 adm  
+
+> 𝑐
+
+govern lease admission, while the summed dura-tion predicts release. A length-ℎ chain uses one grant and removes ℎ − 1 intermediate scheduling boundaries. After fusion, Constructor defines how each unit’s deploy-ment can become available. For 𝑋 ∈ { 𝐹, 𝑁 }, let 𝛼 𝐹 = Load for ready work and 𝛼 𝑁 = Prefetch for near-ready work. The lifecycle alternatives are 
+
+H𝑋 𝑡 (𝑢 ) = {⟨ 𝛼 𝑋 (𝑑 (𝑢 ))⟩ , ⟨Reclaim , 𝛼 𝑋 (𝑑 (𝑢 ))⟩} . (5) Lifecycle actions remain unplaced until scheduling. Recla-mation selects a lease-free victim; resident binding reuses a replica, while loading creates or replaces one. Let ℎ𝑢,𝜌 = 1 when unit 𝑢 selects lifecycle sequence 𝜌 ,with Í𝜌 ℎ𝑢,𝜌 ≤ 1. A unit without a sequence reuses a resi-dent replica or is deferred. Combining these per-unit choices yields a physical realization: compatible transitions may share one device-symbolic action node, while distinct nodes represent replication. Figure 4 illustrates this construction order and separation. At tick 𝑡 , W1 and W2 each expose a ready Q8 unit and a 
+
+> 5
+
+Wang et al. (a) Logical workflow windows at scheduling tick  t ready  near-ready  St: Q8 and Q14 are          
+
+> not resident
+> W2 Q8 tool
+> Q14
+> W1 Q8
+> tool Q14
+> Graph construction workflow-local fusion is applied
+> before lifecycle realization
+> (b) Joint physical graph construction
+> W2 private
+> request state
+> W2 Q8 tool W2 Q14
+> Shared
+> lifecycle
+> actions
+> Shared Load Q8
+> (fused compatible demand)
+> absent → ready
+> Shared Prefetch Q14
+> (fused compatible demand)
+> absent → staged
+> fusion before
+> lifecycle realization
+> W1 private
+> request state
+> W1 Q8
+> tool
+> W1 Q14
+
+Figure 4. Constructor builds a joint physical graph at sched-uling tick 𝑡 . (a) W1 and W2 expose ready Q8 units and near-ready Q14 units while neither deployment is resident. (b) After workflow-local fusion normalization, compatible de-ployment demand across W1 and W2 shares one load that makes Q8 ready and one prefetch that stages Q14; request and tool state remain workflow-private. near-ready Q14 unit, while 𝑆 𝑡 records both deployments as absent. Constructor first fusion-normalizes each workflow while preserving its logical dependencies. It then coalesces only compatible lifecycle demand across workflows: one load makes Q8 available to both ready units, and one prefetch stages Q14 for both near-ready units. The execution nodes and their request and tool state remain workflow-private. Under snapshot 𝑆 𝑡 , let X𝐻 𝑡 collect the lifecycle selections and compatible action-sharing choices that satisfy the pre-ceding constraint and the invariants in Section 3.2. They induce the physical candidate space 
+
+G𝑡 = Realize (W 𝑡 , ℎ ) : ℎ ∈ X 𝐻 𝑡 . (6) This implicit domain guides Scheduler in constructing one realization jointly with its schedule. 
+
+3.5 Scheduler: Online Joint Graph–Schedule Construction 
+
+Scheduler implements an event-driven scheduling heuristic. It chooses lifecycle actions, replica and device bindings, and conflict order together because the value of loading, reusing, or reclaiming a model depends on the resulting contention and completion time. Consider a window in which two workflows expose ready units for deployment 𝑑 1, while a near-ready unit requires 
+
+𝑑 2. Reusing a resident 𝑑 1 replica avoids loading, but may serialize both ready units behind its queue. Loading another 
+
+𝑑 1 replica increases parallelism, yet occupies memory that could prefetch 𝑑 2; reclaiming 𝑑 2 may accelerate the ready work but incur a reload when the near-ready unit becomes eligible. Their effects become comparable once predicted re-leases, device-specific runtimes, replica queues, and memory transitions share one timeline. Scheduler ranks the resulting graph–schedule consequences on this timeline. For operation 𝑠 ∈ 𝑉 (𝐺 ), let pred 𝐺 (𝑠 ) and rpred 𝜋 (𝑠 ) denote its graph and resource-order predecessors, and let 𝑎 𝜋 (𝑠 ) be its device. Its start follows both precedence relations, 
+
+b𝑠 𝐺,𝜋 𝑠 = max 
+
+b𝑟 𝑠 , max     
+
+> 𝑣 ∈pred 𝐺 (𝑠 )
+
+b𝑐 𝐺,𝜋 𝑣 , max     
+
+> 𝑣 ∈rpred 𝜋 (𝑠 )
+
+b𝑐 𝐺,𝜋 𝑣 
+
+
+
+,
+
+b𝑐 𝐺,𝜋 𝑠 = b𝑠 𝐺,𝜋 𝑠 + b𝑇 𝑠,𝑎 𝜋 (𝑠 ) .
+
+(7) Here, b𝑟 𝑠 follows Equation 2 for units and is the current time for lifecycle actions. The duration uses Predictor’s run or load estimate, or the reclamation estimate recorded in 𝑆 𝑡 .This common timeline propagates model preparation and placement contention into the predicted completion of their consumers. A candidate placement must first fit the deployment and request. Let D be the accelerators, with type 𝑔 (𝑎 ) and mem-ory capacity 𝐶 𝑀 𝑎 ; 𝐼 𝑢 , 𝑂 𝑢 are unit 𝑢 ’s input and output bounds, and 𝜅 (𝑢, 𝑔, 𝜈 ) indexes its prediction at batch size 𝜈 . Its feasible domain is 
+
+D𝑡 (𝑢, 𝜈 ) =
+
+(
+
+𝑎 ∈ D 
+
+𝐼 𝑢 + 𝑂 𝑢 ≤ 𝐿 max    
+
+> 𝑑 (𝑢 )
+
+,𝑀 adm    
+
+> 𝜅 (𝑢,𝑔 (𝑎 ),𝜈 )
+
+(𝑡 ) ≤ 𝐶 𝑀 𝑎 
+
+)
+
+, (8) where 𝐿 max    
+
+> 𝑑 (𝑢 )
+
+is the deployment’s context limit and fused units use Equation 4. This domain is only the first feasibility cut. A fused unit can satisfy its context limit yet remain infeasible on a smaller GPU when its predicted admission memory exceeds capacity. Conversely, a device may enter the do-main even when the deployment is not resident; the lifecycle choice and cumulative check below determine whether load-ing it fits the full timeline. Among the remaining devices, Scheduler compares completion times obtained from release, device availability, model preparation, and execution. Each selected unit must either reuse a resident replica or follow a lifecycle action placed on the same GPU. For selected batch size 𝜈 𝑠 , write D𝑡 (𝑠 ) = D𝑡 (𝑠, 𝜈 𝑠 ); a shared action uses the intersection of its consumers’ domains. Let binary 𝑦 𝑠 
+
+select operation 𝑠 , 𝑥 𝑠,𝑎 bind it to device 𝑎 , and 𝛽 𝑢,𝑞 bind unit 
+
+𝑢 to an accepting replica 𝑞 ∈ 𝑄 𝑡 (𝑢 ) hosted by 𝑎 (𝑞 ). Let 𝜆 𝑢 (𝐺 )
+
+indicate a loading or prefetch predecessor. These variables couple operation selection to device placement and replica supply. The graph–schedule consistency constraints are ∑︁   
+
+> 𝑎 ∈ D 𝑡 (𝑠 )
+
+𝑥 𝑠,𝑎 = 𝑦 𝑠 , 𝑥 ℎ,𝑎 = 𝑥 𝑢,𝑎 , (ℎ, 𝑢 ) ∈ 𝐸 𝐿 (𝐺 ),∑︁    
+
+> 𝑞 ∈𝑄 𝑡 (𝑢 )
+
+𝛽 𝑢,𝑞 + 𝜆 𝑢 (𝐺 ) = 𝑦 𝑢 , 𝛽 𝑢,𝑞 ≤ 𝑥 𝑢,𝑎 (𝑞 ) .
+
+(9) A reclamation action analogously binds one lease-free victim on its device. 
+
+6Placement may introduce contention between logically independent operations. For each pair (𝑖, 𝑗, 𝑎 ) ∈ K 𝜋 𝑡 placed on the same nonconcurrent resource, the ranked action order induces one orientation: 
+
+𝑧 𝑖 𝑗,𝑎 + 𝑧 𝑗𝑖,𝑎 = 1, 𝑧 𝑖 𝑗,𝑎 , 𝑧 𝑗𝑖,𝑎 ∈ { 0, 1},𝑧 𝑖 𝑗,𝑎 = 1 ⇒ b𝑠 𝐺,𝜋 𝑗 ≥ b𝑐 𝐺,𝜋 𝑖 , 𝑧 𝑗𝑖,𝑎 = 1 ⇒ b𝑠 𝐺,𝜋 𝑖 ≥ b𝑐 𝐺,𝜋 𝑗 . (10) The combined precedence relation remains acyclic. Memory must be checked cumulatively because individu-ally feasible operations can still overlap: a new replica may load while resident models and active requests remain live. At each predicted transition boundary 𝜏 ∈ T 𝜋 𝑡 , let 𝑅 𝐺,𝜋 𝑎,𝑡 (𝜏 ) be resident and transitional model memory, and 𝑀 inc  
+
+> 𝑠,𝑎
+
+the incre-mental request memory of active unit 𝑠 . Memory feasibility requires 
+
+𝑅 𝐺,𝜋 𝑎,𝑡 (𝜏 ) + ∑︁ 
+
+> 𝑠
+
+𝑥 𝑠,𝑎 𝑀 inc  
+
+> 𝑠,𝑎
+
+1[b𝑠 𝐺,𝜋 𝑠 ≤ 𝜏 < b𝑐 𝐺,𝜋 𝑠 ] ≤ 𝐶 𝑀 𝑎 , ∀𝑎, 𝜏, 
+
+(11) and concurrent units assigned to replica 𝑞 additionally re-spect its batch limit 𝐵 𝑞 . This transition-by-transition check rejects overlaps that exceed device capacity, turning a physi-cal realization into an executable schedule that couples lifecy-cle choice, placement, resource order, and request execution on one predicted timeline. Within this feasible region, Scheduler first exploits capac-ity that can serve ready work without another model load. A resident accepting replica provides immediate reuse; when loading is necessary, its value grows with the ready work it unlocks relative to predicted loading time, after accounting for priority and aging. Scale-out is considered only when a new replica completes the unit earlier than the current queues, subject to the replica cap. Pool-wide demand and queue state allow one residency decision to serve several workflows. Reclamation considers idle, lease-free replicas, preferring redundant copies and then distant next use relative to reload cost; least-recently-used order handles missing estimates. A near-ready deployment becomes eligible for prefetch when its remaining release time approaches loading time plus dis-patch slack, but only if prefetching does not delay ready work in the selected plan. Planning remains tick-local: W𝑡 contains only ready units and immediate near-ready successors. Scheduler processes ready units by priority and aging, first reusing accepting replicas and then choosing one feasible binding per remain-ing unit. Required loads, scale-out, and lease-safe reclama-tion are ranked by predicted benefit; near-ready prefetch is considered only when no ready action can advance. Resource conflicts inherit this action order, and each accepted decision is checked against Equations 9–11. Scheduler ranks decisions first by ready-work coverage across priority classes, then by completion time, and finally by timely prefetching and lifecycle overhead. The map 𝑘 𝑡 :
+
+Algorithm 1: Online Joint Graph–Schedule Construction 
+
+Input: Planning window W𝑡 ; ready/near-ready sets 𝐹 𝑡 , 𝑁 𝑡 ; snap-shot 𝑆 𝑡 ; prediction table C
+
+Output: Constructed plan (𝐺 𝑡 , 𝜋 𝑡 ); grants Γ𝑡 ; lifecycle actions A𝑡  
+
+> 1:
+
+𝑅 ← RankReady (𝐹 𝑡 , 𝑆 𝑡 ) ⊲ Priority and aging.  
+
+> 2:
+
+Γ𝑡 , L, B ← ∅ , ∅, ∅ 
+
+> 3:
+
+for 𝑢 ∈ 𝑅 do  
+
+> 4:
+
+𝑏 𝑢 ← BestFeasibleBinding (𝑢, 𝑆 𝑡 , C) ⊲ One binding.  
+
+> 5:
+
+if 𝑏 𝑢 reuses an accepting resident replica then  
+
+> 6:
+
+Γ𝑡 ← Γ𝑡 ∪ {( 𝑢, 𝑏 𝑢 )}  
+
+> 7:
+
+else if 𝑏 𝑢 ≠ ⊥ then  
+
+> 8:
+
+L ← L ∪ {( 𝑢, 𝑏 𝑢 )}  
+
+> 9:
+
+else  
+
+> 10:
+
+B ← B ∪ { 𝑢 } 
+
+> 11:
+
+A𝑡 ← PlanReady (L , B, 𝑆 𝑡 , C) ⊲ Load, scale-out, or reclaim.  
+
+> 12:
+
+if Γ𝑡 = ∅ ∧ A 𝑡 = ∅ then  
+
+> 13:
+
+A𝑡 ← PlanPrefetch (𝑁 𝑡 , 𝑆 𝑡 , C)  
+
+> 14:
+
+(𝐺 𝑡 , 𝜋 𝑡 ) ← Propagate (W 𝑡 , Γ𝑡 , A𝑡 , 𝑆 𝑡 ) ⊲ Order conflicts; check feasibility.  
+
+> 15:
+
+(Γ𝑡 , A𝑡 ) ← Prefix 𝑡 (𝐺 𝑡 , 𝜋 𝑡 , 𝑆 𝑡 ) 
+
+> 16:
+
+return (𝐺 𝑡 , 𝜋 𝑡 , Γ𝑡 , A𝑡 )
+
+𝐹 𝑡 → {1, . . . , 𝐾 } assigns each ready unit a priority and aging level. For the constructed plan, 𝐴 𝑘 counts admitted level-𝑘 units, b𝐶 𝐹 is their latest completion, 𝑃 𝑁 counts timely prefetches, and 𝐻 life combines ready-work loading delay with reclamation-induced reload cost. The lexicographic ranking key is 
+
+Φ𝑡 (𝐺, 𝜋 ) =   − 𝐴 1, . . . , −𝐴 𝐾 , b𝐶 𝐹 , −𝑃 𝑁 , 𝐻 life 
+
+. (12) Algorithm 1 applies this ordering while constructing a feasi-ble plan and committing its next executable prefix. Algorithm 1 scans ready units in ranked order. For each unit, BestFeasibleBinding filters eligible devices and returns at most one binding. Resident replicas are reused first; re-maining load, scale-out, and lease-safe reclamation actions are ranked by predicted benefit. Prefetch is considered only when no ready action can advance. Propagate serializes co-located operations and checks Equations 9–11 before Prefix 𝑡 
+
+commits the next executable actions. Subsequent events re-fresh W𝑡 and 𝑆 𝑡 and rerank uncommitted work. 
+
+## 4 Evaluation 
+
+4.1 Experimental Setup Testbed. The testbed comprises three heterogeneous nodes. Each of two servers has two Intel Xeon Gold 6148 processors, with 20 cores per socket, and four NVIDIA V100 GPUs with 32 GB of memory. The remaining server has two Intel Xeon Silver 4216 processors, with 16 cores per socket, and four NVIDIA A100 GPUs with 40 GB of memory. All servers run CUDA 12 with the same software environment: vLLM 0.10.2, PyTorch 2.8.0, and Transformers 4.55.2. 
+
+Models and Runtime. Five Qwen3 models (0.6B, 1.7B, 4B, 8B, and 14B) share one vLLM serving configuration [41]. 
+
+> 7Wang et al.
+
+Each resident replica occupies one GPU and serves compati-ble requests through continuous batching; replicas are loaded and reclaimed on demand. All systems use the same infer-ence engine, data type, and serving configuration, so their differences arise from physical-graph construction, lifecycle management, and scheduling. Each arrival trace is generated once with seed 42 and replayed identically across all systems. Each system–trace configuration is executed five times, and we report the mean of the five run-level measurements. 
+
+Workloads and Datasets. We construct three application-level workloads by pairing a public benchmark with a rep-resentative Agent DAG. The datasets provide realistic task contents and input-length distributions, while the DAGs de-termine inter-call dependencies, parallelism, tool use, and model reuse. GSM8K [6] contains diverse grade-school math problems requiring multi-step reasoning; its ensemble work-flow runs five heterogeneous solvers in parallel, aggregates their answers by majority vote, and refines the result. Sani-tized MBPP [1] provides Python programming tasks with ex-ecutable tests; its tool-augmented repair workflow performs code generation, testing, diagnosis, review, repair, and final validation while passing execution feedback across stages. The resulting workflow interleaves LLM and function nodes and contains both sequential and multi-parent context depen-dencies, exercising handoffs among four model deployments. QMSum [50] contains query-focused summaries of long, multi-domain meeting transcripts; its hierarchical workflow uses two parallel three-stage rolling-summary chains fol-lowed by a three-stage aggregation chain. Together, these workloads cover fork–join parallelism, tool-interleaved de-pendencies, long-context processing, fan-in aggregation, and repeated-model chains. Each comparison uses identical workflow inputs, model assignments, arrival traces, and inference configurations. 
+
+Baselines. The evaluation compares the default configura-tion of our system with two scheduling baselines and two predictor substitutions. 
+
+• Parrot [26] introduces Semantic Variables that an-notate request inputs and outputs, connect multiple LLM calls into a dataflow, and expose cross-request correlations to the serving system. 
+
+• Kairos [3] combines a workflow-aware priority sched-uler with a memory-aware dispatcher to reduce end-to-end latency when agents share loaded LLM in-stances. 
+
+Formula predictor. This variant replaces Predictor with a static size-and-bandwidth estimator in the style of LLM-Fit [18]; it derives runtime and memory estimates from model weights, KV-cache demand, and device bandwidth. 
+
+GBDT predictor. This variant replaces Predictor with Light-GBM [19], trained on scalar model, request, and device fea-tures including model size, layer count, batch size, sequence lengths, and memory bandwidth. 0400 800 1200 987 1004 634 416 787 792 587 409     
+
+> Burst + Overall
+> 0500 1000 1500 1102 1111 965 711 543 497 542 109
+> Poisson 0.150 + Overall
+> 0600 1200 1800 1409 1485 1386 1368 330 233 392 108
+> Poisson 0.075 + Overall
+> 0400 800 1200 957 973 605 387 762 768 554 337
+> Burst + 4B
+> 0400 800 1200 945 958 526 316 480 448 492 97
+> Poisson 0.150 + 4B
+> 0400 800 1200 810 599 341 103 155 135 292 60
+> Poisson 0.075 + 4B
+> 0400 800 1200 987 1003 634 416 787 792 587 409
+> Burst + 8B
+> 0400 800 1200 979 986 579 326 543 497 542 109
+> Poisson 0.150 + 8B
+> 0400 800 1200 909 627 447 120 330 233 391 108
+> Poisson 0.075 + 8B
+> Completion time (s) Parrot Kairos Ours Oracle Makespan p95
+
+Figure 5. End-to-end completion time under burst and Pois-son arrivals. All five configurations use the same vLLM execution, placement, batching, and model-loading substrate. The two predictor variants retain Constructor and Scheduler unchanged and therefore isolate prediction quality rather than define standalone schedulers. 
+
+4.2 End-to-End Performance 
+
+The workload contains 180 sessions, 60 per scenario. Pois-son arrivals use per-scenario rates of 0.150 and 0.075 ses-sions/s; the burst setting submits all sessions together. Over-all makespan measures the interval from the first arrival until the last session finishes; overall p95 is the 95th percentile of per-session completion latency. Model-scoped completion metrics include DAG dependencies, queuing, model loading, and execution rather than only inference time. The Oracle is a trace-conditioned offline scheduler with complete knowledge of task and model-loading durations. It optimizes the displayed completion metrics subject to the same arrival trace, DAG dependencies, GPU capacity, model compatibility, and serving constraints as the measured sys-tems. We use it as a strong offline reference rather than a realizable online policy or a strict lower bound. Our system finishes the workload in 634.2 s, 35.8% and 36.8% earlier than Parrot and Kairos, respectively. Its overall p95 is 587.0 s, 25.4–25.9% below the two baselines, and its 4B and 8B paths also finish first. Our system also achieves the lowest overall makespan at both Poisson rates, finishing in 965.1 and 1386.4 s at 0.150 and                     
+
+> 8PKO020 40 60 80
+> GPU-s / session
+> 19.6% 19.5% 38.0%
+> 87.9 87.2 46.3
+> GSM8K
+> PKO
+> 18.4% 17.6% 45.2%
+> 33.2 35.4 15.3
+> MBPP
+> PKO
+> 76.8% 77.0% 78.4%
+> 76.3 78.1 65.2
+> QMSum
+> Parrot Kairos Ours Generation Idle residency Model loading Other
+
+Figure 6. GPU time per completed session by workflow scenario under burst arrivals. 0.075 sessions/s, respectively. These results correspond to reductions of 12.4–13.1% and 1.6–6.6% over Parrot and Kairos. Some Poisson p95 and model-scoped results favor another policy: our system optimizes global completion and can trade a local workflow tail for earlier workload drain. Thus, our system drains the workload earlier in every arrival setting, although its global objective does not always minimize per-session or model-scoped tails under dispersed arrivals. 
+
+4.3 GPU-Time Efficiency 
+
+We next use the same 180-session burst workload as Sec-tion 4.2 to report cluster-wide GPU time per completed ses-sion for each workflow scenario. We attribute shared lifecycle time to scenarios by their share of each model’s generation time. We partition GPU time into generation, idle residency, model loading, and other activity. Generation is time spent generating tokens, whereas idle residency is time during which loaded model weights occupy GPU memory without generating tokens. Model loading is time spent preparing models, and other activity is the remaining GPU time. Un-like a percentage-only breakdown, GPU time per completed session captures both how long GPU capacity is occupied and how that capacity is used. Figure 6 shows that our system uses less GPU time for all three workflow scenarios. For GSM8K and MBPP, it uses 46.26 and 15.33 GPU-s per completed session, 46.9–47.4% and 53.8–56.7% less than the two baselines, respectively. For QMSum, it uses 65.25 GPU-s, a reduction of 14.5–16.5%. Av-eraged across all 180 sessions, our system saves up to 24.63 GPU-s per completed session over the two baselines. The reduction comes primarily from idle residency. Our system lowers it from 60.32–60.68 to 18.27 GPU-s for GSM8K, from 24.43–26.39 to 5.25 for MBPP, and from 10.74–10.92 to 4.31 for QMSum. 
+
+Table 1. Prediction fidelity and decision accuracy of the three predictors across different prediction targets.                     
+
+> WAPE (%) ↓Decision accuracy (%) ↑
+> Method Loading Runtime Peak VRAM Ordering Window fit Predictor 8.05 7.25 14.08 97.94 97.82
+> Formula 27.21 15.29 11.98 96.37 96.82 GBDT 24.35 11.05 15.70 96.53 97.18
+
+4.4 Prediction Accuracy 
+
+Scheduler consumes cached resource profiles to compare the cost of running an Agent task on different devices and deter-mine whether that task fits an available execution window. Because a numerical error need not change either choice, the evaluation measures both numerical fidelity and downstream decision fidelity at the predictor–scheduler interface [31]. 2,798 measured Qwen3 model deployment configurations were used to form the test set. Weighted absolute percentage error (WAPE) measures the numerical fidelity of loading-time, runtime, and peak-VRAM predictions by summing absolute errors over the test set and dividing by the sum of their measured values. For downstream decision fidelity, ordering measures whether predicted and measured runtimes agree on which of two configurations is faster [10]. Window fit measures whether the prediction and measurement agree that a configuration can finish within a given window. Both metrics compare choices induced by cached predictions with those induced by measured profiles. The window is the median measured run-time of the held-out configurations, 48.85 s. Together, they provide a closer proxy than point-estimate error alone for how cached predictions affect Scheduler’s decisions, while Section 4.2 measures the realized system-level impact. Table 1 shows that Predictor achieves the lowest loading-time and runtime WAPE, at 8.05% and 7.25%, respectively. This reduces loading-time WAPE by 70.4% over the formula-based predictor and 66.9% over GBDT; the corresponding runtime reductions are 52.6% and 34.4%. Although all three predictors exceed 96% decision accuracy, Predictor achieves the highest fidelity: it reproduces 97.94% of measured run-time orderings and 97.82% of measured window-fit outcomes, improvements of 1.41–1.57 and 0.64–1.00 percentage points over the baselines, respectively. The formula-based predictor has the lowest peak-VRAM WAPE; Predictor is 2.10 percent-age points higher but combines competitive VRAM fidelity with the best runtime and decision accuracy. 
+
+4.5 Predictor and Component Ablations 
+
+The analysis uses the same 180-session workload and three arrival processes as Figure 5 to compare the full system against two predictor substitutions and three component ablations. The predictor substitutions use the formula-based      
+
+> 9Wang et al. 0400 800 1200
+> 634  996 654 659 659 738 587  950 616 637 622 706
+> Burst
+> 0400 800 1200
+> 965 1113 975 1043 975 1119 542 547 538  785 538 660
+> Poisson 0.150
+> 0500 1000 1500
+> 1386 1484 1406 1428 1448 1484 392 351 404 566 501 360
+> Poisson 0.075
+> Completion time (s)
+> Ours Formula predictor GBDT predictor Fusion disabled Prefetch disabled Per-work fl ow lifecycle
+> Makespan p95
+
+Figure 7. End-to-end performance of predictor substitutions and component ablations. or GBDT predictor while leaving the rest of our system un-changed. The component ablations disable Constructor node fusion, disable near-ready prefetching, or make lifecycle de-cisions per workflow. The per-workflow lifecycle condition continues to share loaded replicas across workflows, but each workflow separately estimates reuse, orders waiting requests, and evaluates loading benefit. All three component ablations retain Predictor and the remaining mechanisms of our system. Across the three arrival processes, the full system reduces makespan by 1.0–3.0% over the GBDT substitution and 6.6– 36.3% over the formula-based substitution (Figure 7). Among the component ablations, restricting lifecycle decisions to one workflow increases makespan by 7.1–16.4%, while dis-abling node fusion raises p95 by 8.5–44.9% and makespan by 3.0–8.1%. Disabling prefetching also increases makespan in every setting. These results show that cross-workflow lifecycle coordination provides the largest makespan benefit, node fusion provides the strongest tail-latency benefit, and prefetching contributes consistently across arrival processes. 
+
+## 5 Related Work 
+
+Prediction. DNNPerf [12] uses a GNN to predict training time and GPU memory; PerfSeer [48] adds node, edge, and global features for multiple metrics. nn-Meter [47] sums ker-nel estimates on edge devices; Habitat [44] transfers measure-ments across GPUs; NeuSight [25] predicts unseen model– GPU pairs from hardware-bounded tiles. HELP [24] adapts from a few target measurements; LitePred [8] transfers ker-nel predictors across similar platforms. Predictor estimates run time, peak memory, and loading per model–request– device candidate for execution and lifecycle decisions. 
+
+DAG execution and transformation. DryadLINQ [45] compiles LINQ into distributed graphs; Tez [32] supplies a DAG runtime. Faastlane [21] co-locates serverless func-tions, while WiseFuse [28] profiles DAG fusion and task bundling. GMorph [42] searches feature-sharing mutations across pretrained DNNs; Mercury [13] compiles remote-memory-aware multi-GPU operator schedules. Construc-tor preserves Agent semantics while fusing deployment-identical chains and adding lifecycle vertices; Scheduler jointly selects bindings, placement, resource order, and cumulative memory. 
+
+Serving-state management. vLLM [22] uses PagedAtten-tion for shareable KV caches; ServerlessLLM [9] combines optimized checkpoints, tiered storage, and locality-aware scheduling to reduce startup latency. ELORA [34] jointly manages dependent LoRA–KV state; CrossPool [43] disaggre-gates stable FFN weights and transient KV state. KVFlow [29] evicts and prefetches KV state; PBKV [49] predicts reuse; TokenCake [2] protects critical-agent KV state and offloads it during tool calls. Concurrent workflows additionally require state transitions to account for dependency-driven readiness, future model demand, and heterogeneous device availabil-ity across the pool. Our system schedules model lifecycles against workflow reuse, contention, and cumulative pool occupancy. 
+
+Agent serving and scheduling. Parrot [26] uses Seman-tic Variables to connect LLM-call producers and consumers, exposing inter-request dependencies to the scheduler. Autel-lix [27] prioritizes calls by agent-program progress; Kairos [3] combines workflow-aware priority with memory-aware dis-patch. Ayo [35] exposes primitive-level parallelism; Ara-gog [7] selects accuracy-equivalent routes under load. Halo [33] consolidates batched DAGs for computation, cache reuse, and placement; SAGA [14] schedules workflows using predicted cross-tool-call reuse; Maestro [39] coordinates model co-location, routing, and priority across clusters. Most schedule ready calls or DAG units, leaving physical graph construc-tion and future lifecycle demand outside a unified planning loop. Scheduler jointly chooses fusion, lifecycle actions, bind-ing, placement, and resource order under cumulative pool state and replans from feedback. 
+
+## 6 Conclusion 
+
+We present a prediction-guided runtime for concurrent Agent workflows on heterogeneous GPUs. Our system separates logical semantics from state-dependent physical execution. Predictor estimates activation–device costs and readiness across model configurations and heterogeneous devices; Con-structor enumerates legal fusion and model-lifecycle alter-natives; and Scheduler selects and orders these alternatives under live pool state, revising uncommitted decisions from feedback. Across a workload spanning three workflow sce-narios, our system reduces burst makespan and overall p95 completion latency by up to 36.8% and 25.9%, respectively, over Parrot and Kairos, while saving up to 24.63 GPU-s per completed session. These results show the value of joint physical-graph and lifecycle orchestration. 
+
+> 10
+
+## Acknowledgments 
+
+We use generative AI tools, including Writefull and ChatGPT, to support the proofreading and language refinement. These tools help us identify grammatical errors, improve clarity and readability. 
+
+## References 
+
+[1] Jacob Austin, Augustus Odena, Maxwell Nye, Maarten Bosma, Henryk Michalewski, David Dohan, Ellen Jiang, Carrie Cai, Michael Terry, Quoc Le, and Charles Sutton. 2021. Program Synthesis with Large Language Models. arXiv preprint arXiv:2108.07732 (2021). doi: 10.48550/ arXiv.2108.07732 
+
+[2] Zhuohang Bian, Feiyang Wu, Zhuoran Li, Teng Ma, and Youwei Zhuo. 2025. TokenCake: A KV-Cache-Centric Serving Framework for LLM-Based Multi-Agent Applications. arXiv preprint arXiv:2510.18586. doi: 10.48550/arXiv.2510.18586 
+
+[3] Jinyuan Chen, Jiuchen Shi, Quan Chen, and Minyi Guo. 2025. Kairos: Low-latency Multi-Agent Serving with Shared LLMs and Excessive Loads in the Public Cloud. arXiv preprint arXiv:2508.06948 (2025). doi: 10.48550/arXiv.2508.06948 
+
+[4] Zehui Chen, Kuikun Liu, Qiuchen Wang, Jiangning Liu, Wen-wei Zhang, Kai Chen, and Feng Zhao. 2025. MindSearch: Mimicking Human Minds Elicits Deep AI Searcher. In Interna-tional Conference on Learning Representations (ICLR) , Vol. 2025. 90007–90029. https://proceedings.iclr.cc/paper_files/paper/2025/file/ e01c431bbb83153632c0dcfaf8ccda0a-Paper-Conference.pdf 
+
+[5] Marcin Chrapek, Marcin Copik, Etienne Mettaz, and Torsten Hoefler. 2025. Confidential LLM Inference: Performance and Cost Across CPU and GPU TEEs. In 2025 IEEE International Symposium on Workload Characterization (IISWC) . IEEE, 84–98. doi: 10.1109/IISWC66894.2025. 00017 
+
+[6] Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. 2021. Training Verifiers to Solve Math Word Problems. arXiv preprint arXiv:2110.14168 (2021). doi: 10.48550/arXiv.2110.14168 
+
+[7] Yinwei Dai, Zhuofu Chen, Anand Iyer, and Ravi Netravali. 2025. Ara-gog: Just-in-Time Model Routing for Scalable Serving of Agentic Work-flows. arXiv preprint arXiv:2511.20975. doi: 10.48550/arXiv.2511.20975 
+
+[8] Chengquan Feng, Li Lyna Zhang, Yuanchi Liu, Jiahang Xu, Chen-gruidong Zhang, Zhiyuan Wang, Ting Cao, Mao Yang, and Haisheng Tan. 2024. LitePred: Transferable and Scalable Latency Prediction for Hardware-Aware Neural Architecture Search. In 21st USENIX Sym-posium on Networked Systems Design and Implementation (NSDI 24) .USENIX Association, 1463–1477. https://www.usenix.org/conference/ nsdi24/presentation/feng-chengquan 
+
+[9] Yao Fu, Leyang Xue, Yeqi Huang, Andrei-Octavian Brabete, Dmitrii Ustiugov, Yuvraj Patel, and Luo Mai. 2024. ServerlessLLM: Low-Latency Serverless Inference for Large Language Models. In 18th USENIX Symposium on Operating Systems Design and Implementa-tion (OSDI 24) . USENIX Association, 135–153. https://www.usenix. org/conference/osdi24/presentation/fu 
+
+[10] Yichao Fu, Siqi Zhu, Runlong Su, Aurick Qiao, Ion Stoica, and Hao Zhang. 2024. Efficient LLM Scheduling by Learning to Rank. In 
+
+Advances in Neural Information Processing Systems , A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang (Eds.), Vol. 37. Curran Associates, Inc., 59006–59029. doi: 10.52202/ 079017-1882 
+
+[11] Dawei Gao, Zitao Li, Xuchen Pan, Weirui Kuang, Zhijian Ma, Bingchen Qian, Fei Wei, Wenhao Zhang, Yuexiang Xie, Daoyuan Chen, Liuyi Yao, Hongyi Peng, Zeyu Zhang, Lin Zhu, Chen Cheng, Hongzhu Shi, Yaliang Li, Bolin Ding, and Jingren Zhou. 2024. AgentScope: A Flexible yet Robust Multi-Agent Platform. arXiv preprint arXiv:2402.14034. doi: 10.48550/arXiv.2402.14034 
+
+[12] Yanjie Gao, Xianyu Gu, Hongyu Zhang, Haoxiang Lin, and Mao Yang. 2023. Runtime Performance Prediction for Deep Learning Models with Graph Neural Network. In Proceedings of the 45th International Conference on Software Engineering: Software Engineering in Practice (ICSE-SEIP) . IEEE, 368–380. doi: 10.1109/ICSE-SEIP58684.2023.00039 
+
+[13] Yue Guan, Xinwei Qiang, Zaifeng Pan, Daniels Johnson, Yuanwei Fang, Keren Zhou, Yuke Wang, Wanlu Li, Yufei Ding, and Adnan Aziz. 2025. Mercury: Unlocking Multi-GPU Operator Optimization for LLMs via Remote Memory Scheduling. In Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Principles (SOSP ’25) .ACM, 1046–1061. doi: 10.1145/3731569.3764798 
+
+[14] Dongxin Guo, Jikun Wu, and Siu Ming Yiu. 2026. SAGA: Workflow-Atomic Scheduling for AI Agent Inference on GPU Clusters. arXiv preprint arXiv:2605.00528. doi: 10.48550/arXiv.2605.00528 
+
+[15] Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Peiyi Wang, Qihao Zhu, Runxin Xu, Ruoyu Zhang, Shirong Ma, Xiao Bi, Xiaokang Zhang, Xingkai Yu, Yu Wu, Z. F. Wu, Zhibin Gou, Zhihong Shao, Zhuoshu Li, Ziyi Gao, Aixin Liu, Bing Xue, Bingxuan Wang, Bochao Wu, Bei Feng, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chong Ruan, Damai Dai, Deli Chen, Dongjie Ji, Erhang Li, Fangyun Lin, Fucong Dai, Fuli Luo, Guangbo Hao, Guanting Chen, Guowei Li, H. Zhang, Hanwei Xu, Honghui Ding, Huazuo Gao, Hui Qu, Hui Li, Jianzhong Guo, Jiashi Li, Jingchang Chen, Jingyang Yuan, Jinhao Tu, Junjie Qiu, Junlong Li, J. L. Cai, Jiaqi Ni, Jian Liang, Jin Chen, Kai Dong, Kai Hu, Kaichao You, Kaige Gao, Kang Guan, Kexin Huang, Kuai Yu, Lean Wang, Lecong Zhang, Liang Zhao, Litong Wang, Liyue Zhang, Lei Xu, Leyi Xia, Mingchuan Zhang, Minghua Zhang, Minghui Tang, Mingxu Zhou, Meng Li, Miaojun Wang, Mingming Li, Ning Tian, Panpan Huang, Peng Zhang, Qiancheng Wang, Qinyu Chen, Qiushi Du, Ruiqi Ge, Ruisong Zhang, Ruizhe Pan, Runji Wang, R. J. Chen, R. L. Jin, Ruyi Chen, Shanghao Lu, Shangyan Zhou, Shanhuang Chen, Shengfeng Ye, Shiyu Wang, Shuiping Yu, Shunfeng Zhou, Shuting Pan, S. S. Li, Shuang Zhou, Shaoqing Wu, Tao Yun, Tian Pei, Tianyu Sun, T. Wang, Wangding Zeng, Wen Liu, Wenfeng Liang, Wenjun Gao, Wenqin Yu, Wentao Zhang, W. L. Xiao, Wei An, Xiaodong Liu, Xiaohan Wang, Xiaokang Chen, Xiaotao Nie, Xin Cheng, Xin Liu, Xin Xie, Xingchao Liu, Xinyu Yang, Xinyuan Li, Xuecheng Su, Xuheng Lin, X. Q. Li, Xiangyue Jin, Xiaojin Shen, Xiaosha Chen, Xiaowen Sun, Xiaoxiang Wang, Xinnan Song, Xinyi Zhou, Xianzu Wang, Xinxia Shan, Y. K. Li, Y. Q. Wang, Y. X. Wei, Yang Zhang, Yanhong Xu, Yao Li, Yao Zhao, Yaofeng Sun, Yaohui Wang, Yi Yu, Yichao Zhang, Yifan Shi, Yiliang Xiong, Ying He, Yishi Piao, Yisong Wang, Yixuan Tan, Yiyang Ma, Yiyuan Liu, Yongqiang Guo, Yuan Ou, Yuduan Wang, Yue Gong, Yuheng Zou, Yujia He, Yunfan Xiong, Yuxiang Luo, Yuxiang You, Yuxuan Liu, Yuyang Zhou, Y. X. Zhu, Yanping Huang, Yaohui Li, Yi Zheng, Yuchen Zhu, Yunxian Ma, Ying Tang, Yukun Zha, Yuting Yan, Z. Z. Ren, Zehui Ren, Zhangli Sha, Zhe Fu, Zhean Xu, Zhenda Xie, Zhengyan Zhang, Zhewen Hao, Zhicheng Ma, Zhigang Yan, Zhiyu Wu, Zihui Gu, Zijia Zhu, Zijun Liu, Zilin Li, Ziwei Xie, Ziyang Song, Zizheng Pan, Zhen Huang, Zhipeng Xu, Zhongyu Zhang, and Zhen Zhang. 2025. DeepSeek-R1 incentivizes reasoning in LLMs through reinforcement learning. Nature 645, 8081 (2025), 633–638. doi: 10.1038/ s41586-025-09422-z 
+
+[16] Sirui Hong, Mingchen Zhuge, Jonathan Chen, Xiawu Zheng, Yuheng Cheng, Ceyao Zhang, Jinlin Wang, Zili Wang, Steven Ka Shing Yau, Zijuan Lin, Liyang Zhou, Chenyu Ran, Lingfeng Xiao, Chenglin Wu, and Jürgen Schmidhuber. 2024. MetaGPT: Meta Program-ming for A Multi-Agent Collaborative Framework. In Interna-tional Conference on Learning Representations (ICLR) , Vol. 2024. 23247–23275. https://proceedings.iclr.cc/paper_files/paper/2024/file/ 6507b115562bb0a305f1958ccc87355a-Paper-Conference.pdf 
+
+11 Wang et al. 
+
+[17] Zirui Huang, Yi-Xiang Hu, Feng Wu, and Xiang-Yang Li. 2026. FATE: Future-State-Aware Scheduling for Heterogeneous LLM Workflows. arXiv preprint arXiv:2605.07238. doi: 10.48550/arXiv.2605.07238 
+
+[18] Alex Jones. 2026. llmfit. Official GitHub repository. Accessed: 2026-08-03. https://github.com/AlexsJones/llmfit 
+
+[19] Guolin Ke, Qi Meng, Thomas Finley, Taifeng Wang, Wei Chen, Wei-dong Ma, Qiwei Ye, and Tie-Yan Liu. 2017. LightGBM: A Highly Efficient Gradient Boosting Decision Tree. In Advances in Neural In-formation Processing Systems , Vol. 30. Curran Associates, Inc., 3146– 3154. https://proceedings.neurips.cc/paper_files/paper/2017/hash/ 6449f44a102fde848669bdd9eb6b76fa-Abstract.html 
+
+[20] Jonathan Knoop and Hendrik Holtmann. 2026. Private LLM Inference on Consumer Blackwell GPUs: A Practical Guide for Cost-Effective Local Deployment in SMEs. arXiv preprint arXiv:2601.09527. doi: 10. 48550/arXiv.2601.09527 
+
+[21] Swaroop Kotni, Ajay Nayak, Vinod Ganapathy, and Arkaprava Basu. 2021. Faastlane: Accelerating Function-as-a-Service Workflows. In 
+
+2021 USENIX Annual Technical Conference (USENIX ATC 21) . USENIX Association, 805–820. https://www.usenix.org/conference/atc21/ presentation/kotni 
+
+[22] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the ACM SIGOPS 29th Symposium on Operating Systems Principles (SOSP) . 611–626. doi: 10. 1145/3600006.3613165 
+
+[23] LangChain. 2026. LangGraph Overview. LangChain Documentation. Last updated: 2026-07-24; accessed: 2026-08-03. https://docs.langchain. com/oss/python/langgraph/overview 
+
+[24] Hayeon Lee, Sewoong Lee, Song Chong, and Sung Ju Hwang. 2021. Hardware-adaptive Efficient Latency Prediction for NAS via Meta-Learning. In Advances in Neural Information Processing Systems (NeurIPS) , Vol. 34. Curran Associates, Inc., 27016–27028. https://proceedings.neurips.cc/paper/2021/hash/ e3251075554389fe91d17a794861d47b-Abstract.html 
+
+[25] Seonho Lee, Amar Phanishayee, and Divya Mahajan. 2025. Forecast-ing GPU Performance for Deep Learning Training and Inference. In 
+
+Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 .493–508. doi: 10.1145/3669940.3707265 
+
+[26] Chaofan Lin, Zhenhua Han, Chengruidong Zhang, Yuqing Yang, Fan Yang, Chen Chen, and Lili Qiu. 2024. Parrot: Efficient Serving of LLM-based Applications with Semantic Variable. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI 24) . USENIX Association, 929–945. https://www.usenix.org/conference/osdi24/ presentation/lin-chaofan 
+
+[27] Michael Luo, Xiaoxiang Shi, Colin Cai, Tianjun Zhang, Justin Wong, Yichuan Wang, Chi Wang, Yanping Huang, Zhifeng Chen, Joseph E. Gonzalez, and Ion Stoica. 2025. Autellix: An Efficient Serving Engine for LLM Agents as General Programs. arXiv preprint arXiv:2502.13965. doi: 10.48550/arXiv.2502.13965 
+
+[28] Ashraf Mahgoub, Edgardo Barsallo Yi, Karthick Shankar, Eshaan Minocha, Sameh Elnikety, Saurabh Bagchi, and Somali Chaterji. 2022. WiseFuse: Workload Characterization and DAG Transformation for Serverless Workflows. Proceedings of the ACM on Measurement and Analysis of Computing Systems 6, 2 (2022), 1–28. doi: 10.1145/3530892 
+
+[29] Zaifeng Pan, Ajjkumar Dahyalal Patel, Yipeng Shen, Zhengding Hu, Yue Guan, Wan-Lu Li, Lianhui Qin, Yida Wang, and Yufei Ding. 2025. KVFlow: Efficient Prefix Caching for Accelerating LLM-Based Multi-Agent Workflows. In Advances in Neural Infor-mation Processing Systems , Vol. 38. Curran Associates, Inc., 126246– 126265. https://proceedings.neurips.cc/paper_files/paper/2025/file/ b7971d31a7d5eb0f1eed2f8f6f368195-Paper-Conference.pdf 
+
+[30] Chen Qian, Wei Liu, Hongzhang Liu, Nuo Chen, Yufan Dang, Jiahao Li, Cheng Yang, Weize Chen, Yusheng Su, Xin Cong, Juyuan Xu, Dahai Li, Zhiyuan Liu, and Maosong Sun. 2024. ChatDev: Communicative Agents for Software Development. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . Association for Computational Linguistics, 15174–15186. doi: 10.18653/v1/2024.acl-long.810 
+
+[31] Haoran Qiu, Weichao Mao, Archit Patke, Shengkun Cui, Saurabh Jha, Chen Wang, Hubertus Franke, Zbigniew Kalbarczyk, Tamer Başar, and Ravishankar K. Iyer. 2024. Power-aware Deep Learning Model Serving with 𝜇 -Serve. In 2024 USENIX Annual Technical Conference (USENIX ATC 24) . USENIX Association, Santa Clara, CA, 75–93. https: //www.usenix.org/conference/atc24/presentation/qiu 
+
+[32] Bikas Saha, Hitesh Shah, Siddharth Seth, Gopal Vijayaraghavan, Arun C. Murthy, and Carlo Curino. 2015. Apache Tez: A Unifying Framework for Modeling and Building Data Processing Applications. In Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data . ACM, 1357–1369. doi: 10.1145/2723372.2742790 
+
+[33] Junyi Shen, Noppanat Wadlom, and Yao Lu. 2025. Batch Query Pro-cessing and Optimization for Agentic Workflows. arXiv preprint arXiv:2509.02121. doi: 10.48550/arXiv.2509.02121 
+
+[34] Jiuchen Shi, Hang Zhang, Yixiao Wang, Quan Chen, Yizhou Shan, Kaihua Fu, Wei Wang, and Minyi Guo. 2026. ELORA: Efficient LoRA and KV Cache Management for Multi-LoRA LLM Serving. In 2026 IEEE International Symposium on High Performance Computer Architecture (HPCA) . IEEE, 1–14. doi: 10.1109/HPCA68181.2026.11408492 
+
+[35] Xin Tan, Yimin Jiang, Yitao Yang, and Hong Xu. 2025. Towards End-to-End Optimization of LLM-based Applications with Ayo. In Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS), Volume 2 .1302–1316. doi: 10.1145/3676641.3716278 
+
+[36] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and Guillaume Lample. 2023. LLaMA: Open and Efficient Foundation Language Models. arXiv preprint arXiv:2302.13971 (2023). doi: 10.48550/arXiv.2302.13971 
+
+[37] vLLM Team. 2026. Optimization and Tuning. vLLM Documentation. Last updated: 2026-07-07; accessed: 2026-08-03. https://docs.vllm.ai/ en/latest/configuration/optimization/ 
+
+[38] Haoxin Wang, Xiaolong Tu, Hongyu Ke, Huirong Chai, Dawei Chen, and Kyungtae Han. 2025. lm-Meter: Unveiling Runtime Inference Latency for On-Device Language Models. In Proceedings of the Tenth ACM/IEEE Symposium on Edge Computing (SEC ’25) . ACM, 1–17. doi: 10. 1145/3769102.3770614 
+
+[39] Jinghao Wang, Xiao Zhou, Xiaoyang Sun, Yihui Zhang, Yilong Li, Tianyu Wo, Xu Wang, Chunming Hu, and Renyu Yang. 2026. Mae-stro: Workload-Aware Cross-Cluster Scheduling for LLM-Based Multi-Agent Systems. arXiv preprint arXiv:2606.12950. Accepted to the 46th IEEE International Conference on Distributed Computing Systems (ICDCS 2026). doi: 10.48550/arXiv.2606.12950 
+
+[40] Qingyun Wu, Gagan Bansal, Jieyu Zhang, Yiran Wu, Beibin Li, Erkang Zhu, Li Jiang, Xiaoyun Zhang, Shaokun Zhang, Jiale Liu, Ahmed Has-san Awadallah, Ryen W. White, Doug Burger, and Chi Wang. 2023. Au-toGen: Enabling Next-Gen LLM Applications via Multi-Agent Conver-sation. arXiv preprint arXiv:2308.08155. doi: 10.48550/arXiv.2308.08155 
+
+[41] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Dayiheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jing Zhou, Jingren Zhou, Junyang Lin, Kai Dang, Keqin Bao, Kexin Yang, Le Yu, Lianghao Deng, Mei Li, Mingfeng Xue, Mingze Li, Pei Zhang, Peng Wang, Qin Zhu, Rui Men, Ruize Gao, Shixuan Liu, Shuang Luo, Tianhao Li, Tianyi Tang, Wenbiao Yin, 12 Xingzhang Ren, Xinyu Wang, Xinyu Zhang, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yinger Zhang, Yu Wan, Yuqiong Liu, Zekun Wang, Zeyu Cui, Zhenru Zhang, Zhipeng Zhou, and Zihan Qiu. 2025. Qwen3 Technical Report. arXiv preprint arXiv:2505.09388 (2025). doi: 10.48550/arXiv.2505.09388 
+
+[42] Qizheng Yang, Tianyi Yang, Mingcan Xiang, Lijun Zhang, Haoliang Wang, Marco Serafini, and Hui Guan. 2024. GMorph: Accelerating Multi-DNN Inference via Model Fusion. In Proceedings of the Nine-teenth European Conference on Computer Systems (EuroSys ’24) . ACM, 505–523. doi: 10.1145/3627703.3650074 
+
+[43] Zhuoren Ye, Tianyu Wo, Dinghao Xue, Mingming Zhang, Yuchen Teng, Chunming Hu, and Renyu Yang. 2026. CrossPool: Efficient Multi-LLM Serving for Cold MoE Models through KV-Cache and Weight Disaggregation. arXiv preprint arXiv:2606.24506. doi: 10.48550/arXiv. 2606.24506 
+
+[44] Geoffrey X. Yu, Yubo Gao, Pavel Golikov, and Gennady Pekhimenko. 2021. Habitat: A Runtime-Based Computational Performance Predictor for Deep Neural Network Training. In 2021 USENIX Annual Technical Conference (USENIX ATC 21) . USENIX Association, 503–521. https: //www.usenix.org/conference/atc21/presentation/yu 
+
+[45] Yuan Yu, Michael Isard, Dennis Fetterly, Mihai Budiu, Úlfar Erlings-son, Pradeep Kumar Gunda, and Jon Currey. 2008. DryadLINQ: A System for General-Purpose Distributed Data-Parallel Computing Us-ing a High-Level Language. In 8th USENIX Symposium on Operating Systems Design and Implementation (OSDI 08) . USENIX Association, 1–14. https://www.usenix.org/conference/osdi-08/dryadlinq-system-general-purpose-distributed-data-parallel-computing-using-high 
+
+[46] Matei Zaharia, Omar Khattab, Lingjiao Chen, Jared Quincy Davis, Heather Miller, Chris Potts, James Zou, Michael Carbin, Jonathan Frankle, Naveen Rao, and Ali Ghodsi. 2024. The Shift from Models to Compound AI Systems. Berkeley Artificial Intelligence Research (BAIR) Blog. https://bair.berkeley.edu/blog/2024/02/18/compound-ai-systems/ 
+
+[47] Li Lyna Zhang, Shihao Han, Jianyu Wei, Ningxin Zheng, Ting Cao, Yuqing Yang, and Yunxin Liu. 2021. nn-Meter: Towards Accurate Latency Prediction of Deep-Learning Model Inference on Diverse Edge Devices. In Proceedings of the 19th Annual International Conference on Mobile Systems, Applications, and Services (MobiSys) . 81–93. doi: 10. 1145/3458864.3467882 
+
+[48] Xinlong Zhao, Jiande Sun, Jia Zhang, Tong Liu, and Ke Liu. 2025. PerfSeer: An Efficient and Accurate Deep Learning Models Perfor-mance Predictor. In Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) . International Joint Conferences on Artificial Intelligence Organization, 7128–7136. doi: 10.24963/ijcai.2025/793 
+
+[49] Haoyu Zheng, Fangcheng Fu, Jia Wu, Binhang Yuan, Yongqiang Zhang, Hao Wang, Yuanyuan Zhu, Xiao Yan, and Jiawei Jiang. 2026. Efficient Serving for Dynamic Agent Workflows with Prediction-Based KV-Cache Management. arXiv preprint arXiv:2605.06472. doi: 10.48550/ arXiv.2605.06472 
+
+[50] Ming Zhong, Da Yin, Tao Yu, Ahmad Zaidi, Mutethia Mutuma, Rahul Jha, Ahmed Hassan Awadallah, Asli Celikyilmaz, Yang Liu, Xipeng Qiu, and Dragomir Radev. 2021. QMSum: A New Benchmark for Query-based Multi-domain Meeting Summarization. In Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies . Association for Computational Linguistics, 5905–5921. doi: 10.18653/v1/2021.naacl-main.472 
+
+13

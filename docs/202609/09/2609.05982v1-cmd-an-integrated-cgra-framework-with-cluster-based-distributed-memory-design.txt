@@ -1,0 +1,780 @@
+Title: CMD: An Integrated CGRA Framework with Cluster-Based Distributed Memory Design
+
+URL Source: https://arxiv.org/pdf/2609.05982v1
+
+Published Time: Wed, 09 Sep 2026 00:34:30 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+> Accepted by ICCD 2026
+
+# CMD: An Integrated CGRA Framework with Cluster-Based Distributed Memory Design 
+
+Shangkun Li ∗, Cheng Tan †‡ , Zeyu Li ∗, Jinming Ge ∗, Jiawei Liang ∗, Hao Yang §,Linfeng Du ∗, Jiang Xu ¶, Wei Zhang ∗B
+
+∗The Hong Kong University of Science and Technology, Hong Kong SAR, China 
+
+†Google, Mountain View, USA ‡Arizona State University, Tempe, USA 
+
+§The George Washington University, Washington, D.C., USA 
+
+¶The Hong Kong University of Science and Technology (Guangzhou), Guangzhou, China 
+
+{shangkun.li, zliki, jgeab, jliangbr, linfeng.du }@connect.ust.hk chengtan@google.com, hao.yang@gwu.edu, jiang.xu@hkust-gz.edu.cn, wei.zhang@ust.hk 
+
+Abstract —Coarse-Grained Reconfigurable Arrays (CGRAs) are a promising solution for achieving high energy efficiency and reconfigurability across various application domains, but their performance is often crippled by rigid memory architectures that limit the number and location of tiles that can access data memory. This creates a significant bottleneck for kernels with intensive memory accesses. To address this, we propose CMD, an integrated CGRA framework featuring cluster-based distributed memory design with a co-designed compilation toolchain. The compiler includes a novel memory-aware mapper and a design space exploration (DSE) mechanism that identifies the optimal memory architecture design for specific kernels. Experimental results show that our post-DSE CMD CGRAs achieve an average speedup of 1.39 × over a conventional CGRA while simultane-ously reducing the total area to an average of 0.912 × of the conventional CGRA. 
+
+Index Terms —CGRA, Memory Architecture, Mapping. 
+
+I. I NTRODUCTION 
+
+Coarse-Grained Reconfigurable Arrays (CGRAs) are accel-erators consisting of an array of computing tiles interconnected via a Network-on-Chip (NoC). They strike a balance between high flexibility and energy efficiency [1], making them preva-lent for accelerating applications across domains from high-performance computing (HPC) [2] to machine learning (ML) [3]. To accelerate kernels (typically performance-critical loop nests in an application), the compiler first transforms them into Data Flow Graphs (DFGs) [4]–[6] and then maps these DFGs onto the CGRA. The primary goal of this mapping is to minimize the initiation interval (II) — the number of cycles between the start of successive loop iterations — as it directly impacts total execution latency. However, the performance of CGRAs on kernels with mem-ory access operations is often bottlenecked by the memory architecture. Most existing CGRAs use a global data memory adjacent to the tile array, allowing specific tiles to access memory each cycle. Two commonly used memory access methods are shown in Fig. 1: (1) The tile-based method [7], [8] restricts memory access to a few fixed tiles — typically those in the row or column closest to the data memory — forcing data needed by other tiles to be relayed across the 
+
+B Corresponding author: Wei Zhang (wei.zhang@ust.hk). (a) Tile-based method (b) HW arbitration-based method 
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile Tile Tile Tile Tile 
+
+> Data Memory
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile Tile Tile Tile Tile 
+
+> Data Memory
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile Data Memory Tile Tile Tile Tile 
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile 
+
+Tile Tile Tile Tile Data Memory 
+
+Fig. 1. Memory access methods — (a) Tile-based method that enables the leftmost column to access the data memory. (b) HW arbitration-based method that enables one tile from each row to access the data memory in each cycle. 
+
+tile array. This creates severe routing pressure, which in turn inflates the II and degrades computation efficiency; (2) The 
+
+HW/SW arbitration-based method [9], [10] either uses a hardware arbiter to select one tile per row or column to access the memory each cycle, or relies on the compiler to statically schedule non-conflicting memory accesses. While this method allows more tiles to potentially access memory, it still limits the number of tiles that can access memory each cycle. Specifically, when multiple tiles in the same row or column contend for memory access in the same cycle, this conflict forces some memory requests to be deferred or rerouted, increasing latency and data movement overhead. Fundamentally limited by a centralized memory system, both methods struggle to provide the parallel, low-latency data access required by many applications. Overcoming this bottle-neck necessitates a paradigm shift to a distributed architecture with a co-designed compilation framework to fully exploit it. In this paper, we take a significant step toward addressing these challenges by proposing CMD — An Integrated CGRA Framework with Cluster-Based Distributed Memory Design. Our key contributions are summarized as follows: 
+
+• A Cluster-Based Distributed Memory Architecture for CGRAs that alleviates memory access bottlenecks, fea-turing a lightweight controller to ensure coherence across distributed memory units. To the best of our knowledge, CMD is the first work to integrate distributed memory architecture design into a spatio-temporal CGRA; arXiv:2609.05982v1 [cs.AR] 5 Sep 2026 Accepted by ICCD 2026 
+
+• A Memory-Aware Kernel Mapper that efficiently maps operations and variables of kernels onto the CMD CGRA; 
+
+• A Memory Architecture DSE Mechanism that automat-ically finds an optimal memory architecture design for a set of kernels from a domain or an application. II. B ACKGROUND AND MOTIVATION 
+
+A. Mapping Constraints in CGRAs 
+
+When using CGRAs to accelerate kernels, two main con-straints heavily impact the mapping results: one arises from modulo scheduling [11], and the other stems from the limi-tations in conventional CGRA memory architectures. Accel-erating applications on CGRAs involves mapping the DFGs onto the MRRG with the goal of minimizing the II, which means a new loop iteration starts every II cycles [12]. This leads to inherent mapping constraints , as the configuration of a CGRA repeats every II cycles. In a CGRA that uses the tile-based memory access method, as shown in Fig. 2(c), only the tiles in the leftmost column are allowed to access memory. This limits both the number (i.e., two) and the positions (i.e., the leftmost column) of tiles that can access memory, thereby introducing the routing constraints during the spatio-temporal mapping [4]. In architectures using the HW/SW arbitration-based memory access method, while each tile can theoretically access memory, the arbiter also restricts the number (i.e., one per row/column) and positions (determined by the HW/SW arbiter) of tiles that can access memory in each cycle. Thus, similar routing constraints still exist. 
+
+B. Memory Bottlenecks in Conventional CGRA 
+
+This work focuses on the routing constraint , which directly leads to two critical performance bottlenecks. We illustrate this by mapping a simple vector operation onto a 2 × 2 con-ventional CGRA with the tile-based memory access method (the leftmost column of tiles can access data memory) using a heuristic mapping algorithm [5], as shown in Fig. 2(a)-(c). 
+
+Long II — The theoretical minimum II (MII) for this kernel is 4, determined by loop recurrence dependencies ( RecM II )and computation resources ( ResM II ) [12]. 
+
+M II = max {RecM II, ResM II } (1) However, the mapping result in Fig. 2(c) shows an II of 5. This gap arises because the routing constraint is not captured by Eq. (1). Ideally, if nodes n13 and n14 could be executed in the same cycle, we could complete all four memory access operations in two cycles and leave the rest of the tiles for other operations, thereby improving performance. Unfortunately, the 
+
+routing constraint forces memory access operations (e.g., 
+
+n13 , n14 ) to queue up for the limited memory access resources, which stalls the computational operations that depend on them, preventing the mapper from fully utilizing the computational resources of the rest of the array (e.g., many tiles in Fig. 2(c) are only used for relaying data). This inflated II directly increases the latency calculated by Eq. (2), where T ripCounts 
+
+is the loop iteration count and Steps is the execution cycles per iteration. 
+
+Latency = II × (T ripCounts − 1) + Steps (2) 1: int A[32], B[32], C[32], D[32];   
+
+> 2: for (int i = 0; i < 32; i++) { 3: C[i] = A[i] + B[i];
+> 4: D[i] = A[i] * B[i]; }
+
+(a) Example Kernel 
+
+(b) DFG of Example Kernel (c) Conventional CGRA (d) CMD CGRA 
+
+> II = 5
+> Cycle
+> n+0
+> Cycle
+> n+1 Cycle n+2 Cycle n+3 Cycle n+4
+> II = 4
+> Data Mem 0
+> Data Mem 1
+
+(e) Evaluation Metrics of gemm on 6×6 CMD CGRA with Different Cluster Sizes 
+
+Cluster Size 
+
+Normalized Speedup Total Memory Size (Size×#Mem) 
+
+Memory Usage Ratio (MUR) Capacity Occupied Ratio (COR) 
+
+Computation Efficiency 
+
+16×36 KB 11.15× 8.33% 
+
+57.4% 
+
+37.5% 
+
+2 4 61.33× 1.33× 1.56× 16×18 KB 16×9 KB 16×6 KB 22.2% 44.4% 50.0% 
+
+43.1% 43.1% 57.4% 21.1% 35.1% 44.6% 
+
+> Data Mem Data Mem Data Mem Data Mem Data Mem Data Mem 0
+> Data Mem 1 Data Mem 0 Data Mem 1 Data Mem 0
+> Data Mem 1
+
+Iteration i-1 
+
+Iteration i Iteration i+1        
+
+> +(n2) gep
+> (n3) gep (n4) br (n0)
+> phi
+> (n1) cmp (n5) ld (n6)
+> ld
+> (n7)
+> ret
+> (n15) store
+> (n13)
+> store
+> (n14)
+> br
+> (n8) gep
+> (n9)
+> *
+> (n10)
+> +
+> (n11)
+> gep
+> (n12) n9 n2 n0
+> n7 n6 n5 n11
+> n8
+> n15 n10 n14 n1
+> n13 n3
+> n12 n4
+> n0 n2 n10 n3 n9 n5
+> n4 n12 n8 n6
+> n14 n7 n13 n1 n15 n11
+
+Fig. 2. Motivation Example — (a) A vector operation kernel. (b) DFG of the kernel. Blue represents boundary-related operations. Green represents loop control operations. Grey denotes computational operations, where gep 
+
+stands for the GetElementPtr [13] operation. Orange indicates memory access operations. (c) Mapping the DFG onto a conventional CGRA. White tiles indicate tiles that are solely used for data transfer. (d) Mapping the EDFG (Extended-DFG, DFG with variable nodes) onto a CMD CGRA. (e) Mapping the EDFG of gemm onto 6 × 6 CMD CGRAs with varying cluster sizes and the same memory unit size (16 KB). 
+
+Low Computation Efficiency — As shown in Fig. 2(c), during cycles n + 0 to n + 2 , several tiles are used only for data transfer rather than executing operations. To quantify this, we define computation efficiency as: 
+
+CompEf f = 1
+
+II 
+
+II −1X
+
+i=0 
+
+N iop 
+
+N iop + N itr 
+
+(3) As defined in Eq. (3), where parameters are detailed in Table I, a high number of transfer-only tiles (i.e., N itr ) reduces efficiency. This inefficiency is a direct consequence of the 
+
+routing constraint . Since few tiles can access memory, other tiles are wasted on relaying data across the array, leaving fewer tiles for executing operations in each cycle, leading to poor parallelism and, consequently, higher latency. The problem is exacerbated in larger CGRAs (e.g., 6 × 6), where tiles farther from memory require more intermediate routing steps, further degrading computation efficiency. 
+
+Benefits of CMD CGRA — Our proposed CMD CGRA directly addresses these bottlenecks. By organizing every two tiles into a cluster, each cluster has a memory unit accessible by the two tiles, which alleviates the routing constraint 
+
+efficiently. As shown in Fig. 2(d), this design allows mapping the Extended-DFG (EDFG, DFG with variable nodes, detailed in Sec. IV-A) onto the CMD CGRA with the optimal II of 4 and 100% computation efficiency, yielding a 1.21 × speedup Accepted by ICCD 2026 
+
+TABLE I SUMMARY FOR EVALUATION METRICS 
+
+Metrics Parameters Descriptions 
+
+CompEf f N iop # of tiles for operations in cycle iN itr # of tiles solely for data transfer in cycle iCtotal Ci Capacity of memory unit iM U R Noccupy # of occupied memory units 
+
+N # of all memory units 
+
+COR Cioccupy Occupied size of memory unit i
+
+over the conventional design in Fig. 2(c). 
+
+C. Design Space Exploration Opportunity 
+
+While powerful, the CMD CGRA’s performance is sensitive to memory design parameters (i.e., the cluster size and mem-ory unit size) due to diverse memory access patterns and data characteristics. We demonstrate this by mapping a gemm onto a 
+
+6×6 CMD CGRA with different cluster sizes. To demonstrate the impact of the cluster size, we fix the single memory unit size at 16 KB, as it — not the total size — directly influences the memory-aware mapping. To formally analyze the mapping results, we introduce three metrics (parameters detailed in Table I). The Total Memory Size ( Ctotal ) and 
+
+Memory Usage Ratio (MUR) are defined as: 
+
+Ctotal =
+
+NX
+
+i=1 
+
+Ci (4) M U R = Noccupy 
+
+N (5) A higher MUR indicates that more memory units are in use. We can use it to guide the selection of an appropriate cluster size for a given CGRA size. Capacity Occupied Ratio (COR) 
+
+is defined as: 
+
+COR =
+
+PNi=1 Cioccupy 
+
+PNi=1 αiCi
+
+, α i =
+
+(1, if M em i is occupied 
+
+0, otherwise 
+
+(6) COR evaluates the utilization of capacity in occupied memory units. It helps identify potential resource waste caused by mismatches between variable size and memory unit size. Fig. 2(e) shows that performance (e.g., Speedup) and hard-ware efficiency (e.g., MUR, COR, etc.) vary dramatically with different cluster sizes. A poorly chosen configuration (e.g., cluster size = 1) may achieve low speedup (i.e, 1.15 ×). Fig. 2(e) also highlights variations in MUR, COR, and computation efficiency. Since both cluster size and memory unit size signif-icantly impact the mapping results, a one-size-fits-all approach is insufficient. Therefore, to maximize performance while minimizing hardware overhead, a systematic DSE mechanism to co-optimize cluster size and memory unit size is essential for designing effective CMD CGRAs. III. CMD A RCHITECTURE 
+
+Fig. 3(a) gives an overview of the CMD CGRA, operating as a loosely coupled accelerator controlled by a CPU. Fig. 3(b) shows a 6 × 6 CMD CGRA, with tiles grouped into clusters of four tiles and each cluster sharing a local memory unit (detailed in Sec. III-A). A memory coherence controller (detailed in Sec. III-B) maintains coherence across distributed memory units. Each tile contains function units that support LLVM [14] IR operations, a control memory, a 6×12 crossbar, eight register sets, and four bypass buffers (Fig. 3(e)). The tiles are interconnected in a mesh-style topology [15]. 
+
+A. Distributed Memory Architecture 
+
+To address the routing constraint in conventional CGRAs, we propose a cluster-based distributed memory architec-ture . In this design, the CGRA is partitioned into clusters, where a group of tiles shares a dedicated memory unit, as shown in Fig. 3(b). Each tile is restricted to accessing its local cluster’s memory unit, subject to certain constraints (detailed in Sec. IV-B). This significantly alleviates the constraints on the number and location of tiles that can access memory in conventional CGRAs. Our evaluation explores cluster sizes of 
+
+{1, 2, 4, 6} for a 6 × 6 CMD CGRA. Other cluster sizes can also be supported based on user configurations. 
+
+Memory Unit Design — As shown in Fig. 3(d), the mem-ory unit comprises a multi-bank data memory, with the number of banks matching the cluster size to enable simultaneous access from all tiles within the cluster, an arbiter for memory accesses, and a coherence module that works alongside the memory controller. We guarantee that kernels’ variables fit into these memory units (e.g., using tiling). The coherence module monitors write operations. Upon detecting a write operation, it generates and sends a comprehensive signal packet (e.g., 
+
+68 × 4 bits in Fig. 3(c)) to the memory coherence controller. This packet contains the necessary information to maintain memory coherence, including which variable is modified, the specific index within the variable, the new value, etc. These memory units are loaded with data by the DMA Unit during configuration. 
+
+B. Memory Controller 
+
+Since a variable may be needed by tiles in multiple clusters, it may be stored in several memory units. This distribution necessitates a coherence mechanism to synchronize data af-ter modifications. To address this, we introduce a memory coherence controller that implements a MESI-like protocol [16]. Since tile operations in every cycle are determined in the memory-aware mapping under certain rules (detailed in Sec. IV-B), and combined with the proposed memory coherence controller, the overall memory consistency is guaranteed. 
+
+Variable Information Table — As shown in Fig. 3(c), the memory controller maintains memory coherence through a varInf oT able , which tracks every variable instance across the memory units. For each variable instance, the table records which memory unit it’s in, its state ( modif ied (M), exclusive 
+
+(E), shared (S), and invalid (I)), the update details if modi-fied (i.e., the index of the written data and the new value), and the head address of the variable in the memory unit. For example, as shown in Fig. 3(c), writing to variable C in memory unit 3 changes its state to M odif ied (M) while its other shared copy in memory unit 9 becomes Invalid (I), with the table logging the precise index and value of the change. This table is initialized by the DMA Unit during configuration. 
+
+Memory Coherence Mechanism — As a single-cycle im-plementation would degrade system frequency, while a longer Accepted by ICCD 2026 Control Signals Data Memory 
+
+Arbiter DMA Unit 
+
+> ...
+> 68 x 4
+> ...
+
+varInfoTable Function Units 
+
+> Regs Regs Regs
+
+... 
+
+(a) CPU-CGRA SoC (b) 6×6 CMD CGRA with Cluster Size = 4 (e) CMD Tile Design (d) CMD Memory Unit Design (c) Memory Controller Workflow 
+
+> Memory Controller
+> CGRA Accelerator
+
+CPU 
+
+Accelerator Respond Accelerator Cmd DMA Ctrl Data Contrl Memory Unit 
+
+DMA Unit Memory 
+
+Coherence 
+
+Module 
+
+N
+
+E
+
+SW                
+
+> Bypass
+> Buffers
+> Mem  32 Var Mem State Index Value
+> ABB
+> CC
+> 12
+> 439
+> ESS
+> 32
+> ... ... ... ... ...
+> Add.
+> MSMS
+> ISIS
+> Cycle 1 Cycle 2
+> Information
+> Dispatcher
+> 1
+> Step Dataflow
+> Step
+> Dataflow
+> Coherence
+> Manager
+> Coherence
+> Manager
+> 3
+> 241234
+
+Initialization 
+
+Tile Tile Tile Tile 
+
+> Mem 1
+
+Tile Tile Tile Tile 
+
+> Mem 2
+
+Tile Tile Tile Tile Tile Tile Tile Tile 
+
+> Mem
+> 4
+
+Tile Tile Tile Tile 
+
+> Mem 5
+
+Tile Tile Tile Tile 
+
+> Mem
+> 6
+
+Tile Tile Tile Tile 
+
+> Mem
+> 6
+
+Tile Tile Tile Tile 
+
+> Mem
+> 7
+
+Tile Tile Tile Tile 
+
+> Mem
+> 8
+
+Tile Tile Tile Tile 
+
+> Mem
+> 9
+> Memory Controller
+> Mem 3
+
+Tile Tile Tile Tile 
+
+> Mem 1
+
+Tile Tile Tile Tile 
+
+> Mem 2
+
+Tile Tile Tile Tile Tile Tile Tile Tile 
+
+> Mem
+> 4
+
+Tile Tile Tile Tile 
+
+> Mem 5
+
+Tile Tile Tile Tile 
+
+> Mem
+> 6
+
+Tile Tile Tile Tile 
+
+> Mem
+> 7
+
+Tile Tile Tile Tile 
+
+> Mem
+> 8
+
+Tile Tile Tile Tile 
+
+> Mem
+> 9
+> Memory Controller
+> Mem 3
+
+6 x 12 6 x 12 
+
+> Coalescing
+> Unit Coalesicng
+> Unit
+
+Fig. 3. CMD Architecture — (a) The CMD CGRA is loosely coupled with the CPU, with the DMA Unit transferring data and control signals to the tiles, memory units, and memory controller. (b) In the CMD CGRA with a cluster size of 4, four tiles in each cluster share a memory unit, and all memory units connect to a memory controller. (c) The CMD memory controller collects signals generated by the coherence module in each memory unit and maintains a varInf oT able to ensure memory coherence. (d) Each memory unit consists of a multi-bank data memory, a hardware arbiter, and a memory coherence module. (e) Each tile contains a function unit, a control memory, a 6 × 12 crossbar, eight register sets, and four bypass buffers. 
+
+delay would harm performance, we design a four-step memory controller that completes in two cycles to strike a balance, as shown in Fig. 3(c). The process to handle a write operation, such as changing C[3] in memory unit 3 to 2, unfolds as follows. In Cycle 1, the information dispatcher interprets the input signal packet and updates the varInf oT able – setting 
+
+C’s state in unit 3 to M odif ied (M) and its shared copy in unit 9 to Invalid (I), recording the index and new value (Step 
+
+1 ) – and then broadcasts an invalidation signal to unit 9 to invalidate unsynchronized variables (Step 2 ). In Cycle 2, the coherence manager identifies the Invalid instances, generates a synchronization request with the new value, and updates the table state for both copies to Shared (S) (Step 3 ). Finally, it sends this request to unit 9 to update its local data (Step 4 ). IV. CMD C OMPILATION TOOLCHAIN 
+
+The CMD compilation toolchain consists of two compo-nents: kernel mapping and memory architecture DSE. As shown in Fig. 4(b), the mapping flow first constructs aDFG/EDFG and generates the MRRG/Extended-MRRG (EM-RRG, adding memory architecture information to the MRRG) based on the input architecture specifications. It then maps the DFG/EDFG onto the MRRG/EMRRG. Our mapping al-gorithm extends a heuristic mapping [5] with a proposed memory-aware mechanism. For conventional CGRAs, this mechanism is disabled, mapping the DFG onto the MRRG. For CMD CGRAs, it is enabled to map the EDFG onto the EMRRG. The memory architecture DSE mechanism resolves the trade-offs between performance and hardware overhead. It employs a grid search that evaluates multiple metrics to find an optimal architecture for a set of kernels from a specific domain or an application. 
+
+A. DFG/EDFG Construction 
+
+DFG Construction — A DFG represents kernels within an application, where nodes represent operations in LLVM [14] IR and edges indicate data dependencies between operations. Control dependencies are converted to data dependencies via partial predication [17], [18] to be represented by the DFG. Fig. 4(b) shows that CMD extracts innermost loops from the application and constructs a DFG for them. 
+
+EDFG Construction and Variable Extraction — To enable memory-aware mapping, we extend the DFG into an Extended-DFG (EDFG) by explicitly modeling variables. As shown in Fig. 4(a), this EDFG corresponds to the kernel discussed in Sec. II-B. This EDFG creates variable nodes (n16 , n17 , n18 , n19 ) and connects them to their corresponding memory access operation nodes ( n6 , n7 , n13 , n14 ). Each variable node (e.g., n16 , representing vector A[SIZE] ) encap-sulates critical metadata, such as its size (e.g., 128 bytes), data type (e.g., [32 x i32] ), variable name (e.g, A), associated memory access operation (e.g., n6 ), and a unique variable ID. For large-sized variables, the CMD compiler tiles the loop to partition them so that they can fit into memory units. Crucially, a variable accessed by multiple operations is initially represented by multiple distinct variable nodes, one for each access. This provides the memory-aware mapping with the flexibility to store the same variable across different memory units if beneficial for performance. 
+
+B. Memory-Aware Mapping 
+
+Our proposed memory-aware mapping algorithm (Algo-rithm 1) maps the EDFG onto the EMRRG, aiming to min-imize the II. The process begins by calculating a potential minimum II based on recurrence and resource constraints (line 1) [5]. It then enters an outer loop (line 2) that iteratively increases the II upon mapping failure. Within this loop, an EMRRG is generated for the current II (line 3), and the algorithm attempts to map each operation node (lines 4-16). For each operation node, it evaluates all available tiles (line 5), calculating a mapping cost using Depth-First Search for each valid tile (line 14). It then selects the optimal tile for placement and routing (lines 15-16). Two mechanisms are enforced during the mapping of memory access operations (lines 6-13): Accepted by ICCD 2026 (a) Example of EDFG (b) Kernel Mapping Workflow (c) Memory Architecture DSE Mechanism 
+
+DFG/EDFG 
+
+Mapping DFG/EDFG 
+
+Construction 
+
+Kernel Extraction Loop Unrolling DFG 
+
+Generation 
+
+Variable 
+
+Extraction 
+
+Application 
+
+Loops 
+
+DFG EDFG 
+
+MRRG Construction 
+
+MRRG 
+
+Generation MRRG Arch 
+
+Specs 
+
+Mem-Aware Mapping Mapping Ctrl Signals Mem Config 
+
+DFG 
+
+> EDFG MRRG
+> EMRRG
+
+DFG/EDFG 
+
+Mapping DFG/EDFG 
+
+Construction 
+
+Kernel Extraction Loop Unrolling DFG 
+
+Generation 
+
+Variable 
+
+Extraction 
+
+Application 
+
+Loops 
+
+DFG EDFG 
+
+MRRG Construction 
+
+MRRG 
+
+Generation MRRG Arch 
+
+Specs 
+
+Mem-Aware Mapping Mapping Ctrl Signals Mem Config 
+
+DFG 
+
+> EDFG MRRG
+> EMRRG
+
+Yes No Kernel Mapping 
+
+Cost Evaluation 
+
+cost < minCost? Update minCost, 
+
+bestParam 
+
+Objectives 
+
+II 
+
+COR 
+
+EDFGs EDFGs EDFGs Mapping Result Mapping Result Mapping Result Design Parameters Design Parameters Memory Size = 1, 
+
+2, 3, ... KB 
+
+Cluster Size: 
+
+Variable Nodes Variable Nodes Memory 
+
+Access 
+
+Operations Memory 
+
+Access 
+
+Operations Compute Operations Compute Operations Control Operations Control Operations 
+
+Boundary Operations Boundary Operations 
+
+> Domain Kernels Application Kernels
+
+gemm 
+
+trVecAccum 
+
+gemver 
+
+> ...
+
+fft-load fft-twiddles 
+
+> ...
+
+fft-butterfly 
+
+Switch to the Next 
+
+Design Point Total Memory Size 
+
+EMRRG Unrolled Loops 
+
+> br
+> (n0) phi
+> (n1) +
+> (n2)
+> var (n16)
+> gep
+> (n3)
+> gep
+> (n4)
+> var
+> (n17) cmp
+> (n5)
+> ld (n6)
+> ld
+> (n7) br (n8) gep (n9)
+> *
+> (n10)
+> +
+> (n11)
+> gep
+> (n12)
+> store
+> (n13)
+> store
+> (n14) ret
+> (n15)
+> var (n18) var (n19)
+
+Fig. 4. CMD Compilation Toolchain — (a) Each memory access operation (colored in orange) is accompanied by a variable node (colored in red) that records information about the variable in EDFG. (b) The kernel mapping supports mapping DFG onto MRRG (the black dotted line) and mapping EDFG onto EMRRG (the red dotted line) using memory-aware mapping. (c) The memory architecture DSE mechanism searches for the optimal design by analyzing the mapping results. 
+
+Algorithm 1: CMD Memory-Aware Mapping 
+
+Input: EDFG, targetCGRA 
+
+Result: Control Signals, Memory Configuration 
+
+1 II = InitializeMII(EDFG, targetCGRA); 
+
+2 while No Available Mapping and II < MaxII do 
+
+3 EMRRG = createEMRRG(targetCGRA, II); 
+
+4 foreach opNode ∈ TopologicalOrder(EDFG) do 
+
+5 foreach tile ∈ Unmapped tiles of EMRRG do 
+
+6 if isMemAccess(opNode) then 
+
+7 memoryUnit = getMemUnit(tile); 
+
+8 checkAccessRules(varNode, opNode); 
+
+9 if var in memoryUnit then 
+
+10 MergeVarNode(varNode); 
+
+11 else if isOverflow(memoryUnit) then 
+
+12 try next tile; 
+
+13 varMap(varNode, memoryUnit); 
+
+14 tilesWithCost.insert(tile, calculateCost(opNode, tile)); 
+
+15 optimalTile = min(tilesWithCost); 
+
+16 placeAndRoute(opNode, optimalTile); 
+
+17 II = II + 1; 
+
+Variable Node Merging Mechanism — To improve data reuse and reduce memory waste, the algorithm employs a variable node merging mechanism. Since the EDFG may contain multiple variable nodes for the same variable, the algorithm checks if a variable already exists in the target memory unit before considering a placement (line 9). If so, the new variable node is merged with the existing one to avoid redundant storage (line 10). If not, it verifies that the memory unit has sufficient space to prevent overflow (lines 11-12). 
+
+Rules for Memory Consistency — To guarantee overall memory consistency, two rules are enforced during mapping (line 8). (1) Since the memory coherence controller takes two cycles to complete, no other accesses to the same variable are allowed during this period after any modifications to the variable. This effectively prevents the use of stale variables. (2) When a variable is stored in multiple memory units, CMD restricts one write per cycle to the same index of the variable. This avoids simultaneous changes to the same data of the variable in different memory units. These mapping rules, together with the memory coherence mechanism, ensure the overall memory consistency of CMD CGRA. 
+
+C. Memory Architecture DSE 
+
+To find a robust architecture for specific kernels, the CMD compiler uses a grid-search-based memory architecture DSE mechanism, as shown in Fig. 4(c). The input is a set of kernels from a specific domain or an application . This mechanism explores a design space defined by cluster size (e.g., {1, 2, 4, 6} for a 6 × 6 CGRA) and memory unit size (1KB to a user-defined max). Since the design space is small, a grid search is feasible (completing in minutes). The cost of each candidate architecture is evaluated by averaging the costs of all input kernels. The goal is to find the architecture minimizing the overall cost. If no suitable design is found, we increase the CGRA size until a legal design is found. 
+
+Cost Function — The DSE targets three objectives: min-imizing II, maximizing COR, and minimizing Total Memory Size ( Ctotal ). MUR is not explicitly considered here, as it is highly correlated to Ctotal and COR. Optimizing total memory size and COR inherently guides the MUR to a reasonable value. This multi-objective problem is formulated as a single cost function. The overall cost for a set of M input kernels is the average of the costs for each kernel: 
+
+cost =
+
+MX
+
+k=1 
+
+(w1 × II k + w2/COR k + w3 × Ctotal,k )/M (7) The weighted factors wi (i = 1 , 2, 3) allow for prioritizing design goals. In our experiment, we set w1 ≫ w2 ∼ w3
+
+to prioritize performance while also optimizing hardware overhead. V. E XPERIMENT RESULTS 
+
+The CMD compiler is built upon LLVM 10.0.0 [14], inte-grating a cycle-accurate simulator for performance evaluation. We implement the CMD CGRA in RTL [5], [8] and synthesize it with Synopsys Design Compiler V-2023.12 and CACTI 7.0 [19] to get the power, area, and timing. We evaluate CMD using a diverse suite of benchmarks sourced from [5], [20]– [23], which form two categories: a focused domain of linear Accepted by ICCD 2026 
+
+TABLE II BENCHMARKS FOR CMD E VALUATION 
+
+Domains Kernels/ Applications Variables EDFG Perf/Area a
+
+#Vars Total Size (bytes) #OpNds #Edges #VarNds RecMII b Best Pre-DSE c Post-DSE Linear Algebra gemm 3 21168 33 48 4 4 1.56 × /1.20 × (↑) 1.55 × /0.937 × (↑↑ )
+
+2mm 5 35280 52 77 6 4 1.42 × /1.20 × 1.63 × /0.937 × (↑↑↑ )
+
+trVecAccum d 1 2048 18 28 1 4 1.40 × /1.20 × 1.40 × /0.937 × (↑↑ )
+
+gemver 5 6144 168 223 28 7 1.39 × /1.06 × (↑) 1.39 × /0.937 × (↑↑ )
+
+reduce-sum 2 4352 73 121 8 5 1.30 × /1.20 × 1.30 × /0.937 × (↑)
+
+Signal Process fft 6 20480 96 134 24 7 1.26 × /1.20 × 1.24 × /0.966 × (↑)
+
+Communication viterbi 4 940 97 152 8 8 1.49 × /1.20 × (↑) 1.49 × /0.746 × (↑↑↑ )
+
+Graph floyd 1 7056 20 30 4 4 1.21 × /1.20 × 1.21 × /0.937 × (↑)
+
+Optimization levmarq 2 84 52 71 4 3 1.40 × /1.20 × 1.40 × /0.746 × (↑↑↑ )
+
+ML gcn 11 55720 106 146 19 4 1.25 × /1.20 × 1.25 × /1.04 × (↑)a. Perf/Area: ↑ for 1.2 ≤ P erf /Area < 1.4, ↑↑ for 1.4 ≤ P erf /Area < 1.7, ↑↑↑ for P erf /Area ≥ 1.7.
+
+b. The RecMII represents the minimum II determined by the inter-iteration data dependencies. 
+
+c. Best Pre-DSE: the cluster size from {1, 2, 4, 6 } that yields the highest speedup for that kernel. 
+
+d. trVecAccum transforms a triangular matrix. 0.8 1.0 1.2 1.4 1.6 Normalized Speedup gemm 2mm trVecAccum gemver reduce-sum fft viterbi floyd levmarq gcn Same Domain, Shared Post-DSE CGRA 
+
+Baseline Cluster Size = 4, Aligned Total 64KB SRAM Post-DSE Cluster Size = 1 Cluster Size = 2 Cluster Size = 4 Cluster Size = 6 
+
+0% 20% 40% 60% 80% Computation Efficiency 
+
+Baseline Computation Efficiency Post-DSE Computation Efficiency 
+
+Fig. 5. Performance Evaluation – Normalized speedup of pre-DSE CMD CGRAs (with 16 KB memory units and cluster sizes of {1,2,4,6 }) and the post-DSE design, compared to the baseline. The figure also shows the computation efficiency of the post-DSE design compared to the baseline. 
+
+algebra kernels to test our performance and domain-specific DSE, and a diverse set of complex applications from different domains (e.g., signal processing, graph, ML, etc.) to evaluate broader effectiveness, as shown in Table II. The performance is compared against a baseline conventional 6×6 mesh CGRA [5] ( 0.36 mm 2 with SRAM), which is configured with a 64 KB global SRAM – a minimum size sufficient to execute all benchmarks. To ensure a fair comparison, the baseline mapper is identical to the CMD mapper but without our memory-aware mechanism. 
+
+A. Performance and Memory Evaluation 
+
+Pre-DSE Evaluation — We begin by evaluating a 6 × 6
+
+CMD CGRA with a cluster size of 4, aligning its total SRAM size with the baseline’s 64KB. However, it fails to map the gcn due to insufficient per-cluster memory unit size, as shown in Fig. 5. To enable a full-suite pre-DSE evaluation, we adopt a 16 KB memory unit per cluster — the minimum size dictated by the most demanding kernel gcn 
+
+— for 6×6 CMD CGRAs with cluster sizes of {1, 2, 4, 6}. As shown in Fig. 5, CMD achieves respective average speedup of 
+
+{1.33 ×, 1.32 ×, 1.34 ×, 1.37 ×} for cluster sizes of {1, 2, 4, 6}
+
+over the baseline, with an overall average speedup of 1.34 ×.Although they bring a larger area overhead, the performance gains yield superior area efficiency (performance per area), as detailed in Sec. V-B. 
+
+Impact of Rules for Memory Consistency — We conduct an ablation study by removing rules introduced in Sec. IV-B from our mapper, which results in an identical latency for our 0% 20% 40% 60% 80% 100% MUR gemm 2mm trVecAccum gemver reduce-sum fft viterbi floyd levmarq gcn Cluster Size = 1 Cluster Size = 2 Cluster Size = 4 Cluster Size = 6 Post-DSE 
+
+Fig. 6. Memory Usage Ratio — MUR (defined in Eq. 5) of cluster sizes being {1, 2, 4, 6} with 16 KB memory unit and the post-DSE architecture. 
+
+benchmarks. This is because the latency of rule (1) is hidden by mapping other independent operations in these cycles. The write restriction in rule (2) is used to ensure correctness and does not impact performance, as such write conflicts should not be present in a valid kernel. 
+
+Post-DSE Evaluation — We apply the memory architecture DSE mechanism to find the optimal cluster size and memory unit size via two strategies: (1) a domain-specific search to find an optimal design for kernels in the linear algebra domain, and (2) a per-application search to find the optimal design for kernels in each application. As shown in Fig. 5, the post-DSE designs achieve an average speedup of 1.39 × (up to 1.63 ×)over the baseline. The DSE mechanism intelligently balances performance against hardware overhead under the selected cost function’s weighted factors. For example, the post-DSE design for gemm accepts a minor speedup reduction (compared with a cluster size of 6 with 16 KB memory unit) to gain a significant improvement in COR, as shown in Fig. 7. Moreover, the post-DSE architectures achieve an average computation efficiency of 40 .0% (up to 51 .0% ). This 1.27 × improvement over the baseline validates that CMD CGRA’s flexible memory access frees more tiles for computation rather than mere data routing. 
+
+Memory Analysis for Post-DSE Architecture — A key benefit of our DSE is the substantial reduction of memory hardware overhead, quantified by MUR, COR, and Total Memory Size Reduction (TMSR). Fig. 6 shows that CMD can find a suitable cluster size to reduce the number of idle memory units and achieve an average MUR of 67 .2% (up to 
+
+100% ), resulting in an overall average improvement of 1.70 ×
+
+over the pre-DSE architectures. Memory unit size is also adjusted to an appropriate size to avoid memory waste, leading Accepted by ICCD 2026 0% 20% 40% 60% 80% 100% 
+
+> COR
+
+gemm 2mm trVecAccum gemver reduce-sum fft viterbi floyd levmarq gcn Cluster Size = 1 Cluster Size = 2 Cluster Size = 4 Cluster Size = 6 Post-DSE Fig. 7. Capacity Occupied Ratio — COR (defined in Eq. 6) of cluster sizes being {1, 2, 4, 6} with 16 KB memory unit and the post-DSE architecture. 10 0
+
+10 1
+
+10 2
+
+> TMSR
+
+Linear Algebra fft viterbi floyd levmarq gcn 
+
+> Same Domain Shared CGRA
+
+Cluster Size = 1 Cluster Size = 2 Cluster Size = 4 Cluster Size = 6 *Linear Algebra includes: gemm, 2mm, trVecAccum, gemver, reduce-sum 
+
+Fig. 8. Total Memory Size Reduction (TMSR) — The factor by which the 
+
+Ctotal (defined in Eq. (4)) of the post-DSE architecture is reduced compared to the architectures with 16 KB memory unit and cluster sizes of {1,2,4,6 }.
+
+to an average COR of 66 .1% (up to 98 .2% ), achieving an average 2.34 × improvement over the pre-DSE architectures. Furthermore, the DSE dramatically reduces the total memory size. As shown in Fig. 8, the post-DSE architectures slash the total memory size by an average of 13 .9× over the pre-DSE architectures. 
+
+Discussion on DSE — In our design space, some design points are unreachable due to interdependencies among eval-uation metrics. Assigning weighted factors to each objective in the cost function further constrains the design space, in-herently introducing trade-offs that prevent the simultaneous optimization of all objectives. Instead, we focus on minimizing the overall cost based on design requirements. In our exper-iment, the chosen weighted factors prioritize a low II while penalizing excessive memory overhead. This allows the DSE to intelligently trade performance for area savings, or vice versa, to identify the most cost-effective design. For instance, some post-DSE architectures may exhibit a lower MUR than a pre-DSE design (e.g., MUR for gcn in the post-DSE architecture is lower than the pre-DSE architecture with a cluster size of 4). This is because the DSE mechanism finds that a substantial improvement in a heavily-weighted metric (e.g., COR in this case) justifies a minor sacrifice in other metrics (e.g., MUR in this case) to achieve a better over-all cost function. This demonstrates that our DSE mechanism effectively balances competing objectives through the chosen weighted factors, tunable to meet different design goals. 
+
+B. Timing, Area, and Power 
+
+We synthesize a prototype 6 × 6 mesh-style CMD CGRA (cluster size 4, 16 KB memory unit per cluster) using the TSMC 22nm ULL library at 800MHz. The entire area with SRAM is 0.38 mm 2 (Tiles 0.25 mm 2, Controller 0.0019 mm 2,SRAM 0.13 mm 2), with an average power of 228.69 mW (Tiles 163.63 mW, Controller 0.36 mW, SRAM 64.70 mW). The memory controller accounts for only 0.50% of the area. We evaluate the normalized performance per area (Perf/Area, with SRAM area) of the CMD CGRA against 
+
+TABLE III SCALABILITY AND AREA OF THE MEMORY CONTROLLER 
+
+CGRA Size a 6 × 6, 4 6 × 6, 6 8 × 8, 4 16 × 16 , 4 16 × 16 , 8
+
+Tiles Area (mm 2) 0.254 0.254 0.451 1.80 1.80 
+
+Controller Area (mm 2) 0.00187 0.00130 0.00297 0.00429 0.00309 Ctrl. Overhead b 0.00736 0.00512 0.00659 0.00238 0.00172 
+
+a. CGRA Size stands for {array size, cluster size }.
+
+b. Ctrl. Overhead is the controller area normalized to the total area of all tiles. the baseline. As shown in Table II, our best pre-DSE con-figurations ( 6 × 6 with cluster size of 4 for gemver and 6 for the rest) achieve speedups that consistently surpass their area overhead of 1.20 × (1.06 × for gemver ). The benefits are further amplified post-DSE: when tailored for kernels from specific domains/applications, CMD achieves an average 
+
+1.39 × speedup over the baseline while reducing the area to an average of 0.912 ×, demonstrating high area efficiency. To validate the scalability of the memory controller, we syn-thesize the memory controller for various CGRA sizes (Table III). While the controller’s absolute area grows with the array size, its Ctrl. Overhead (defined as the ratio of controller area to tiles area) steadily decreases. This trend confirms our controller is highly scalable and does not introduce an area bottleneck in larger CGRAs. VI. R ELATED WORKS 
+
+CGRA Memory Architectures – Most CGRAs place data memory adjacent to the tile array, accessing it via the tile-based method [2], [7], [8], [24] or the arbitration-based method [10], [15], [25]. These architectures suffer from the memory bottlenecks discussed in Sec. II-B. While Plasticine [26] and Xilinx AIE [27] use distributed memory, their designs serve different purposes. Plasticine is designed for specific parallel patterns, and AIE’s memory-per-tile design limits data reuse. Moreover, neither is designed for spatio-temporal CGRAs, nor do they provide a DSE framework to co-optimize the memory architecture, which CMD directly addresses. 
+
+Memory-Aware Kernel Mapping – Existing compiler ef-forts focus on optimizing data access for conventional CGRAs. These include introducing cost functions in mapping for data reuse [28], replacing long data dependencies with memory accesses [29], [30], or grouping memory access operations that access the same cache line into the same partition of DFG to increase cache line reuse [31]. [9] presents a polyhedral-based loop transformation to improve data reuse for imperfectly nested loops. Morpher [32] can extract data layouts and dis-tribute data uniformly in memory, but it does not consider the mapping of memory access operations. However, these works are tailored for conventional, centralized memory systems and operate on standard DFGs. They fundamentally lack the mech-anism to manage the complex data placement and variable merging required by a distributed memory architecture. CMD addresses this by introducing EDFG and a novel memory-aware mapping. VII. C ONCLUSION 
+
+This paper proposes CMD, an integrated framework with a cluster-based distributed memory architecture and a co-designed compiler. This compiler features a memory-aware Accepted by ICCD 2026 
+
+mapping algorithm and a memory architecture DSE mecha-nism to find an optimal design that balances performance and hardware overhead for specific kernels. Evaluations show that the post-DSE CMD CGRAs achieve an average speedup of 
+
+1.39 × over baseline, while using only an average of 0.912 ×
+
+the total area of the baseline. ACKNOWLEDGMENTS 
+
+This work was supported by the Research Grants Council (RGC) of Hong Kong SAR under the General Research Fund (GRF) #16218324 and the Strategic Topics Grant (STG) #STG3/E-605/25-N. We would also like to thank the anony-mous reviewers for their insightful comments. REFERENCES [1] L. Liu, J. Zhu, Z. Li, Y. Lu, Y. Deng, J. Han, S. Yin, and S. Wei, “A survey of coarse-grained reconfigurable architecture and design: Taxonomy, challenges, and applications,” ACM Comput. Surv. , vol. 52, no. 6, Oct. 2019. [2] J. Anderson, B. Adhi, C. Cortes, E. D. Sozzo, O. Ragheb, and K. Sano, “Exploration of compute vs. interconnect tradeoffs in cgras for hpc,” in Proceedings of the 13th International Symposium on Highly Efficient Accelerators and Reconfigurable Technologies , ser. HEART ’23. New York, NY, USA: Association for Computing Machinery, 2023, p. 59–68. [3] R. Prabhakar, “Sambanova sn40l rdu: Breaking the barrier of trillion+ parameter scale gen ai computing,” in 2024 IEEE Hot Chips 36 Symposium (HCS) , Aug 2024, pp. 1–24. [4] B. Mei, S. Vernalde, D. Verkest, H. De Man, and R. Lauwereins, “Exploiting loop-level parallelism on coarse-grained reconfigurable ar-chitectures using modulo scheduling,” in 2003 Design, Automation and Test in Europe Conference and Exhibition , 2003, pp. 296–301. [5] C. Tan, C. Xie, A. Li, K. J. Barker, and A. Tumeo, “Opencgra: An open-source unified framework for modeling, testing, and evaluating cgras,” in 
+
+2020 IEEE 38th International Conference on Computer Design (ICCD) ,2020, pp. 381–388. [6] S. Li, C. Tan, Z. Li, J. Ge, J. Liang, H. Yang, L. Du, J. Xu, and W. Zhang, “A cluster-based distributed memory architecture for cgras,” in 2026 Design, Automation & Test in Europe Conference (DATE) , 2026, pp. 1–3. [7] M. Karunaratne, A. K. Mohite, T. Mitra, and L.-S. Peh, “Hycube: A cgra with reconfigurable single-cycle multi-hop interconnect,” in 2017 54th ACM/EDAC/IEEE Design Automation Conference (DAC) , 2017, pp. 1–6. [8] C. Tan, D. Patil, A. Tumeo, G. Weisz, S. Reinhardt, and J. Zhang, “Vecpac: A vectorizable and precision-aware cgra,” in 2023 IEEE/ACM International Conference on Computer Aided Design (ICCAD) , 2023, pp. 1–9. [9] L. Huang and D. Liu, “Optimizing data reuse for cgra mapping using polyhedral-based loop transformations,” in 2023 60th ACM/IEEE Design Automation Conference (DAC) , 2023, pp. 1–6. [10] C. Tan, N. B. Agostini, T. Geng, C. Xie, J. Li, A. Li, K. J. Barker, and A. Tumeo, “Drips: Dynamic rebalancing of pipelined streaming applications on cgras,” in 2022 IEEE International Symposium on High-Performance Computer Architecture (HPCA) , 2022, pp. 304–316. [11] B. R. Rau, “Iterative modulo scheduling: an algorithm for software pipelining loops,” in Proceedings of the 27th Annual International Symposium on Microarchitecture , ser. MICRO 27. New York, NY, USA: Association for Computing Machinery, 1994, p. 63–74. [12] B. Mei, S. Vernalde, D. Verkest, H. De Man, and R. Lauwereins, “Dresc: a retargetable compiler for coarse-grained reconfigurable architectures,” in 2002 IEEE International Conference on Field-Programmable Tech-nology, 2002. (FPT). Proceedings. , 2002, pp. 166–173. [13] L. C. Infrastructure, “getelementptr instruction,” 2024. [14] C. Lattner and V. Adve, “Llvm: A compilation framework for lifelong program analysis & transformation,” in Proceedings of the International Symposium on Code Generation and Optimization: Feedback-Directed and Runtime Optimization , ser. CGO ’04. USA: IEEE Computer Society, 2004, p. 75. [15] H. Park, Y. Park, and S. Mahlke, “Polymorphic pipeline array: A flexible multicore accelerator with virtualized execution for mobile multimedia applications,” in 2009 42nd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO) , 2009, pp. 370–380. [16] M. S. Papamarcos and J. H. Patel, “A low-overhead coherence solution for multiprocessors with private cache memories,” SIGARCH Comput. Archit. News , vol. 12, no. 3, p. 348–354, Jan. 1984. [17] M. Hamzeh, A. Shrivastava, and S. Vrudhula, “Branch-aware loop map-ping on cgras,” in Proceedings of the 51st Annual Design Automation Conference , ser. DAC ’14. New York, NY, USA: Association for Computing Machinery, 2014, p. 1–6. [18] S. Li, J. Ge, D. Tao, Z. Li, J. Liang, L. Du, J. Xu, W. Zhang, and C. Tan, “Neura: A unified and retargetable compilation framework for coarse-grained reconfigurable architectures,” Proc. ACM Program. Lang. , vol. 10, no. PLDI, Jun. 2026. [Online]. Available: https://doi.org/10.1145/3808285 [19] R. Balasubramonian, A. B. Kahng, N. Muralimanohar, A. Shafiee, and V. Srinivas, “Cacti 7: New tools for interconnect exploration in innovative off-chip memories,” ACM Trans. Archit. Code Optim. , vol. 14, no. 2, Jun. 2017. [Online]. Available: https://doi.org/10.1145/3085572 [20] L.-N. Pouchet, “PolyBench/C: The polyhedral benchmark suite,” accessed: Sep. 5, 2026. [Online]. Available: https://www.cs.colostate. edu/ ∼pouchet/software/polybench/ [21] B. Reagen, R. Adolf, Y. S. Shao, G.-Y. Wei, and D. Brooks, “MachSuite: Benchmarks for accelerator design and customized architectures,” in 
+
+Proceedings of the IEEE International Symposium on Workload Char-acterization , Raleigh, North Carolina, October 2014. [22] J. Cheng, L. Josipovi´ c, G. A. Constantinides, P. Ienne, and J. Wickerson, “Dass: Combining dynamic & static scheduling in high-level synthesis,” 
+
+IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , vol. 41, no. 3, pp. 628–641, 2022. [23] J. Wang, L. Guo, and J. Cong, “Autosa: A polyhedral compiler for high-performance systolic arrays on fpga,” in 2021 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA) . New York, NY, USA: Association for Computing Machinery, 2021, p. 93–104. [24] G. Gobieski, S. Ghosh, M. Heule, T. Mowry, T. Nowatzki, N. Beckmann, and B. Lucia, “Riptide: A programmable, energy-minimal dataflow compiler and architecture,” in Proceedings of the 55th Annual IEEE/ACM International Symposium on Microarchitecture ,ser. MICRO ’22. IEEE Press, 2023, p. 546–564. [Online]. Available: https://doi.org/10.1109/MICRO56248.2022.00046 [25] B. Mei, S. Vernalde, D. Verkest, H. De Man, and R. Lauwereins, “Adres: An architecture with tightly coupled vliw processor and coarse-grained reconfigurable matrix,” in International conference on field programmable logic and applications . Springer, 2003, pp. 61–70. [26] R. Prabhakar, Y. Zhang, D. Koeplinger, M. Feldman, T. Zhao, S. Hadjis, A. Pedram, C. Kozyrakis, and K. Olukotun, “Plasticine: A reconfigurable architecture for parallel patterns,” in 2017 ACM/IEEE 44th Annual International Symposium on Computer Architecture (ISCA) , 2017, pp. 389–402. [27] H. Yang, L. Du, S. Li, and W. Zhang, “Esfa: An efficient scalable fft design framework on versal ai engine,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , 2025. [28] Y. Kim, J. Lee, A. Shrivastava, and Y. Paek, “Memory access optimiza-tion in compilation for coarse-grained reconfigurable architectures,” 
+
+ACM Trans. Des. Autom. Electron. Syst. , vol. 16, no. 4, Oct. 2011. [Online]. Available: https://doi.org/10.1145/2003695.2003702 [29] S. Yin, X. Yao, D. Liu, L. Liu, and S. Wei, “Memory-aware loop map-ping on coarse-grained reconfigurable architectures,” IEEE Transactions on Very Large Scale Integration (VLSI) Systems , vol. 24, no. 5, pp. 1895– 1908, 2016. [30] S. Dave, M. Balasubramanian, and A. Shrivastava, “Ramp: Resource-aware mapping for cgras,” in 2018 55th ACM/ESDA/IEEE Design Automation Conference (DAC) , 2018, pp. 1–6. [31] N. Sambhus and T. S. Abdelrahman, “Reuse-aware partitioning of dataflow graphs on a tightly-coupled cgra,” in 2022 IEEE Intl Conf on Parallel & Distributed Processing with Applications, Big Data & Cloud Computing, Sustainable Computing & Communications, Social Com-puting & Networking (ISPA/BDCloud/SocialCom/SustainCom) . IEEE, 2022, pp. 458–467. [32] D. Wijerathne, Z. Li, M. Karunaratne, L.-S. Peh, and T. Mitra, “Morpher: An open-source integrated compilation and simulation framework for cgra,” in Fifth Workshop on Open-Source EDA Technology (WOSET) ,2022.

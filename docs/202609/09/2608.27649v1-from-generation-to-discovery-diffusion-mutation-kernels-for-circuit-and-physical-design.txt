@@ -1,0 +1,304 @@
+Title: From Generation to Discovery: Diffusion Mutation Kernels for Circuit and Physical Design
+
+URL Source: https://arxiv.org/pdf/2608.27649v1
+
+Published Time: Mon, 31 Aug 2026 00:15:41 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# From Generation to Discovery: Diffusion Mutation Kernels for Circuit and Physical Design 
+
+# Dinithi Jayasuriya, 1 Aravind Saravanan, 1 Nilesh Ahuja, 2 Amanda Rios, 2 Amit Trivedi 1
+
+> 1
+
+University of Illinois Chicago, Chicago, IL, USA 
+
+> 2
+
+Intel Corporation, USA 
+
+Abstract 
+
+Generation and discovery are different problems. A genera-tive model trained on valid artifacts reproduces a distribution, whereas discovery must produce artifacts that lie outside the observed corpus, satisfy hard structural constraints, and im-prove on established designs under evaluation that the model cannot influence. We introduce SteerGenSE, a diffusion-based discovery framework. Unlike conventional generative models that sample from learned distributions, SteerGenSE learns transition operators that transform existing artifacts into new candidates. Controlled partial re-noising followed by denois-ing defines a diffusion mutation kernel, a learned transition distribution that preserves the structural regularities of fea-sible designs while moving between regions of the design space. The learned model supplies feasibility structure only, and all correctness and performance judgments remain with external engineering tools. Intermediate diffusion trajectories are additionally monitored under a conformal risk budget so that unpromising candidates are discarded before expensive evaluation. We evaluate the framework on three electronic design spaces, an environment that supplies rigorous non-differentiable evaluators in the form of simulation, formal equivalence checking, and industrial physical implementa-tion. The framework discovers 32-bit prefix adders that are formally verified equivalent to addition over all 264 input pairs and reduce delay by 17% and area by 18% relative to Kogge-Stone under a placed-and-timed flow; seven inde-pendently re-simulated amplifier topologies absent from the training corpus, spanning gains of 21 .9-66 .1 dB and band-widths of 72 .9 kHz-207 MHz; and macro placements on held-out netlists reaching 0.68 × wirelength of an industrial placer. 
+
+# 1 Introduction 
+
+Diffusion models have become a dominant approach for generating structured artifacts, including images, molecules, proteins, and programs (Ho, Jain, and Abbeel 2020; Vignac et al. 2022; Hoogeboom et al. 2022). Generation and discov-ery, however, pursue different goals. Generation imitates a training distribution through independent samples, whereas discovery iteratively searches for artifacts beyond observed examples that satisfy hard constraints and deliver utility un-der an evaluator the model does not control. Three properties make design discovery challenging. First, valid design manifolds are sparse: arbitrary circuit graphs do not simulate, prefix networks do not compute addition, and 
+
+Copyright © 2027, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. 
+
+macro placements violate physical constraints. Second, nov-elty is harder than optimization. Retuning a Kogge–Stone variant differs fundamentally from discovering a new prefix organization, just as resizing a known amplifier differs from discovering an unseen topology. Third, evaluation is expen-sive and black box. Candidates cannot be enumerated, no gradient passes through SPICE, OpenROAD, or SAT solvers (Wolf, Glaser, and Kepler 2013), and learned reward models are unreliable substitutes. A discovery system must there-fore preserve feasibility, seek novelty, and obtain external evidence of utility simultaneously. Existing paradigms address these requirements separately. Generative models learn where valid artifacts exist but do not incorporate evaluation feedback into subsequent proposals. Evolutionary and surrogate methods iterate through hand-crafted variation operators or learned objective approxima-tions that can be exploited rather than improving true design quality (Holland 1992; Trabucco et al. 2021). This raises the question: Can a generative model learn both where valid designs exist and how they evolve? Our answer builds on the observation that reverse diffu-sion is not only a decoder from noise, but also a learned transition mechanism between valid artifacts. Re-noising a design to a chosen depth and denoising it again produces a candidate that retains parent structure while exploring direc-tions learned from data. We call this conditional distribution a diffusion mutation kernel. It converts a trained diffusion model into a search operator over its support without ad-ditional training. Figure 1 illustrates the framework, where external tools provide all feasibility and performance judg-ments, while intermediate trajectories are monitored under a conformal risk budget to discard unpromising candidates. We use circuit design as a benchmark environment since it provides discrete and continuous search spaces, hard validity constraints, and mature evaluators with non-differentiable, model-independent feedback. Across three spaces, Steer-GenSE discovers 32-bit prefix adders that are formally veri-fied before and after technology mapping and improve on Kogge-Stone by 17% in delay and 18% in area under a placed-and-timed flow, seven re-simulated amplifier topolo-gies absent from the training corpus, and macro placements on held-out netlists reaching 0.68 × the wirelength of an in-dustrial placer. Our contributions are: 
+
+• Diffusion mutation kernels that turn diffusion models arXiv:2608.27649v1 [eess.SY] 27 Aug 2026 Figure 1: Overview of SteerGenSE. A learned diffusion prior generates and mutates candidate designs, while trajectory-aware steering prunes unpromising paths and reallocates computation. External engineering tools evaluate feasibility, performance, and novelty, and Pareto selection determines the population carried into the next generation. from artifact generators into learned search operators. 
+
+• External-evaluator-driven discovery , where the model proposes structure and engineering reality judges quality. 
+
+• A cross-domain discovery framework , instantiated without change across discrete topology, symbolic archi-tecture, and continuous spatial design spaces. 
+
+• Risk-controlled steering , which cuts black-box evalua-tions under a conformal bound on the risk of discarding a successful trajectory, and the conditions where it helps. 
+
+# 2 Relation to Prior Work 
+
+Generative models for design. Generative design ap-proaches learn distributions over valid artifacts and sample from them (Gao et al. 2025; Chang et al. 2024; Dong et al. 2023; Li et al. 2025; Kim et al. 2026). They learn p(x) and draw x. We learn p(x) and use the same network to realize 
+
+p(x′|x), a distribution over how one valid artifact becomes another. Only the second supports search in which evaluation outcomes shape later proposals. 
+
+Evolutionary search. Population-based methods explore through selection and variation (Deb et al. 2002; Hansen, Ostermeier et al. 2001), but their mutation operators encode manually specified assumptions about how artifacts may change, tied to a particular encoding. We retain population-based selection but learn the transition distribution from valid artifacts for transferability across spaces. 
+
+Surrogate optimization. Bayesian optimization, offline model-based optimization, GFlowNets, and reinforcement learning for design (Jones, Schonlau, and Welch 1998; Tra-bucco et al. 2021; Bengio et al. 2021; Mirhoseini et al. 2021; Roy et al. 2021) improve efficiency by approximating ob-jectives or rewards, which biases exploration toward regions where the approximation is inaccurate. Our learned model never approximates the objective. It represents the structural regularities of feasible designs and delegates every perfor-mance decision to an external evaluator, so artifacts are val-idated only by executable engineering flows. 
+
+Diffusion mechanisms and evaluation environments. We build on discrete diffusion, classifier guidance, and partial denoising (Vignac et al. 2022; Austin et al. 2021; Ho and Salimans 2022; Meng et al. 2021) and use them as compo-nents of an iterative discovery process. Simulation, imple-mentation, and verification flows (Ren et al. 2020; Lee et al. 2024; Trung and Hy 2025; Jung et al. 2021; Lai et al. 2025) validate discovered artifacts beyond distributional similarity, and we use them as external judges of a discovery method. 
+
+# 3 Diffusion as a Learned Search Operator 
+
+Discovery as search over learned design spaces. Let x
+
+denote a design artifact and c a condition specifying the de-sired requirement. We formulate discovery as multi-objective optimization F (x) = ( f1(x), f 2(x)) , where f1(x) is per-formance measured by an external engineering tool and 
+
+f2(x) is novelty relative to existing designs. The objective is max x F (x) s.t. g(x) = 1 , where g(x) is a hard validity predicate ranging from structural constraints to formal veri-fication. Because discovery balances novelty against utility, the solution is a Pareto set rather than a single optimum. Effective discovery requires a learned representation of where valid artifacts exist and a mechanism for exploring transformations within that region without manually speci-fied rules. A diffusion model provides both. 
+
+Learning the feasible design space. We learn the structural regularities of valid designs rather than encoding domain-specific rules. A conditional diffusion model is trained on valid artifacts D with distribution pθ (x0|c). The learned de-sign space is Mθ (c) = supp pθ (·| c), a prior over regions where feasible artifacts are likely, and discovery becomes 
+
+max x∈M θ (c) F (x) subject to g(x) = 1 .The prior captures recurring structural organizations of realizable artifacts without handcrafted constraints or tem-plates, and can produce configurations that respect them without appearing in the training corpus. 
+
+The diffusion mutation kernel. Discovery requires con-trolled transitions between artifacts, in which a new candi-date preserves the structural dependencies that make a design realizable while exploring a different configuration. With T
+
+denoising steps, we obtain such transitions by perturbing a parent design to step γT and applying the reverse process, 
+
+Kγ (x′|x) = 
+
+Z
+
+q(xγT |x)
+
+> 1
+
+Y
+
+> t=γT
+
+pθ (xt−1|xt, c )dx 1: γT . (1) We call Kγ the diffusion mutation kernel. Standard dif-fusion sampling produces independent draws from pθ (x|c),whereas Kγ defines a conditional transition distribution an-chored at an existing artifact. This is where generation and discovery separate. The model learns not only where valid artifacts exist, but how valid artifacts evolve, and the second capability converts a generative model into a search operator without any additional training objective. The two capabilities are complementary, which is why ran-dom exploration fails here. The feasible manifold occupies a small fraction of the ambient space, so unguided perturbation rarely lands on a realizable design. The prior confines explo-ration to structurally meaningful regions, and Kγ decides which transitions inside them preserve realizability. This changes what is assumed and what is learned. Evo-lutionary methods take the variation operator as given, so a human fixes in advance which moves are admissible. Kγ
+
+makes the geometry of design evolution itself an object of learning, estimated from the distribution of valid artifacts. One operator consequently serves a motif graph, a categori-cal grid, and continuous coordinates without redesign. Surrogate methods replace the evaluator with a learned approximation of the objective. The diffusion model never predicts objective values. It models feasible transitions only, and performance judgments stay with the external evaluator. The parameter γ controls the transition scale, 
+
+K0(x′|x) = δ(x′ − x), K1(x′|x) ≈ pθ (x′|c), (2) where small γ favors local refinement and large γ broader exploration. For the two discrete instantiations, the integral is a sum over states and δ is a Kronecker delta. Following Table ?? , we use γ = 0 .3 for placement and prefix adders and γ = 0 .5 for analog circuits. 
+
+External-evaluation discovery loop. Our loop separates roles that are coupled in existing optimization frameworks. The diffusion model defines where and how to explore. Fea-sibility, correctness, and performance are established exclu-sively by external engineering flows for simulation, synthesis, implementation, and verification. Given a population Pk, off-spring drawn from the mutation kernel are evaluated along-side their parents, and Pareto selection Sμ to population size 
+
+μ produces the next generation, 
+
+Pk+1 = Sμ (Pk ∪ { x′ ∼ Kγ (·| x) : x ∈ Pk}) . (3) This separation enables surrogate-free discovery. 
+
+3.1 Trajectory-Aware Risk-Controlled Steering 
+
+Equation (3) evaluates candidates only after denoising com-pletes, which wastes computation on trajectories that become unpromising early. Steering complements the discovery loop by reducing that waste, while external evaluation remains the final authority on quality. Whether it pays for itself de-pends on the ratio between evaluator and generation cost and on whether intermediate trajectories give reliable failure sig-nals. Both properties are measurable before search begins, and Section 5 analyzes them across domains. We divide mid-generation control into two tasks. Pruning 
+
+stops unpromising trajectories, and reallocation redirects the released computation. Only a conformally calibrated signal may prune, whereas an uncalibrated health heuristic is re-stricted to reallocation among survivors. 
+
+Two views of a trajectory. At checkpoint tk a trajectory exposes two signals, its current noisy state z(i) 
+
+> tk
+
+and its pre-dicted clean endpoint bx(i)0,t k , and decoding both gives graphs 
+
+Gcur  
+
+> i,k
+
+and Gpred  
+
+> i,k
+
+. They answer different questions. The cur-rent state answers where a candidate is now. Because noisy states routinely recover during later denoising, its health 
+
+h(i) 
+
+> k
+
+= exp −wcvc
+
+ Gcur 
+
+> i,k
+
+ − wdvd
+
+ Gcur 
+
+> i,k
+
+ (4) may only rank survivors for compute allocation and may never terminate them, where vc counts hard structural vio-lations and vd counts dangling connections. The predicted endpoint answers where a candidate is heading, and it is the only signal permitted to prune. Its forecast damage 
+
+di,k = Dangling( Gpred  
+
+> i,k
+
+) estimates the defect the trajectory is converging toward. 
+
+Conformal pruning. We prune on the predicted endpoint and calibrate that decision with conformal risk control(Vovk, Gammerman, and Shafer 2005; Angelopoulos and Bates 2021). Forecast damage is normalized against trajectories that the unpruned policy carried to a valid design, giving two running-maximum statistics that capture different fail-ure modes. Each is thresholded independently at risk α/ 2,and a trajectory is pruned at the first checkpoint where either threshold is crossed (more details in Appendix ?? ). 
+
+Winner-preservation guarantee. Because both statistics are running maxima, any threshold crossing at checkpoint 
+
+k also holds at completion. Under exchangeability between calibration winners and a new winner generated by the same fixed policy, conformal calibration bounds each test’s winner-pruning probability by α/ 2, and the union bound gives 
+
+Pr( prune | Ynew = 1) ≤ α. (5) We use α = 0.1. The guarantee is policy-specific, so changes to the generation, evaluation, checkpoint, or winner-definition protocol require recalibration. 
+
+Compute reallocation. Released computation is reused by sequential Monte Carlo(Smith 2013), which denoises N par-ticles in parallel and refills pruned slots by resampling sur-vivors on health h(i) 
+
+> k
+
+, capping clones per source to preserve diversity. Under a matched budget of 128 SPICE evaluations this gives the best structural validity and simulation success, Prefix adder Analog Placement Artifact categorical grid motif graph coordinates Rn×2             
+
+> Diffusion discrete discrete continuous Validity gSAT equivalence structural gate legalization Evaluator Fmapped timing ngspice OpenROAD Discovery new structure new structure new organization
+
+Table 1: One discovery framework across heterogeneous de-sign spaces. The artifact representation, validity mechanism, and engineering evaluator vary across domains, while the dis-covery formulation and search process remain unchanged. so we adopt it as the analog generation backend. Pruning without reallocation raises hypervolume but leaves validity and efficiency near baseline, having freed computation with-out deciding where to reassign it. Appendix ?? (Table ?? )gives the full sampler comparison, including tree search. 
+
+# 4 Discovery Across Three Design Spaces 
+
+We instantiate SteerGenSE in parallel-prefix adder synthesis, analog circuit topology discovery, and chip macro placement, evaluated using synthesis with formal verification, SPICE, and OpenROAD, respectively. Table 1 summarizes the three settings. The artifact representation, validity predicate, and evaluator differ in every case, while the discovery formula-tion and search procedure are unchanged. 
+
+4.1 Discovery of Novel Prefix Architectures 
+
+Our primary instantiation targets 32-bit parallel-prefix adders, a space in which functional correctness can be ver-ified exhaustively. Each input bit generates a propagate– generate pair, and prefix operators hierarchically combine intervals to compute carries. The framework discovers the topology of the prefix network rather than operand values, so this domain tests whether generative discovery produces new functional architectures with formal correctness guarantees. 
+
+Representation of functional architectures. A prefix topol-ogy is a fixed-size categorical grid over levels and bit posi-tions, where each occupied cell names the earlier bit position whose prefix is combined at that level. The grid decodes de-terministically into a directed acyclic prefix graph, so search operates directly on architectural dependencies rather than on a surface encoding of them. The training corpus contains 
+
+16 ,269 unique 32-bit structures, including ripple, Sklansky (Sklansky 1960), Kogge-Stone(Kogge and Stone 1973), and Brent-Kung(Brent and Kung 1982) together with generated variants. A categorical diffusion model corrupts and denoises the grid, with a Transformer conditioned on the diffusion step and on a normalized target depth and operator count. Con-ditioning steers exploration toward a region of the design space, while actual depth and operator count are recomputed from every generated architecture (Appendix ?? ). 
+
+Formal verification and implementation evaluation. Ev-ery generated architecture is first checked for structural valid-ity, which holds when the decoded graph is acyclic, combines only compatible intervals, and supplies the complete carry interval at every output position (Appendix ?? ). Functional correctness is then verified exhaustively. The architecture is emitted as structural Verilog and compared against s = a + b
+
+in a miter construction, and a SAT solver decides whether 
+
+∃ a, b : scandidate (a, b )̸ = a + b. The validity predicate g
+
+holds only when this query is unsatisfiable, certifying cor-rectness over all 264 input pairs. The proof is repeated after technology mapping, confirming that implementation trans-formations preserve functionality. Performance is evaluated under a NanGate45 implemen-tation flow that preserves the generated structure through technology mapping and reports delay D(x) and area A(x)
+
+after placement-based timing analysis, so the objective is 
+
+f1(x) = ( D(x), A (x)) . Novelty uses a canonical schedule-independent fingerprint, so changes in placement or schedul-ing do not register as architectural novelty, while changes in prefix dependencies do. Appendix ?? lists the flow stages. 
+
+Search control for structured architectural spaces. This space differs from analog topology synthesis because va-lidity is highly structured and every decoded architecture is efficiently checkable. Under matched seeds, depth-size tar-gets, and a 192-sample budget, conditional diffusion sam-pling beats SMC on hypervolume ( 67 .8 vs. 53 .6) and best delay ( 0.342 vs. 0.362 ns), contributing 7 of the 10 merged front points. SMC’s resampling collapses its 192 particles to 7 distinct architectures, so most of its budget re-evaluates copies. Prefix-adder runs omit mid-generation resampling, using conditional sampling and γ = 0 .3 mutation. 
+
+Discovery of improved verified architectures. Across 384 zero-shot samples from six depth-size conditions, every sam-ple decodes to a legal prefix graph, and 325 unique archi-tectures are absent from the training corpus. The final set contains 16 novel adders, all formally verified before and af-ter technology mapping. The fastest discovered architecture achieves 0.302 ns delay at 373 μm2, improving on Kogge-Stone by 17% in delay and 18% in area simultaneously (Ta-ble 2). It removes 33 of the 129 prefix operators used by Kogge-Stone by reducing intermediate dependencies rather than rescheduling the same structure, and Figure 4 shows that the discovered adders are distinct wirings rather than re-drawings of textbook designs. Other discovered architectures occupy different regions of the area-delay trade-off. Absence from the training corpus, formal equivalence over all inputs, and improvement over a mature hand-designed architecture under a physical flow hold simultaneously, which performance optimization alone does not deliver. 
+
+4.2 Analog Amplifier Topologies 
+
+The second instantiation replaces exhaustive verification with simulation-based evaluation. Analog topology discov-ery is harder to certify and more expensive to evaluate, which is where trajectory-aware steering has its largest effect. 
+
+A circuit representation suitable for discovery. Discovery here requires deterministic decoding because a candidate that cannot be reconstructed exactly cannot be evaluated. We use a terminal-aware incidence representation that preserves the terminal roles distinguishing electrically different structures. Diffusion operates over a motif-level graph with a vocabu-lary of 261 recurring subcircuits mined automatically from Method Design D Ops FO Delay Area ADP (ns) ( μm2)                                                     
+
+> Textbook Ripple 31 31 1 1.219 175 213.3 Brent–Kung 857 5 0.464 264 122.6 Sklansky 580 16 0.406 322 130.9 Kogge–Stone 5129 5 0.362 457 165.4 ArithTreeRL Fastest 673 16 0.342 320 109.6 Balanced 669 16 0.356 294 104.6 Min. area 855 6 0.477 250 119.3 PrefixGPT Min. ADP 10 57 6 0.516 269 138.8 Min. delay 5129 5 0.362 457 165.4
+> SteerGenSE Fast 596 11 0.302 373 112.8 Balanced 763 7 0.364 280 102.0
+> Compact 758 6 0.406 262 106.4
+
+Table 2: 32-bit prefix adders under a common placed-and-timed NanGate45 flow. D, Ops, FO, and ADP denote prefix depth, operator count, maximum internal fanout, and area– delay product. ArithTreeRL (Lai et al. 2024) and PrefixGPT (Ding et al. 2026) are evaluated under the same flow. All designs are formally verified and absent from the corpus. the training corpus rather than specified by hand. The corpus is derived from the public AnalogGenie corpus (Gao et al. 2025). Fixed connectivity within each motif guarantees deter-ministic decoding, eliminates decoder-invented connections, and improves matched raw SPICE convergence by roughly 3-4 × (see Appendix ?? for details). The representation provides decodability, whereas the dif-fusion prior provides feasibility. Table 4 separates these con-tributions because every arm uses the same motif vocabulary. Replacing the prior with random initialization over this vo-cabulary reduces SPICE-scoreable offspring from 28 to 17 and Pareto-front topologies from 5 to 3; replacing Kγ with random mutation reduces both to zero. Thus, deterministic decoding allows candidates to reach simulation but does not ensure they survive it. 
+
+Circuit prior and external evaluation. The prior is a dis-crete diffusion model over the motif-level representation. A graph Transformer predicts the clean-graph distribution through the reverse process, conditioned on circuit family and design requirements. Each generated macro-graph is de-coded into a SPICE netlist and evaluated. A structural gate rejects electrically impossible candidates, including missing supply rails or floating terminals (Appendix ?? ). Because topology alone does not determine performance, surviving candidates undergo inner NSGA-II sizing, with each simu-lated in ngspice . Novelty is measured using Weisfeiler-Lehman graph similarity(Shervashidze et al. 2011). 
+
+Search control under circuit discovery geometry. Circuit discovery combines highly constrained structural generation with expensive simulation. Direct gradient-based steering of diffusion trajectories helps little because intermediate rep-resentations do not correspond to valid circuit transforma-tions. Health-based filtering alone raises structural valid-ity but leaves Pareto coverage near the unsteered baseline. 
+
+Figure 2: Validated amplifiers discovered by diffusion-based search. In (a), labels mark: 1O reinforcing input paths through M3/M5 and M1-n0; 2O M6-mediated regenerative feedback; 
+
+> 3
+
+O the M2-M7 inverter gain core; and 4O M4 repurposed as a MOS capacitor. In (b), they mark: 1O reinforcing direct and 
+
+n0-mediated input paths; 2O R2-R3 input–output feedback through n1; and 3O C1 internal compensation. We therefore use trajectory information to allocate explo-ration and evaluation effort, which cuts wasted simulations while leaving the external evaluator as the final authority. Under a matched budget, conformal-health SMC raises struc-tural validity from 24 .2% to 72 .3% and Pareto hypervolume from 20 .5 to 27 .1, with the full sampler comparison in Ap-pendix ?? (Table ?? ). 
+
+Discovery procedure. The search maintains a population of μ = 48 designs over 20 generations. The initial popu-lation is sampled from the learned prior, screened by the structural gate, sized by an inner NSGA-II loop, simulated in 
+
+ngspice , and ranked on performance and novelty. Each later generation applies Kγ to Pareto-ranked parents, re-noising and denoising them into structurally related off-spring. Parents and offspring are pooled, evaluated through the same pipeline, and Pareto-selected into the next pop-ulation. The returned Pareto set spans the performance-novelty trade-off. Figure 3 traces one such run. Best raw gain climbs from 10 .8 dB in the prior-sampled initial popu-lation to 57 .4 dB by the final generation, and later generations widen novelty coverage instead of crowding the highest-gain region, which is the behavior Pareto selection is meant to produce. Aggregate results below pool three runs, so the best verified gain there exceeds this single-run maximum. 
+
+Discovery of previously unseen circuit organizations. 
+
+Across three runs, the framework proposes 2,432 topologies, of which 1,277 pass simulation and 22 reach a Pareto front. After removing convergence-dependent solutions, canoni-Figure 3: Evolution of the novelty-gain Pareto front. (A) Generation-wise NSGA-II fronts, showing the best gain im-proving from 10.8 to 57.4 dB while later generations ex-pand novelty coverage. (B) Final scored population and non-dominated front; faint points denote SPICE-scored candi-dates, and the solid staircase indicates the final Pareto front. The best design found in this run achieves 57.4 dB raw gain. cally normalizing device connections, and independently re-sizing and re-simulating, seven amplifier topologies remain validated discoveries whose performance persists across siz-ing solutions. They are absent from the training corpus, structurally distinct under Weisfeiler-Lehman comparison, and span gains of 21 .9-66 .1 dB, bandwidths of 72 .9 kHz-
+
+207 MHz, powers of 16 .2-696 mW, and area proxies of 57 .7-
+
+471 μm2, so the search reaches diverse performance-novelty regions rather than one template. The discovered topolo-gies contain noncanonical mechanisms not prescribed to the model, including multiple reinforcing input-to-output paths and a regenerative loop between an internal node and the output that offers a plausible route to enhanced small-signal gain. Figure 2 annotates these and Appendix ?? traces them device by device. Diffusion-based search therefore assembles familiar device-level effects into previously unseen amplifier organizations. Table 5 compares these results with prior ana-log generators under a common PDK and SPICE flow. 
+
+4.3 Continuous Spatial Organization 
+
+The third instantiation tests whether the discovery formula-tion transfers from symbolic to continuous domains, rather than serving as an EDA benchmark. Large memory and com-pute macros are placed on a chip floorplan. Placement intro-duces no new functionality, so the target is a spatial organi-zation absent from the corpus that improves implementation objectives on unseen designs. A placement with n macros is x0 ∈ Rn×2 containing nor-malized lower-left coordinates, and a continuous diffusion model with T = 200 steps learns to recover x0 from xt. The denoiser is a Transformer with one token per macro carrying the noisy coordinate, normalized footprint, and log weighted degree. All features are defined relative to the input design, which permits application to unseen netlists. Netlist connec-tivity is incorporated through attention-based conditioning, detailed in Appendix ?? .
+
+Results and limitations. Table 3 evaluates nine designs from the TILOS MacroPlacement and OpenROAD-flow-                                                        
+
+> Design Macros Auto Expert ChipDiff. Ours Ratio
+> nvdla †128 U 14.78 8.34 10.03 10.01 0.68 ×
+> ariane136 †136 U 4.16 3.71 3.68 3.80 0.91 ×
+> bp_fe_top §11 M 1.69 –1.68 1.54 0.91 ×
+> bp_be_top §10 M 2.32 –2.29 2.16 0.93 ×
+> mempool_tile ‡20 M 3.06 2.98 3.21 3.02 0.99 ×
+> bp_multi_top §26 M 2.88 –3.20 2.91 1.01 ×
+> black_parrot §24 M 6.91 –7.26 7.00 1.01 ×
+> swerv_wrapper 28 M 3.73 –3.95 3.80 1.02 ×
+> bp_quad 220 M 37.81 –41.00 40.40 1.07 ×
+
+Table 3: Legalized HPWL in M μm. Auto denotes the Open-ROAD macro placer; Expert denotes a human placement where available; ChipDiff. denotes ChipDiffuser (Lee et al. 2024); and Ours denotes the best SteerGenSE placement. Ratios are relative to Auto. U and M denote uniform and mixed-size macro sets. 
+
+Figure 4: The discovered adders are different wirings rather than redrawings of the textbook structures. (a) Kogge-Stone: 
+
+0.362 ns, 457 μm2. (b) Discovered: 0.302 ns, 373 μm2.scripts suites (Cheng et al. 2023; Ajayi et al. 2019); a zero-shot placement is one denoising pass from the prior, with no search loop. On nvdla all 16 zero-shot samples beat the OpenROAD Auto placer, and search reaches 0.68 ×
+
+Auto while improving overflow and timing. Trained with-out ariane , the model reaches 0.91 × on ariane136 ,and four further held-out designs improve on Auto. Quality depends on the representation: coordinates are normalized to each macro’s legal region, so the denoiser must learn a size-dependent mapping, and uniform-footprint designs reach 0.68 -0.91 × while mixed-size sets degrade to 1.07 ×
+
+on bp_quad , since the attention bias captures connectivity but not aspect ratio. Search control also differs: wirelength and overlap gradients reach 0.66 × over 16 zero-shot samples (Table ?? ), whereas SMC reduces diversity and conformal pruning on legalization displacement does not help, so search control must match the geometry of the design space. 
+
+# 5 Ablations and Analysis 
+
+When mid-generation steering helps. The two properties in Section 3.1 explain the domain-dependence. Analog eval-uation is far costlier than generation, since each candidate runs an ngspice -intensive sizing loop, and forecast dam-Domain Metric Diff prior +                                                                  
+
+> Kγmutation Diff prior + random mutation Random init. +
+> Kγmutation Random init. + random mutation
+> Analog op-amp
+> 384 cand. Unique topologies 163 166 161 147 SPICE-scoreable offspring 28 017 0Final Pareto-front topologies 5030Best raw gain (dB) 20.8 –16.5 –Wall clock (min) 52 621 0.8
+> Placement (nvdla)
+> 448 cand.
+> ∆HV +0.0254 +0 .002 +0 .018 +0 .002
+> Unique legalized placements 192 192 156 175 Best HPWL (M μm) 10.008 10.064 ( =seed) 10.96 13.2 Overflow 260 295 ( =seed) 158 295 ( =seed)
+> Prefix adder
+> 288 cand. HV 371.8 371.2 332.5 304.9 Unique topologies 239 247 203 187 Front size 22 888Best delay (ns) 0.3196 0.3120 0.3774 0.3889 Best area ( μm2)262 264 284 313 Textbook designs dominated 2200
+
+Table 4: Prior/operator ablation at matched budgets, replacing either or both learned components with random initialization or mutation. Prefix-adder HV uses the delay–area Pareto front with a fixed reference; placement ∆HV is relative to the initial population. “–” indicates no scoreable result; overflow is OpenROAD global-routing overflow, where lower is better.                                                 
+
+> Method Generation quality Common-PDK evaluation by us Valid (%) ↑
+> V&N (%) ↑
+> Exact (%) ↓
+> Feasible yield (%) ↑
+> Best gain (dB) ↑
+> Best GBW
+> ↑
+> Power (mW) ↓
+> SPICE calls
+> ↓
+> AnalogGenie (Gao et al. 2025) 82.0 u78.0 u3.2 u9/978 (0.9%) 47.1 1.3 MHz 11.8 417k AnalogToBi (Kim et al. 2026) 97.8 p89.9 p0.0 pN/A N/A N/A N/A N/A AnalogCoder (Lai et al. 2025) 57.3 AG 8.9 AG –4/11 (36.4%) 55.1 28.1 MHz 3.9 32k
+> Ours, zero-shot 94.3 94.3 0.0 14/512 (2.7%) 56.8 184 MHz 78.3 66k
+> Ours, full search 96.1 96.1 0.0 u99/1,008 (9.8%) 66.1 493 MHz 49.7 577k
+
+Table 5: Comparison with prior generators. V&N denotes valid-and-novel designs. Superscripts indicate values reported in the original paper ( p), measurements under our PDK and SPICE flow ( u), and values reported or re-evaluated by AnalogGenie ( AG ). age predicts failure, so pruning raises structural validity from 
+
+24 .2% to 72 .3% , cuts simulations per scored candidate from 
+
+17 .1 to 4.8, and lifts hypervolume from 20 .5 to 27 .1 (Ap-pendix ?? ). Prefix-adder evaluation takes milliseconds, so diversity dominates, and resampling collapses 192 particles to 7 architectures while dropping hypervolume from 67 .8 to 
+
+53 .6. In placement, legalization repairs decoded violations and weakens damage prediction, so differentiable wirelength and overlap proxies guide gradients instead, improving best 
+
+nvdla HPWL from 0.88 × to 0.66 × (Appendix ?? ). Steer-ing is thus a cost-control layer selected from pre-search prop-erties, while the prior, Kγ , and evaluation stay fixed. 
+
+Are both learned components necessary? Table 4 replaces the prior, the mutation kernel, or both with random counter-parts at matched budgets; removing either degrades discov-ery by an amount set by the representation’s structure. With the prior fixed, random mutation destroys the structure sim-ulation requires: analog SPICE-scoreable offspring fall from 28 to 0 and Pareto topologies from 5 to 0, and placement returns the seed. Prefix adders, whose grid keeps random edits decodable, retain hypervolume and slightly better de-lay ( 0.3120 vs. 0.3196 ns) but shrink the front from 22 to 8. Replacing the prior removes the feasible starting region, so random initialization with Kγ trails the full method. Ta-ble ?? (Appendix ?? ) isolates evaluator feedback: it expands the prefix-adder front from 14 to 22, improves nvdla place-ment from 0.847 × to 0.68 × Auto, and raises verified analog topologies from 3 to 7 ( 36 .2 → 66 .1 dB). 
+
+# 6 Conclusion 
+
+This work shows that diffusion models can serve as learned search operators for artifact discovery beyond the training corpus. The learned distribution provides a feasible search space, diffusion dynamics provide transitions between arti-facts, and external evaluators remain the authority for feasi-bility and quality. Across three electronic design spaces, the framework discovers formally verified prefix adders improv-ing delay and area over Kogge-Stone, previously unseen am-plifier topologies validated through independent simulation, and competitive macro placements on unseen designs. Lim-itations include evaluator cost, representation dependence, and policy-specific conformal calibration. Overall, genera-tive models can enable algorithmic discovery by learning not only where valid artifacts exist, but how they evolve. References 
+
+Ajayi, T.; Chhabria, V. A.; Fogaça, M.; Hashemi, S.; Hosny, A.; Kahng, A. B.; Kim, M.; Lee, J.; Mallappa, U.; Neseem, M.; et al. 2019. Toward an open-source digital flow: First learnings from the openroad project. In Proceedings of the 56th Annual Design Automation Conference 2019 , 1–4. Angelopoulos, A. N.; and Bates, S. 2021. A gentle introduc-tion to conformal prediction and distribution-free uncertainty quantification. arXiv preprint arXiv:2107.07511 .Austin, J.; Johnson, D. D.; Ho, J.; Tarlow, D.; and Van Den Berg, R. 2021. Structured denoising diffusion mod-els in discrete state-spaces. Advances in neural information processing systems , 34: 17981–17993. Bengio, E.; Jain, M.; Korablyov, M.; Precup, D.; and Bengio, Y. 2021. Flow network based generative models for non-iterative diverse candidate generation. Advances in neural information processing systems , 34: 27381–27394. Brent; and Kung. 1982. A regular layout for parallel adders. 
+
+IEEE transactions on Computers , 100(3): 260–264. Chang, C.-C.; Shen, Y.; Fan, S.; Li, J.; Zhang, S.; Cao, N.; Chen, Y.; and Zhang, X. 2024. Lamagic: Language-model-based topology generation for analog integrated cir-cuits. arXiv preprint arXiv:2407.18269 .Cheng, C.-K.; Kahng, A. B.; Kundu, S.; Wang, Y.; and Wang, Z. 2023. Assessment of reinforcement learning for macro placement. In Proceedings of the 2023 International Sym-posium on Physical Design , 158–166. Deb, K.; Pratap, A.; Agarwal, S.; and Meyarivan, T. 2002. A fast and elitist multiobjective genetic algorithm: NSGA-II. IEEE transactions on evolutionary computation , 6(2): 182–197. Ding, R.; Ning, X.; Schlichtmann, U.; and Qian, W. 2026. PrefixGPT: Prefix Adder Optimization by a Generative Pre-trained Transformer. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 20808–20815. Dong, Z.; Cao, W.; Zhang, M.; Tao, D.; Chen, Y.; and Zhang, X. 2023. Cktgnn: Circuit graph neural network for electronic design automation. arXiv preprint arXiv:2308.16406 .Gao, J.; Cao, W.; Yang, J.; and Zhang, X. 2025. Analoggenie: A generative engine for automatic discovery of analog circuit topologies. arXiv preprint arXiv:2503.00205 .Hansen, N.; Ostermeier, A.; et al. 2001. Completely deran-domized self-adaptation in evolution strategies. Evolutionary computation , 9(2): 159–195. Ho, J.; Jain, A.; and Abbeel, P. 2020. Denoising diffusion probabilistic models. Advances in neural information pro-cessing systems , 33: 6840–6851. Ho, J.; and Salimans, T. 2022. Classifier-free diffusion guid-ance. arXiv preprint arXiv:2207.12598 .Holland, J. H. 1992. Adaptation in natural and artificial sys-tems: an introductory analysis with applications to biology, control, and artificial intelligence . MIT press. Hoogeboom, E.; Satorras, V. G.; Vignac, C.; and Welling, M. 2022. Equivariant diffusion for molecule generation in 3d. In 
+
+International conference on machine learning , 8867–8887. PMLR. Jones, D. R.; Schonlau, M.; and Welch, W. J. 1998. Effi-cient global optimization of expensive black-box functions. 
+
+Journal of Global optimization , 13(4): 455–492. Jung, J.; Kahng, A. B.; Kim, S.; and Varadarajan, R. 2021. METRICS2. 1 and flow tuning in the IEEE CEDA robust design flow and OpenROAD ICCAD special session paper. In 2021 IEEE/ACM International Conference On Computer Aided Design (ICCAD) , 1–9. IEEE. Kim, S.; Kim, M.; Lee, Y.; and Kim, Y. 2026. Analog-ToBi: Device-Level Analog Circuit Topology Generation via Bipartite Graph and Grammar Guided Decoding. arXiv preprint arXiv:2603.08720 .Kogge, P. M.; and Stone, H. S. 1973. A parallel algorithm for the efficient solution of a general class of recurrence equations. IEEE transactions on computers , 100(8): 786– 793. Lai, Y.; Lee, S.; Chen, G.; Poddar, S.; Hu, M.; Pan, D. Z.; and Luo, P. 2025. Analogcoder: Analog circuit design via training-free code generation. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, 379–387. Lai, Y.; Liu, J.; Pan, D. Z.; and Luo, P. 2024. Scalable and effective arithmetic tree generation for adder and multiplier designs. Advances in Neural Information Processing Sys-tems , 37: 139151–139178. Lee, V.; Nguyen, M.; Elzeiny, L.; Deng, C.; Abbeel, P.; and Wawrzynek, J. 2024. Chip placement with diffusion models. 
+
+arXiv preprint arXiv:2407.12282 .Li, Q.; Hong, S.; Gao, J.; Zhang, X.; Lan, T.; and Cao, W. 2025. Analogfed: Federated discovery of ana-log circuit topologies with generative ai. arXiv preprint arXiv:2507.15104 .Meng, C.; He, Y.; Song, Y.; Song, J.; Wu, J.; Zhu, J.-Y.; and Ermon, S. 2021. Sdedit: Guided image synthesis and editing with stochastic differential equations. arXiv preprint arXiv:2108.01073 .Mirhoseini, A.; Goldie, A.; Yazgan, M.; Jiang, J. W.; Songhori, E.; Wang, S.; Lee, Y.-J.; Johnson, E.; Pathak, O.; Nova, A.; et al. 2021. A graph placement methodology for fast chip design. Nature , 594(7862): 207–212. Ren, H.; Kokai, G. F.; Turner, W. J.; and Ku, T.-S. 2020. ParaGraph: Layout parasitics and device parameter predic-tion using graph neural networks. In 2020 57th ACM/IEEE Design Automation Conference (DAC) , 1–6. IEEE. Roy, R.; Raiman, J.; Kant, N.; Elkin, I.; Kirby, R.; Siu, M.; Oberman, S.; Godil, S.; and Catanzaro, B. 2021. Prefixrl: Optimization of parallel prefix circuits using deep reinforce-ment learning. In 2021 58th ACM/IEEE Design Automation Conference (DAC) , 853–858. IEEE. Shervashidze, N.; Schweitzer, P.; Van Leeuwen, E. J.; Mehlhorn, K.; and Borgwardt, K. M. 2011. Weisfeiler-lehman graph kernels. Journal of Machine Learning Re-search , 12(9). Sklansky, J. 1960. Conditional-sum addition logic. IRE Transactions on Electronic computers , (2): 226–231. Smith, A. 2013. Sequential Monte Carlo methods in practice .Springer Science & Business Media. Trabucco, B.; Kumar, A.; Geng, X.; and Levine, S. 2021. Conservative objective models for effective offline model-based optimization. In International Conference on Machine Learning , 10358–10368. PMLR. Trung, K. L.; and Hy, T.-S. 2025. DiffPlace: A Con-ditional Diffusion Framework for Simultaneous VLSI Placement Beyond Sequential Paradigms. arXiv preprint arXiv:2510.15897 .Vignac, C.; Krawczuk, I.; Siraudin, A.; Wang, B.; Cevher, V.; and Frossard, P. 2022. Digress: Discrete denoising diffusion for graph generation. arXiv preprint arXiv:2209.14734 .Vovk, V.; Gammerman, A.; and Shafer, G. 2005. Algorithmic learning in a random world . Springer. Wolf, C.; Glaser, J.; and Kepler, J. 2013. Yosys-a free verilog synthesis suite. In Proceedings of the 21st Austrian Workshop on Microelectronics (Austrochip) , volume 97, 1–6.

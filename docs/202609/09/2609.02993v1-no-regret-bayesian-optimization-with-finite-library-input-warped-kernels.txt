@@ -1,0 +1,1531 @@
+Title: No-Regret Bayesian Optimization with Finite-Library Input-Warped Kernels
+
+URL Source: https://arxiv.org/pdf/2609.02993v1
+
+Published Time: Fri, 04 Sep 2026 00:07:03 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# No-Regret Bayesian Optimization with Finite-Library Input-Warped Kernels ∗
+
+## Edvin Ketabati Augustinsson †, Robert A. Bridges 
+
+edvket@gmail.com , robert.bridges@ai.se 
+
+AI Sweden, Gothenburg, Sweden, 
+
+Abstract 
+
+Gaussian-process Bayesian optimization (GP-BO) excels at black-box optimization of costly functions, e.g., hyperparame-ter optimization (HPO) and multi-agent system (MAS) design. Convergence-rate guarantees exist for select methods, notably GP upper confidence bound (GP-UCB), but require a fixed kernel. Critically, the kernel encodes how input proximity af-fects objective value similarity. When raw coordinates poorly match this geometry—as with log-scaled hyperparameters or localized peaks—input warping can greatly improve sample efficiency, yet known GP-UCB proofs require a fixed kernel. We propose Finite-Library Input-Warped Bayesian Optimiza-tion (FLIWBO), which selects warps from a finite library of smooth input maps by any history-dependent rule. It adapts the input geometry to accelerate learning while retaining high-probability convergence guarantees under mild hypotheses, with an explicit √Nε library-size cost. Controlled diagnos-tics show that finite-library warping repairs planted geome-try mismatches and identify FLIWBO failure cases. Across four repeated benchmarks—warped synthetic objectives, a confidence-fence trap, and Fashion-MNIST HPO—FLIWBO-UCB beats raw-coordinate GP-UCB under misspecified ge-ometry, escapes traps that defeat even oracle-warp expected improvement, and recovers much of the gain from manual log scaling, while leading the tested methods that admit a matching regret guarantee. A 20-dimensional MAS design study further shows feasibility under costly noisy evaluations. Code for experiments is available: https://github.com/edvin-ketabati/bogp-paper-experiments. 
+
+## 1 Introduction 
+
+Many advances in science and technology depend on opti-mization problems in which only a limited number of can-didate designs or configurations can be evaluated. In many such problems, performance is revealed only by running a costly experiment, simulation, or training procedure, leaving little room for exhaustive search. Bayesian optimization (BO) is well suited to this black-box setting because it uses a prob-abilistic surrogate to direct evaluations toward promising or informative inputs. When evaluations are expensive, how-ever, strong empirical performance is not enough: we also 
+
+> ∗
+
+Code for experiments is available: https://github.com/edvin-ketabati/bogp-paper-experiments. 
+
+> †
+
+Corresponding author. Preprint. 
+
+want mathematical assurance that the cost of exploration does not accumulate indefinitely. Gaussian process upper confidence bound (GP-UCB) is a seminal method that bal-ances predicted performance against uncertainty; under mild hypotheses it enjoys sublinear cumulative regret, so its aver-age loss relative to the optimum vanishes over time (Srinivas et al. 2010; Chowdhury and Gopalan 2017). Those guarantees require a fixed kernel, which encodes how input proximity affects objective-value similarity. Un-fortunately, the coordinates used to describe a problem often poorly match how its objective varies. In hyperparameter op-timization (HPO), for example, learning rates are typically handled on a logarithmic scale, whereas other parameters remain linear. Figure 1 gives a one-dimensional illustration: raw-coordinate geometry can hide the variation that matters, a warp of the input space can expose it, and the resulting op-timization concentrates queries on the consequential region. Input warping can therefore accelerate GP-BO (Snoek et al. 2014), but ideally without sacrificing theoretical guarantees. Learning such a warp from the observed data makes the kernel history-dependent obstructing standard GP-UCB proofs. Existing theory for unknown stationary hyperparam-eters, misspecification, and finite model selection does not cover this form of data-adaptive nonlinear geometry (Wang and de Freitas 2014; Berkenkamp, Schoellig, and Krause 2019; Bogunovic and Krause 2021; Cutkosky et al. 2021; Liu and Singh 2023). We provide three contributions that reconcile this tension. 
+
+Method. We propose Finite-Library Input-Warped Bayesian Optimization (FLIWBO) (Ketabati Augustinsson 2026). The method keeps a finite library of smooth input warps, equiv., candidate GPs, that share one observation his-tory, and admits any (esp., history-dependent) rule to select the active warp each round. The selected warp determines the acquisition for the next query, adapting input geometry online to accelerate learning. 
+
+Theory. To our knowledge, FLIWBO yields the first high-probability sublinear cumulative-regret guarantee for BO that learns nonlinear input transformations from its own history. Under common hypotheses (objective function in RHKS Srinivas et al. (2010), uniform warp regularity Snoek et al. (2014), and standard Matérn-type Sobolev–RKHS equivalence (Kanagawa et al. 2018))—we prove RKHS and information-gain bounds and simultaneous GP-UCB confi-arXiv:2609.02993v1 [cs.LG] 2 Sep 2026 (a) Failure: stationary GP in x (b) Warp: fit in z = w(x) (c) Result: warped fit back in x (d) Contribution: warp learned online 
+
+Figure 1: All panels use the same one-dimensional P1 objective function and BO budget, as discussed in Section 4. (a) Problem: astandard fixed-kernel Matérn GP in the original coordinate treats equal x-distances as equally informative; it spreads queries over the flat background and oversmooths the narrow maximum. (b) Intuitive fix: the selected monotone Beta cumulative distribution function (CDF) warp z = w(x) expands the maximum’s neighborhood, so the same base kernel instead sees a broad, smooth feature and produces a better fit. (c) Result: mapping that posterior back to the original x-space gives a sharp, well-localized fit; the warp changes input geometry, not the objective. (d) Our contribution: FLIWBO learns the input geometry from the optimization data rather than requiring the user to specify an oracle warp. From light to dark, the selected warps (Beta CDF) adapt toward a representation that expands the narrow high-value region, showing that the algorithm can identify a suitable warp on its own as observations accumulate. In (a)–(c), the blue curve is the objective, circles are queried points, the dashed red curve is the GP mean, and the band is μ ± 2σ; in (d), the diamond marks the maximizer and color denotes the FLIWBO iteration. dence for every branch. The guarantee holds for any history-dependent selector; library size enters logarithmically in con-fidence and through a √Nε regret factor. 
+
+Evidence. Controlled diagnostics show that finite-library warping repairs planted geometry mismatches and iden-tify failure cases where fixed geometry is preferable. Across four repeated benchmarks—warped synthetic objec-tives, a confidence-fence trap, and Fashion-MNIST HPO— FLIWBO-UCB beats raw-coordinate GP-UCB under mis-specified geometry, escapes traps that defeat even oracle-warp expected improvement, and recovers much of the gain from manual log scaling, while leading the tested methods that admit a matching frequentist regret guarantee. A col-laborative feasibility study further applies FLIWBO to a 20-dimensional MAS design problem with costly noisy evalua-tions and compares selected designs to a human engineer’s reference. Code, configurations, and data are provided in the supplementary Code and Data Package. 
+
+## 2 Related Work 
+
+Our compatible finite warped-kernel family provides uniform regularity, common information-gain control, and simultane-ous GP-UCB confidence under data-adaptive nonlinear ge-ometry. We know of no comparable cumulative-regret anal-ysis. 
+
+Guaranteed GP optimization under adaptation. Fixed-kernel GP-UCB bounds cumulative regret via frequen-tist confidence and maximum information gain (Srinivas et al. 2010; Chowdhury and Gopalan 2017). Unknown-hyperparameter guarantees prescribe expected improvement (EI) estimation or expand the stationary function class (Wang and de Freitas 2014; Berkenkamp, Schoellig, and Krause 2019); neither adapts nonlinear geometry. Misspecified GP optimization pays to approximate the objective by a bounded-RKHS function (Bogunovic and Krause 2021); we instead assume library-wide realizability, excluding off-library mis-specification. 
+
+Finite model families. Model-selection schemes elimi-nate candidate algorithms or priors inconsistent with regret bounds (Cutkosky et al. 2021); GP variants eliminate finite priors, sometimes with hyperpriors (Ziomek, Adachi, and Osborne 2025; Sandberg and Haghir Chehreghani 2025). RKHS-class adaptation identifies a valid class at a model-selection cost, including under unknown kernel regularity (Liu and Singh 2023). FLIWBO instead exploits compatibil-ity: smooth maps of one base kernel place the objective in every candidate RKHS with uniform norm and information-gain bounds. Confidence thus precedes arbitrary history-dependent selection; no true or best warp need be identified. 
+
+Learning input geometry. Beyond length scales, metric and deep-kernel models learn richer representations (Snoek, Larochelle, and Adams 2012; Titsias and Lázaro-Gredilla 2010; Kiyohara and Kumagai 2025). Snoek et al. (2014) most directly infer continuous coordinate-wise Beta-CDF warps. FLIWBO discretizes their construction and couples it with GP-UCB, trading library size and computation for simultane-ous frequentist confidence and finite-time cumulative-regret control under adaptive selection. 
+
+## 3 FLIWBO Method & Convergence 
+
+We consider a nonempty compact search domain X ⊆ X ≜
+
+[0 , 1] D and an unknown continuous objective f : X → R.At each round t, the algorithm chooses xt ∈ X as a function of Dt−1 and observes yt = f (xt) + ϵt, where 
+
+Dt ≜ {(xs, y s)}ts=1 and D0 ≜ ∅. Following Srinivas et al. (2010), we assume E[ϵt | D t−1] = 0 and |ϵt| ≤ σ al-most surely (a.s.). For a base kernel k (later denoted k0)defined on X , we assume k(x, x ) ≤ 1 and write Kt−1 =[k(xs, x s′ )] s,s ′<t , kt−1(x) = ( k(x, x s)) s<t , and yt−1 =(y1, . . . , y t−1). The GP surrogate at round t is the usual regu-larized posterior: μt−1(x) = kt−1(x)⊤(Kt−1 +σ2I)−1yt−1
+
+and σ2
+
+> t−1
+
+(x) = k(x, x )−kt−1(x)⊤(Kt−1 +σ2I)−1kt−1(x).The next query maximizes an acquisition function Ut(x) built Algorithm 1 FLIWBO with GP-UCB 
+
+Require: X, k0, warps {wi}Nε
+
+> i=1
+
+, selector s, confidence se-quence (βt)
+
+1: Define ki(x, x ′) = k0(wi(x), w i(x′)) ∀ i
+
+2: Initialize the common dataset D0
+
+3: for t = 1 , . . . , T do 
+
+4: Let (μi,t −1, σ i,t −1) be the posterior under ki, Dt−1
+
+for each i
+
+5: jt ← s(Dt−1)
+
+6: xt ∈ arg max x∈X μjt,t −1(x) + √βt σjt,t −1(x)
+
+7: Observe yt = f (xt) + ϵt and update Dt ← D t−1 ∪{(xt, y t)}
+
+8: end for 
+
+from (μt−1, σ t−1), e.g. UCB or EI. Let x⋆ ∈ arg max x∈X f (x), and define instantaneous regret rt ≜ f (x⋆) − f (xt) and cumulative regret RT ≜
+
+PTt=1 rt. Sublinear cumulative regret means RT = o(T ), so average regret RT /T → 0.
+
+Input warps and finite library To change the geometry seen by the GP, we use a parameterized input warp wθ :
+
+X → Eθ ⊆ X , θ ∈ Θ. A warp that expands the domain near a maximizer x⋆ makes this high-value region occupy a larger region in warped coordinates, generally accelerating GP-BO. A warp that contracts the domain near the maximizer may make the high-value region harder to locate. We assume there is an integer m ≥ 1 (matched to the smoothness of the base kernel) such that each wθ is a Cm
+
+diffeomorphism onto its compact image Eθ , with deriva-tives of wθ and w−1 
+
+> θ
+
+up to order m uniformly bounded over 
+
+θ ∈ Θ (formalized below as Assumption 4). In practice, we follow Snoek et al. (2014), using coordinate-wise wθ (x) = (wθ, 1(x1), . . . , w θ,D (xD )) with each wθ,j a Beta CDF on a truncated box X = [ τ, 1 − τ ]D (hence C∞ and strictly increasing). Yet (unlike Snoek et al.), we consider a finite library of warp parameters Θε ≜ {θ(1) , . . . , θ (Nε)} ⊆ Θ;hence the derivative bounds reduce to 1 
+
+> M
+
+≤ w′ 
+
+> θ,j
+
+≤ M .For a fixed warp wθ , the warped objective is gθ (z) ≜
+
+f (w−1 
+
+> θ
+
+(z)) : Eθ → R, so f (x) = gθ (wθ (x)) . From base kernel k0, the warp-induced kernel is kθ (x, x ′) ≜
+
+k0(wθ (x), w θ (x′)) . For θ(i) ∈ Θε, we write ki ≜ kθ(i) and GP posterior μi,t −1, σ2 
+
+> i,t −1
+
+under ki and common data Dt−1.Algorithm 1 presents FLIWBO with UCB acquisition. Under mild assumptions we establish simultaneous confi-dence for every library branch, so any history-dependent warp selector inherits a sublinear cumulative-regret guar-antee. While other acquisition functions may be used in FLI-WBO, our sublinear regret proof is for UCB only. Practical selectors used in our experiments are specified in Section 4. 
+
+Library-wide RKHS bounds and confidence 
+
+Proofs of all results are in the supplement. We write Hkθ
+
+for the RKHS of kernel kθ . Fix a witness θ0 ∈ Θ with 
+
+f = g0 ◦ wθ0 (e.g., wθ0 (x) = x). 
+
+Assumption 1 (Witness RKHS bound) . g0 ≜ f ◦ w−1 
+
+> θ0
+
+∈Hk0 with ∥g0∥Hk0 ≤ Bg < ∞.
+
+Lemma 2 (Warp preserves RKHS boundedness) . For any 
+
+θ ∈ Θ and g ∈ H k0 , the pullback f ≜ g ◦ wθ lies in Hkθ
+
+with ∥f ∥Hkθ ≤ ∥ g∥Hk0 .
+
+It follows that ∥f ∥Hkθ0
+
+≤ Bg .Let m ≥ 1 be the integer Sobolev order of the base kernel 
+
+k0, e.g. Matérn with smoothness ν when m = ν + D/ 2 is an integer, and let Sm(Ω) denote the Sobolev space of functions on Ω whose weak derivatives up to order m lie in L2(Ω) .
+
+Assumption 3 (Sobolev–RKHS equivalence) . On every domain E ∈ {Eθ0 } ∪ { Eθ : θ ∈ Θε}, Hk0|E×E =
+
+Sm(E) as sets, with equivalent norms: C−1eq ∥u∥Sm(E) ≤∥u∥Hk0|E×E ≤ Ceq ∥u∥Sm(E).
+
+This holds, for example, for Matérn kernels whenever m =
+
+ν + D/ 2 is an integer; see Kanagawa et al. (2018). 
+
+Assumption 4 (Uniform warp regularity) . For every θ ∈ Θε,
+
+wθ is a Cm diffeomorphism, and the Cm norms of wθ and 
+
+w−1 
+
+> θ
+
+are uniformly bounded over θ ∈ Θε.
+
+Define the relative warp ϕi ≜ wθ0 ◦ w−1 
+
+> θ(i)
+
+: Ei → E0.By the chain rule, each ϕi is likewise a Cm diffeomorphism with derivatives uniformly bounded in i.
+
+Lemma 5 (Uniform composition bound on Sm). There exists a constant Ccomp such that for all i ∈ { 1, . . . , N ε} and all 
+
+u ∈ Sm(E0), ∥u ◦ ϕi∥Sm(Ei) ≤ Ccomp ∥u∥Sm(E0).
+
+Proof sketch: each ϕi yields a finite composition constant 
+
+Ccomp ,i ; set Ccomp = max i Ccomp ,i .We can now give a uniform RKHS bound on the library. 
+
+Theorem 6 (Uniform RKHS transfer over the finite li-brary) . There exists a constant Cwarp such that for every 
+
+i ∈ { 1, . . . , N ε}, f ∈ H kθ(i) and ∥f ∥Hkθ(i) ≤ Cwarp .
+
+Information gain Recall KT = [k(xs, x s′ )] s,s ′≤T
+
+and define the maximum information gain 
+
+as in Srinivas et al. (2010), γT (k, X ) ≜
+
+sup x1,...,x T ∈X 12 log det  I + σ−2KT
+
+ . Lemma 5.3 of Srinivas et al. (2010), gives a fixed-kernel variance bound and information-gain identity: 
+
+Lemma 7 (Variance accumulation for a fixed kernel) . For 
+
+k(x, x ) ≤ 1, let Cinfo ≜ 2/ log(1 + σ−2). Then for any adaptively chosen query sequence x1, . . . , x T and any fixed kernel k, TX
+
+> t=1
+
+σ2
+
+> t−1
+
+(xt) ≤ Cinfo γT (k, X ).
+
+Lemma 8 (Maximum information gain under a warp) . For every θ ∈ Θ and every T ≥ 1,
+
+γT (kθ , X ) = γT (k0, w θ (X)) ≤ γT (k0, X ) . (1) 
+
+Uniform confidence By Theorem 6, ∥f ∥Hki ≤ Cwarp for every library kernel, so the GP-UCB confidence theorem of Srinivas et al. (2010) applies to each fixed ki separately. Lemma 9 (Fixed-kernel GP-UCB confidence; Srinivas et al. (2010)) . Fix δ ∈ (0 , 1) . If βt ≥ 2B2 +300 γt(k, X ) log 3 (t/δ ), then, with probability at least 1 − δ,
+
+|f (x) − μt−1(x)| ≤ √βtσt−1(x) simultaneously for all 
+
+t ≥ 1 and all x ∈ X.
+
+Applied to branch i with norm bound Cwarp and failure probability δ/N ε, this yields a per-branch schedule βi,t and the UCB acquisition function 
+
+Ui,t (x) = μi,t −1(x) + pβi,t σi,t −1(x). (2) A union bound over the Nε branches, together with 
+
+γt(ki, X ) ≤ Γt := γt(k0, X ), is controlled by the single shared schedule 
+
+βt = 2 C2warp + 300Γ t log 3 (tN ε/δ ) , (3) which satisfies βt ≥ βi,t for every i. We therefore take 
+
+βi,t = βt for all i in (2), and obtain simultaneous library-wide confidence: 
+
+Lemma 10 (Uniform confidence over the finite library) . With 
+
+βt as in (3) and δ ∈ (0 , 1) , with probability at least 1 − δ,
+
+|f (x)−μi,t −1(x)| ≤ √βt σi,t −1(x) for all i ∈ { 1, . . . , N ε},all t ≥ 1, and all x ∈ X.
+
+FLIWBO-UCB policy and the telescope obstacle 
+
+For the FLIWBO-UCB policy (Algorithm 1), at round t
+
+let jt ∈ { 1, . . . , N ε} be any history-dependent library in-dex and query xt ∈ arg max x∈X Ujt,t (x) as in (2) with the shared schedule (3). Update the common history Dt;posteriors used at round t are computed from Dt−1. Any 
+
+Dt−1-measurable selector is admissible, including marginal likelihood (Snoek et al. 2014) or posterior model prob-ability. With prior weights (πi)Nε
+
+> i=1
+
+, a MAP selector is 
+
+jt ∈ arg max 1≤i≤Nε {log p(Dt−1 | θ(i)) + log πi}; under a uniform prior this is maximum marginal likelihood. Anal-ogous policies with other acquisition functions are possible, but our regret theorem is for UCB. 
+
+Why history-dependent kernels break fixed-kernel ac-counting For a fixed kernel k, det( I+σ−2Kkt )det( I+σ−2Kkt−1) = 1 + 
+
+σ−2σ2
+
+> k,t −1
+
+(xt). Intermediate determinants cancel over t,yielding the information-gain representation of predictive variance (Srinivas et al. 2010, Lemma 5.3). Under FLI-WBO the regret-relevant terms are σ2
+
+> jt,t −1
+
+(xt) with history-dependent jt, so consecutive ratios use different kernels and no longer telescope. The obstacle is data-dependent switch-ing of the uncertainty model, not adaptive sampling of xt.Our remedy is Lemma 10 (simultaneous confidence for every branch) together with a branchwise variance bound below. 
+
+FLIWBO-UCB cumulative regret 
+
+The standard GP-UCB comparison of Srinivas et al. (2010) applies to the selected branch kjt :
+
+Lemma 11 (Selected-branch instantaneous regret and vari-ance accumulation) . On the event of Lemma 10, rt ≤
+
+2√βt σjt,t −1(xt) for all t. If (βt) is nondecreasing, then 
+
+RT ≤ 2
+
+q
+
+βT T PTt=1 σ2
+
+> jt,t −1
+
+(xt).
+
+Bounding the selected variances by summing over all branches and applying Lemma 7 gives: 
+
+Lemma 12 (Selected-branch variance bound) .
+
+PTt=1 σ2
+
+> jt,t −1
+
+(xt) ≤ Cinfo 
+
+PNε 
+
+> i=1
+
+γT (ki, X ).
+
+Theorem 13 (FLIWBO-UCB sublinear cumulative regret) .
+
+Under Assumptions 1, 3, and 4, the FLIWBO-UCB policy with βt as in Lemma 10, has 
+
+RT ≤ 2pCinfo NεT β T ΓT (4) 
+
+probability at least 1 − δ, where ΓT ≜ γT (k0, X ). In par-ticular, if βT ΓT = o(T ), then RT = o(T ) and hence 
+
+RT /T → 0. E.g., Matérn kernels satisfy this growth con-dition when ν > D/ 2 (Vakili, Khezeli, and Picheny 2021). 
+
+On the library-wide confidence event, standard GP-UCB controls regret by the selected-branch variances; sum-ming those over branches and transferring information gain through the warp yields an NεΓT factor, so RT =
+
+O(√T β T NεΓT ), which is o(T ) whenever βT ΓT = o(T ).
+
+Remark 14 (Selector-adaptive variance refinement) . The bound in Theorem 13 charges every branch for all 
+
+T rounds. A tighter bound uses only selected rounds: with Ji ≜ {t : jt = i} and ni(T ) ≜ |Ji|,
+
+PTt=1 σ2
+
+> jt,t −1
+
+(xt) ≤ Cinfo 
+
+PNε 
+
+> i=1
+
+γni(T )(ki, X ), hence 
+
+RT ≤ 2pCinfo T β T
+
+P 
+
+> i
+
+γni(T )(ki, X ). This recovers the 
+
+NεΓT bound since ni(T ) ≤ T ; if the selector concentrates on few branches it can be much smaller, but the worst-case rate is unchanged. 
+
+What the guarantee costs. The library affects the bound in two ways. Through the union bound it appears only in-side the log 3(tN ε/δ ) term of βt in (3). Through branchwise variance accumulation it contributes an explicit √Nε factor in (4). There is also a computational cost: exhaustive selec-tion scores one GP per candidate geometry, although selec-tors may evaluate these posteriors lazily because every branch is defined from the common history. If Θε is an ε-net of a compact p-dimensional parameter set, then Nε ≤ (CΘ/ε )p
+
+for some CΘ < ∞, so log Nε = O(p log(1 /ε )) ; this con-trols library size only, not approximation error to an off-grid or best continuous warp. FLIWBO extends fixed-kernel GP-UCB to a finite set of warps with any learning mechanism; it does not guarantee that adaptation is beneficial. 
+
+## 4 Experimental Design 
+
+We use three evidence tiers: controlled single-run diagnostics that isolate warping; repeated comparisons estimate across-run performance on broader tasks; and a costly MAS case study tests feasibility in the motivating application. These answer different questions, not interchangeable evidence of optimizer superiority. All FLIWBO experiments select coordinate-wise Beta-CDF warps from finite libraries using shared optimization history; exact constructions, implemen-tation choices, and configurations are in the supplement and code. Problem D Init. BO Runs Confidence-Fence Problem 1 16 100 50 Warped Gaussian-Mixture Problem 2 5 100 50 Warped Hartmann6 Problem 6 5 150 50 Fashion-MNIST HPO Problem 5 8 150 20 
+
+Table 1: Repeated-comparison design. “Init.” and “BO” give the initial and sequential evaluations per run. 
+
+Controlled Mechanism Diagnostics 
+
+Four constructed problems isolate mechanisms. P1 tests res-olution reallocation toward a narrow high-value region (Fig-ure 1); P2 tests recovery of planted latent geometry (top row of Figure 2); P3 tests coordinate-specific warp learning in two dimensions (supplement); and P4 is a stationary nega-tive control favoring fixed-kernel GP-UCB (bottom row of Figure 2). Each paired trajectory shares initialization, noise, kernel, acquisition rule, and budget between fixed-kernel GP-UCB and FLIWBO-UCB. P1, P2, and P4 use five initial plus 25 BO evaluations; P3 uses five plus 50. The supplement gives exact objectives, settings, and complete trajectories. 
+
+Repeated Optimizer Comparisons 
+
+Table 1 gives all run and evaluation counts. The Confidence-Fence Problem tests whether geometry and acquisition jointly escape an initial-design blind spot; the Warped Gaussian-Mixture and Warped Hartmann6 Problems test known latent distortions in two and six dimensions; and the Fashion-MNIST HPO Problem (Xiao, Rasul, and Vollgraf 2017) asks whether learned warping recovers benefits usu-ally supplied by manual log scaling. Known-function comparisons include fixed GP-UCB, FLIWBO-UCB, continuous warped GP-EI (Snoek et al. 2014), and oracle GP-UCB/EI given the generating warp; the two higher-dimensional problems also include FLIWBO-EI. The HPO comparison includes FLIWBO-UCB/EI, con-tinuous warped GP-EI, and fixed GP-UCB/EI under linear and manual-log encodings. Methods share seeds within each run. We report mean best-so-far simple regret with 95% confidence intervals for known functions and incumbent val-idation loss for HPO. Only UCB configurations have the corresponding regret guarantees; EI variants are practical comparators. Task definitions, training details, and compar-ison caveats are in the supplement. 
+
+MAS Feasibility Case Study 
+
+With a participating organization, we applied FLIWBO-UCB to a multi-agent system (MAS) design problem: Python program-repair workflows evaluated on QuixBugs (Lin et al. 2017). An organizational engineer provided a manually de-signed MAS as a practical baseline. Each workflow is a 20-dimensional categorical configuration (models, prompts, tool subsets, and agent topology; at most five agents), de-tailed in the supplement. Full-workflow evaluations are costly in model calls, tokens, and wall-clock time. The objec-tive balances repairs against token use: f (x) = R(x) −                                  
+
+> Problem Fixed GP-UCB FLIWBO-UCB P1 ≈4×10 −1≈2×10 −2
+> P2 ≈4×10 −2≈7×10 −3
+> P3 ≈3×10 −1≈8×10 −5
+> P4 ≈1×10 −4≈1×10 −3
+
+Table 2: Final instantaneous regret for matched stationary and warped GP-UCB trajectories. Lower is better. FLIWBO-UCB wins on P1–P3 but not on the stationary control P4. The table reports every paired one-trajectory mechanism diagnos-tic; Figures 1 and 2 explain the one-dimensional mechanisms, and the supplement provides the additional P3 surfaces and complete trajectory plots. 
+
+10 −5Ctok (x), where R(x) is the number of programs re-paired (40 possible) and Ctok (x) is total token use. We run two FLIWBO-UCB trajectories with three initial and 158 sequential evaluations each, then re-evaluate each selected design and the human baseline 58 times. The second run changes a prior after inspecting the first, no competing opti-mizer is run at this cost, and the human design need not lie in the same search space. Thus the study shows application feasibility and a practical human comparison—not a causal benefit from warping or optimizer superiority. The supple-ment gives the search-space encoding and full protocol. 
+
+## 5 Experimental Results and Discussion 
+
+We report results in the three evidence tiers of Section 4. Unless stated otherwise, bands are pointwise 95% confidence intervals for the mean. 
+
+Controlled Mechanism Diagnostics 
+
+Table 2 reports lower final instantaneous regret for FLIWBO-UCB on P1–P3 and for fixed-kernel GP-UCB on stationary P4. Together, the P1 resolution reallocation (Figure 1), P2 planted-geometry recovery, and P4 control (Figure 2) show that finite-library warping helps when it expresses conse-quential mismatch but can distort already appropriate ge-ometry. The supplement provides P3 surfaces and complete trajectories. 
+
+Repeated Optimizer Comparisons 
+
+Figure 3 extends the controlled mechanism to two and six dimensions: finite warping improves fixed-kernel UCB when observed coordinates distort the objective. The Confidence-Fence Problem shows that suitable geom-etry is insufficient without exploration beyond the local peak; FLIWBO-UCB learns rather than receives that geometry. On Fashion-MNIST HPO, both FLIWBO acquisitions im-prove on linear coordinates, and FLIWBO-EI tracks manual-log GP-EI without receiving that encoding. Continuously warped GP-EI provides a target for guarantee-preserving ex-tensions. Across all four repeated experiments, FLIWBO-UCB has the best final reported mean among tested deploy-able optimizer families admitting noise-robust frequentist cumulative-regret analysis under their prescribed schedules. (a) P2: fixed GP in x (b) P2: FLIWBO in z = w(x) (c) P2: FLIWBO back in x          
+
+> (d) P4: fixed GP in x(e) P4: FLIWBO in z=w(x)(f) P4: FLIWBO back in x
+
+Figure 2: P2 shows a useful warp repairing planted geometry; P4 shows unnecessary warping making a suitable problem harder. In P2, (a) one raw-coordinate length scale poorly fits the compressed peak–trough changes. (b) FLIWBO selects 
+
+(α, β ) = (28 .01 , 8.07) , close to the planted (25 .093 , 8.073) warp, spreading those changes in z for the stationary base kernel. 
+
+(c) Back in x, queries concentrate on the compressed structure, tightening the fit and reducing final instantaneous regret by approximately 82.5%. On stationary P4, (d) fixed-kernel GP-UCB already fits well. (e) FLIWBO selects a non-identity warp, 
+
+(α, β ) = (4 .09 , 2.09) , without simplifying the objective; (f) poorer left-domain coverage yields higher regret ( 10 −3 versus 
+
+10 −4). Thus adaptive geometry helps by repairing consequential mismatch, not through flexibility alone.                  
+
+> System Mean f(x)SD 95% CI Human-designed baseline 24.97 2.21 [24 .38 ,25 .55]
+> BO run one 32.30 1.87 [31 .80 ,32 .79]
+> BO run two 31.31 0.82 [31 .09 ,31 .53]
+
+Table 3: MAS objective f (x) = R(x) − 10 −5Ctok (x) for FLIWBO-selected designs and the human engineer’s practi-cal reference ( n = 58 each); higher is better. Both selected designs outperform the reference under this protocol. This performance with a matching no-regret guarantee is its central practical strength. 
+
+MAS Feasibility Case Study 
+
+Under Section 4’s collaborative protocol, both FLIWBO-selected designs outperform the human engineer’s MAS on repeated evaluation, improving mean score by 29.4% and 25.4% (Table 3). Together with the completed 161-evaluation trajectories, this shows end-to-end feasibility on a costly, noisy 20-dimensional MAS problem and improvement over the human reference under this protocol. 
+
+Overall takeaway. The experiments show geometry learn-ing that helps under mismatch but not necessarily under suit-able geometry; the best final mean in all four repeated exper-iments among tested deployable methods with a matching noise-robust frequentist regret guarantee; and MAS feasibil-ity with practical improvement over a human reference. 
+
+## 6 Conclusion 
+
+FLIWBO extends classical GP-UCB to online selection from a finite library of warped kernels. Under uniform smoothness and RKHS–Sobolev compatibility, simultaneous confidence across the library yields high-probability sublinear cumu-lative regret for any history-dependent selector. The result permits flexible, data-dependent geometry selection while making its cost explicit: logarithmic confidence dependence on Nε, a √Nε regret factor, and one maintained posterior per branch. The empirical results show that this controlled form of adaptation is practically consequential. FLIWBO improves optimization under planted coordinate mismatch across one, two, and six dimensions, crosses the Confidence-Fence bar-rier in 47 of 50 runs while the tested EI variants remain trapped, and recovers much of the benefit of manual log scaling in HPO. Among the tested deployable optimizer families covered by a matching noise-robust regret guaran-tee, FLIWBO-UCB achieves the best final mean in all four repeated experiments. The stationary control identifies the Figure 3: Mean best-so-far simple regret over 50 runs on the Warped Gaussian-Mixture (left) and Warped Hartmann6 (right) Problems; bands are pointwise 95% confidence intervals. FLIWBO-UCB improves on raw-coordinate GP-UCB in both; con-tinuous and oracle curves show more expressive and supplied-geometry references. 
+
+Figure 4: Mean simple regret over 50 Confidence-Fence runs. Oracle GP-UCB crosses immediately; fixed GP-UCB and all tested EI variants, including oracle-warp EI, remain trapped. FLIWBO-UCB crosses in 47 runs, reaches regret at most 
+
+0.01 in 40, and has zero median final regret, isolating explo-ration after suitable geometry is available. complementary regime in which a fixed geometry is already sufficient, and the MAS collaboration demonstrates end-to-end feasibility under costly, noisy evaluation with a practical comparison against a human-designed reference. Together, these results establish FLIWBO as a promis-ing route to empirically effective no-regret optimization with learned input geometry. They also provide a concrete founda-tion for extending confidence control to continuous or adap-tive libraries, branch averaging, and structured domains with explicit approximation control and improved computational scaling. 
+
+Figure 5: Mean incumbent validation loss over 20 Fashion-MNIST HPO runs; bands are pointwise 95% confidence in-tervals. FLIWBO improves both acquisitions over linear co-ordinates and tracks manual log scaling; continuous warped GP-EI has the lowest final mean. Unit-cube seed pairing gives linear and log variants different physical initial hyperparam-eters. 
+
+## Ethical Statement 
+
+Generative AI tools were used to assist with language editing, and LaTeX typesetting. They were not used as sources of scientific evidence. All resulting text, analyses, code, figures, and references were reviewed and verified by the authors, who take full responsibility for the manuscript. 
+
+## Acknowledgments 
+
+Research funded by Vinnova Advanced Digitalization (Swe-den’s Innovation Agency), Försvarsmakten (Swedish Armed Forces), and Saab AB. References 
+
+Adams, R. A.; and Fournier, J. J. F. 2003. Sobolev Spaces .Academic Press, 2 edition. Aronszajn, N. 1950. Theory of Reproducing Kernels. Trans-actions of the American Mathematical Society , 68(3): 337– 404. Berkenkamp, F.; Schoellig, A. P.; and Krause, A. 2019. No-Regret Bayesian Optimization with Unknown Hyperparam-eters. Journal of Machine Learning Research , 20(50): 1–24. Bogunovic, I.; and Krause, A. 2021. Misspecified Gaus-sian Process Bandit Optimization. In Advances in Neural Information Processing Systems , volume 34. Chowdhury, S. R.; and Gopalan, A. 2017. On Kernelized Multi-armed Bandits. In Proceedings of the 34th Interna-tional Conference on Machine Learning , volume 70 of Pro-ceedings of Machine Learning Research , 844–853. Cutkosky, A.; Dann, C.; Das, A.; Gentile, C.; Pacchiano, A.; and Purohit, M. 2021. Dynamic Balancing for Model Selection in Bandits and RL. In Proceedings of the 38th International Conference on Machine Learning , volume 139 of Proceedings of Machine Learning Research , 2276–2285. Kanagawa, M.; Hennig, P.; Sejdinovic, D.; and Sriperum-budur, B. K. 2018. Gaussian Processes and Kernel Methods: A Review on Connections and Equivalences. arXiv preprint arXiv:1807.02582 .Ketabati Augustinsson, E. 2026. Warping the Search Space: No-Regret Bayesian Optimization with Finite-Library Input-Warped Kernels for Multi-Agent System Design . Master’s thesis, Chalmers University of Technology, Gothenburg, Sweden. Kiyohara, S.; and Kumagai, Y. 2025. Bayesian Optimization with Gaussian Processes Assisted by Deep Learning for Ma-terial Designs. Journal of Physical Chemistry Letters , 16: 5244–5251. Lin, D.; Koppel, J.; Chen, A.; and Solar-Lezama, A. 2017. QuixBugs: a multi-lingual program repair benchmark set based on the quixey challenge. In Proceedings Companion of the 2017 ACM SIGPLAN International Conference on Sys-tems, Programming, Languages, and Applications: Software for Humanity , 55–56. Liu, Y.; and Singh, A. 2023. Adaptation to Misspecified Ker-nel Regularity in Kernelised Bandits. In Proceedings of the 26th International Conference on Artificial Intelligence and Statistics , volume 206 of Proceedings of Machine Learning Research , 4963–4985. Sandberg, J.; and Haghir Chehreghani, M. 2025. Efficient Prior Selection in Gaussian Process Bandits with Thompson Sampling. arXiv:2502.01226. Snoek, J.; Larochelle, H.; and Adams, R. P. 2012. Prac-tical Bayesian Optimization of Machine Learning Algo-rithms. In Advances in Neural Information Processing Sys-tems (NeurIPS) .Snoek, J.; Swersky, K.; Zemel, R. S.; and Adams, R. P. 2014. Input Warping for Bayesian Optimization of Non-Stationary Functions. In Proceedings of the 31st International Con-ference on Machine Learning , volume 32 of Proceedings of Machine Learning Research , 1674–1682. Srinivas, N.; Krause, A.; Kakade, S. M.; and Seeger, M. 2010. Gaussian Process Optimization in the Bandit Setting: No Regret and Experimental Design. In Proceedings of the 27th International Conference on Machine Learning , 1015– 1022. Titsias, M. K.; and Lázaro-Gredilla, M. 2010. Variational In-ference for Mahalanobis Distance Metrics in Gaussian Pro-cess Regression. In Advances in Neural Information Pro-cessing Systems (NeurIPS) .Vakili, S.; Khezeli, K.; and Picheny, V. 2021. On Informa-tion Gain and Regret Bounds in Gaussian Process Bandits. In Proceedings of the 24th International Conference on Arti-ficial Intelligence and Statistics , volume 130 of Proceedings of Machine Learning Research , 82–90. Wang, Z.; and de Freitas, N. 2014. Theoretical Analysis of Bayesian Optimisation with Unknown Gaussian Process Hyper-Parameters. arXiv:1406.7758. Wendl, C. 2014. Sobolev Spaces. Appendix A, Theorem A.1.20. Xiao, H.; Rasul, K.; and Vollgraf, R. 2017. Fashion-MNIST: A Novel Image Dataset for Benchmarking Machine Learning Algorithms. CoRR , abs/1708.07747. Ziomek, J.; Adachi, M.; and Osborne, M. A. 2025. Time-Varying Gaussian Process Bandits with Unknown Prior. In 
+
+Proceedings of the 28th International Conference on Artifi-cial Intelligence and Statistics , volume 258 of Proceedings of Machine Learning Research , 4294–4302. 
+
+## A Problem Formulation and Definitions 
+
+The following section restates the formal problem definition in a concise way for convenience, as well as presenting the suggested algorithm in detail. 
+
+Objective and Observation Model 
+
+Let 
+
+X := [0 , 1] D
+
+denote the ambient domain, and let X ⊆ X denote the search domain. We assume that X is nonempty and compact. The unknown objective function is 
+
+f : X → R,
+
+and we assume that f is continuous. Hence, by compactness of X, the set of global maximizers 
+
+X⋆ := arg max 
+
+> x∈X
+
+f (x)
+
+is nonempty. At each round t, the algorithm chooses a point xt ∈ X
+
+and observes 
+
+yt = f (xt) + ϵt.
+
+Write 
+
+Dt := {(xs, y s)}ts=1 
+
+for the observed data after t evaluations (with D0 := ∅), and let 
+
+Ft := σ(Dt)be the σ-algebra generated by that history (enlarged by any independent algorithmic randomness). The query xt is Ft−1-measurable. We assume E[ϵt | F t−1] = 0 and |ϵt| ≤ σ al-most surely, and form each GP posterior using regularization (nominal noise variance) σ2.
+
+Input Warpings 
+
+The purpose of input warping is to change the geometry in which the objective is modelled. Rather than changing the objective values themselves, a warp changes how distances and neighborhoods in the input domain are represented by the GP surrogate. Let Θ be a parameter set, and for each θ ∈ Θ, let 
+
+wθ : X → Eθ
+
+be a continuously differentiable bijection onto its image 
+
+Eθ := wθ (X) ⊆ X 
+
+We assume that w−1 
+
+> θ
+
+: Eθ → X is well-defined and contin-uously differentiable. In particular, since X is compact and 
+
+wθ is continuous, each warped domain Eθ is also compact. In the coordinate-wise case considered later, the warp takes the form 
+
+wθ (x) = ( wθ, 1(x1), . . . , w θ,D (xD )) 
+
+where each coordinate map is strictly increasing and con-tinuously differentiable. We assume that the warp family is uniformly regular. For intuition, in the coordinate-wise case one may think of this regularity as requiring 
+
+1
+
+M ≤ w′
+
+> θ,i
+
+(xi) ≤ M
+
+Equivalently, in the multivariate formulation, the Jacobian of 
+
+wθ and the Jacobian of w−1 
+
+> θ
+
+are uniformly bounded over the warp family. The more explicit version needed in the regret proof is stated formally in Assumption 4. 
+
+Warped Objectives and Local Warp Quality 
+
+For every admissible warp wθ , we define the corresponding warped objective 
+
+gθ : Eθ → R
+
+by 
+
+gθ (z) := f (w−1 
+
+> θ
+
+(z)) 
+
+Equivalently, 
+
+f (x) = gθ (wθ (x)) 
+
+Thus, gθ is not a different objective, it is the same objective expressed in the warped coordinates. The motivation for using input warps is that some coordi-nate systems may make the optimization problem easier for a GP surrogate. In particular, a warp that expands the domain near a maximizer x⋆ ∈ X⋆ makes a small high-value region occupy a larger region in warped coordinates. Conversely, a warp that contracts the domain near the maximizer may make the high-value region harder to locate. To formalize this intuition, let 
+
+Bρ(X⋆) := {x ∈ X : dist( x, X ⋆) ≤ ρ}
+
+denote a ρ-neighborhood of the maximizer set. For a differ-entiable warp wθ , define the local expansion score 
+
+qρ(θ) := inf  
+
+> x∈Bρ(X⋆)
+
+σmin (Jwθ (x)) 
+
+where Jwθ (x) is the Jacobian of wθ at x, and σmin denotes its smallest singular value. In the one-dimensional case this reduces to 
+
+qρ(θ) = inf  
+
+> x∈Bρ(X⋆)
+
+w′ 
+
+> θ
+
+(x)
+
+We say that a warp is locally better near the maximizer if it has a larger local expansion score. For fixed ρ > 0 and 
+
+ε > 0, one may call a warp ε-good if 
+
+qρ(θ) ≥ M − ε
+
+and ε-bad if its local expansion near X⋆ is close to the lower regularity bound. These scores are not used in the main proof. The terminology is only meant to capture the geometric intuition that good warps expand neighborhoods of optimizers, while bad warps contract them. 
+
+Finite Warp Library and Algorithm Outline 
+
+For the theoretical analysis, we restrict attention to a finite library of warp parameters 
+
+Θε := {θ(1) , . . . , θ (Nε)} ⊆ Θ
+
+Each library element induces a kernel 
+
+Definition 15 (Warp-induced kernel family) . For each θ ∈
+
+Θ, we define the kernel on X as 
+
+kθ (x, x ′) := k0 (wθ (x), w θ (x′)) 
+
+For a base kernel k0 defined on X such that k0(x, x ) ≤ 1
+
+for all x.
+
+The common history defines a GP posterior for each ker-nel in the finite library. A selector rule, such as a maximum-a-posteriori selector, may evaluate these posteriors exhaus-tively or lazily before choosing the model that determines the next GP-UCB query point. Algorithm 2 presents the suggested finite-library input-warped BOGP-UCB algorithm that is central to the proposed method in this paper. For the coordinate-wise experiments, let the fixed one-coordinate library contain L parameter pairs. The prede-clared family of complete D-dimensional warps is its Carte-sian product, so Nε = LD ; S coordinate sweeps implement a lazy selector within that family using SDL + 1 GP fits per round, each on the full common history. 
+
+## B No-regret Properties for Finite-library Input Warped BOGP 
+
+In practice we use the coordinatewise Beta-CDF warp of Snoek et al. (Snoek et al. 2014) which fulfills Assumption 4 on the slightly restricted search domain X = [ τ, 1 − τ ]D for some τ ∈  0, 12
+
+. It is possible to apply other warp functions, such as regularized Beta-CDF, logit-affine-sigmoid warps or otherwise, on the full domain X as long as Assumption 4 is Algorithm 2 Selective Finite-Library Input-Warped GP-UCB 
+
+Require: Search domain X ⊆ [0 , 1] D , base kernel k0, finite warp library Θε = {θ(1) , . . . , θ (Nε)}, selector s, noise variance σ2, confidence sequence βt
+
+1: For each i ∈ { 1, . . . , N ε}, define the warped kernel 
+
+ki(x, x ′) := kθ(i) (x, x ′)
+
+2: Initialize dataset D0
+
+3: for t = 1 , 2, . . . , T do 
+
+4: Let μi,t −1, σ i,t −1 denote the posterior under ki, Dt−1
+
+and define Ui,t −1 = μi,t −1 + √βt σi,t −1 for every i
+
+5: Select a library index 
+
+jt ← s(Dt−1)
+
+6: Select the query point 
+
+xt ∈ arg max  
+
+> x∈X
+
+Ujt,t −1(x)
+
+7: Observe noisy feedback 
+
+yt = f (xt) + ϵt
+
+8: Update the dataset 
+
+Dt ← D t−1 ∪ { (xt, y t)}
+
+9: end for 
+
+10: return {(xt, y t)}Tt=1 
+
+fulfilled everywhere. Conditioned on θ, regression with ker-nel kθ is equivalent to standard Gaussian process regression applied to the warped inputs, at least on the search domain 
+
+X.For the regret analysis, we assume that there exists a wit-ness parameter θ0 in the admissible class and a witness rep-resentation g0 ∈ H k0 such that 
+
+f (x) = g0(wθ0 (x)) 
+
+Equivalently, the restriction of g0 to E0 := wθ0 (X) is the warped objective associated with the witness coordinate sys-tem. The witness is only an analytical device: it need not be unique, need not belong to the finite library, and is not interpreted as a true warp. This encodes that the witness representation g0 is assumed to lie in the RKHS Hk0 of the base kernel k0. The corresponding RKHS boundedness of 
+
+f under the witness-induced kernel follows from the next lemma. 
+
+Proof. Let 
+
+Eθ := wθ (X) ⊆ X 
+
+and define the restriction 
+
+u := h|Eθ
+
+By Aronszajn’s restriction theorem (Aronszajn 1950), u be-longs to the RKHS with reproducing kernel k0|Eθ ×Eθ and satisfies 
+
+∥u∥Hk0|Eθ ×Eθ
+
+≤ ∥ h∥Hk0
+
+Since 
+
+f (x) = h (wθ (x)) = u (wθ (x)) 
+
+the class n
+
+u ◦ wθ : u ∈ H k0|Eθ ×Eθ
+
+o
+
+is an RKHS on X with reproducing kernel 
+
+kθ (x, x ′) = k0 (wθ (x), w θ (x′)) 
+
+Therefore 
+
+f ∈ H kθ ,
+
+∥f ∥Hkθ = ∥u∥Hk0|Eθ ×Eθ
+
+≤ ∥ h∥Hk0 .
+
+Corollary 16 (Bounded RKHS norm under the witness-in-duced kernel) . Under Assumption 1 and Lemma 2, we have 
+
+∥f ∥Hkθ0
+
+≤ Bg
+
+RKHS Transfer 
+
+Remark 17 (Size of the ε-net) . If the finite library Θε =
+
+{θ(1) , . . . , θ (Nε)} ⊂ Θ is chosen as an ε-net of the compact parameter set Θ ⊂ Rp, then its cardinality can be bounded: 
+
+Nε ≤
+
+ CΘ
+
+ε
+
+p
+
+for some constant CΘ < ∞ depending only on Θ. Hence 
+
+log Nε = O (p log(1 /ε )) 
+
+Let Sm(Ω) denote the Sobolev space of functions on the domain Ω whose weak derivatives up to order m lie in L2(Ω) .Intuitively, Sm contains functions that are smooth up to m
+
+derivatives. In our analysis, the integer m is not arbitrary, it is tied to the smoothness level implied by the base kernel, e.g. a Matérn kernel with sufficient ν through m = ν + D/ 2.For this type of kernel, the associated RKHS is equivalent to a Sobolev space, which is useful for analyzing composition with smooth maps such as wθ (x).Assumption 3 applies to the base kernel k0 and is used only to move between RKHS norms and Sobolev norms on the finitely many warped domains appearing in the library 
+
+Θε. This assumption holds, for example, for Matérn ker-nels whenever the induced Sobolev order is an integer. See (Kanagawa et al. 2018) for details. 
+
+Remark 18 (Regularity of the relative warps) . For each 
+
+i = 1 , . . . , N ε, define the relative warp 
+
+ϕi := wθ0 ◦ w−1 
+
+> θ(i)
+
+: Ei → E0
+
+Under the uniform regularity Assumption 4 above, each ϕi
+
+is a Cm diffeomorphism. Moreover, its derivatives and the derivatives of its inverse up to order m are bounded uniformly across i. This follows immediately from the corresponding bounds for wθ0 , wθ(i) , and w−1 
+
+> θ(i)
+
+by composition and the chain rule. Proof. As stated in Remark 18, each ϕi is a Cm diffeomor-phism between Ei and E0, and the derivatives of ϕi and 
+
+ϕ−1 
+
+> i
+
+up to order m are uniformly bounded over i. There-fore, we can apply a Sobolev composition theorem for Cm
+
+diffeomorphisms (Wendl 2014; Adams and Fournier 2003). Consequently, for each i, there exists a constant Ci < ∞
+
+depending only on m, D, and the uniform bounds such that 
+
+∥u ◦ ϕi∥Sm(Ei) ≤ Ci∥u∥Sm(E0)
+
+Since the library is finite, one constant may be chosen uni-formly over i, Ccomp := max  
+
+> i
+
+Ci < ∞.
+
+Proof. Fix i ∈ { 1, . . . , N ε} and write 
+
+E0 = wθ0 (X), Ei = wθ(i) (X),ϕi = wθ0 ◦ w−1 
+
+> θ(i)
+
+: Ei → E0.
+
+Let 
+
+u0 := g0|E0
+
+By Aronszajn’s restriction theorem (Aronszajn 1950), 
+
+u0 ∈ H k0|E0×E0 ,
+
+∥u0∥Hk0|E0×E0
+
+≤ ∥ g0∥Hk0 ≤ Bg .
+
+Assumption 3 then gives 
+
+∥u0∥Sm(E0) ≤ Ceq Bg
+
+Define 
+
+ui := u0 ◦ ϕi on Ei
+
+By Lemma 5, 
+
+∥ui∥Sm(Ei) ≤ Ccomp ∥u0∥Sm(E0) ≤ Ccomp Ceq Bg
+
+Applying Assumption 3 once more, 
+
+∥ui∥Hk0|Ei×Ei
+
+≤ Ceq ∥ui∥Sm(Ei) ≤ C2eq Ccomp Bg
+
+For every x ∈ X,
+
+ui (wθ(i) (x)) = u0 (ϕi (wθ(i) (x))) = u0 (wθ0 (x)) = g0 (wθ0 (x)) = f (x).
+
+Thus 
+
+f (x) = ui (wθ(i) (x)) 
+
+By Aronszajn’s restriction theorem, since ui ∈ H k0|Ei×Ei
+
+there exists an extension ˜ui ∈ H k0 such that 
+
+˜ui|Ei = ui and ∥˜ui∥Hk0 = ∥ui∥Hk0|Ei×Ei
+
+Applying Lemma 2 to ˜ui, we obtain that ˜ui ◦ wθ(i) belongs to Hkθ(i) . Since wθ(i) (x) ∈ Ei, we have 
+
+˜ui (wθ(i) (x)) = ui (wθ(i) (x)) = f (x)
+
+Therefore, f ∈ H kθ(i) .Define Cwarp := C2eq Ccomp Bg , which proves the claim. 
+
+Information Gain 
+
+Definition 19 (Maximum information gain) . For any se-quence x1, . . . , x T ∈ X, and a kernel k, let 
+
+KT := [ k(xi, x j )] Ti,j =1 
+
+denote the T × T kernel matrix. Define the maximum infor-mation gain as in (Srinivas et al. 2010), 
+
+γT (k, X ) := sup  
+
+> x1,...,x T∈X
+
+12 log det  I + σ−2KT
+
+
+
+where I is the T × T identity matrix and σ2 is the noise variance parameter. Proof. For the realized sequence x1, . . . , x T , let 
+
+KT := [ k(xi, x j )] Ti,j =1 
+
+By Lemma 5.3 of Srinivas et al. (Srinivas et al. 2010), 
+
+12 log det  I + σ−2KT
+
+ = 12
+
+> T
+
+X
+
+> t=1
+
+log  1 + σ−2σ2
+
+> t−1
+
+(xt)
+
+Since ut := σ2
+
+> t−1
+
+(xt) ∈ [0 , 1] , concavity of u 7 → log(1 + 
+
+σ−2u) gives 
+
+ut log(1 + σ−2) ≤ log(1 + σ−2ut).
+
+Summing over t and using the preceding identity gives 
+
+> T
+
+X
+
+> t=1
+
+σ2
+
+> t−1
+
+(xt) ≤ Cinfo 
+
+12 log det  I + σ−2KT
+
+
+
+By Definition 2, 
+
+12 log det  I + σ−2KT
+
+ ≤ γT (k, X )
+
+and therefore 
+
+> T
+
+X
+
+> t=1
+
+σ2
+
+> t−1
+
+(xt) ≤ Cinfo γT (k, X )
+
+Proof. Fix θ ∈ Θ and T ≥ 1. Let x1, . . . , x T ∈ X be an arbitrary sequence, and define 
+
+zt := wθ (xt) ∈ wθ (X) t = 1 , . . . , T 
+
+Let the kernel matrices along the sequence be 
+
+Kθ,T := [ kθ (xp, x q )] Tp,q =1 ,K0,T := [ k0(zp, z q )] Tp,q =1 .
+
+Then Kθ,T = K0,T , and therefore 
+
+12 log det  I + σ−2Kθ,T 
+
+ = 12 log det  I + σ−2K0,T 
+
+ .
+
+Hence the log-det quantity in Definition 19 for the sequence 
+
+x1, . . . , x T under kθ is exactly equal to the log-det quantity in Definition 19 for the sequence z1, . . . , z T under k0 on the domain wθ (X).Taking the supremum over all sequences x1, . . . , x T ∈ X
+
+is thus equivalent to taking the supremum over all sequences 
+
+z1, . . . , z T ∈ wθ (X), which yields 
+
+γT (kθ , X ) = γT (k0, w θ (X)) 
+
+Since wθ (X) ⊆ X , the supremum over sequences in 
+
+wθ (X) is bounded by the supremum over sequences in X ,and hence 
+
+γT (k0, w θ (X)) ≤ γT (k0, X )
+
+Uniform Confidence Bound 
+
+Proof. This is the GP-UCB confidence event in the bounded-RKHS setting. See the analysis by Srinivas et al. (Srinivas et al. 2010). 
+
+Proof. Fix i ∈ { 1, . . . , N ε}. By Theorem 6, 
+
+f ∈ H ki and ∥f ∥Hki ≤ Cwarp 
+
+Moreover, by Lemma 8, for every t ≥ 1,
+
+γt(ki, X ) ≤ γt (k0, X ) =: Γ t
+
+The chosen βt upper-bounds confidence parameter re-quired by Lemma 9 for all i, and therefore the confidence bound remains valid. Therefore Lemma 9 applies to the sin-gle kernel ki with failure probability δ/N ε and the above choice of βt, yielding 
+
+|f (x) − μi,t −1(x)| ≤ pβtσi,t −1(x)
+
+for all t ≥ 1 and all x ∈ X, except on an event of probability at most δ/N ε.Taking a union bound over i = 1 , . . . , N ε proves the claim. 
+
+No-Regret Proof 
+
+The following policy is a finite-library analogue of GP-UCB, as presented in (Srinivas et al. 2010). 
+
+Definition 20 (Finite-library warped GP-UCB policy) . For each round t ≥ 1 and each i ∈ { 1, . . . , N ε}, define 
+
+Ui,t −1(x) := μi,t −1(x) + pβtσi,t −1(x)
+
+At round t, let 
+
+jt ∈ { 1, . . . , N ε}
+
+be any index chosen from the common data Dt−1 as defined earlier. Then choose 
+
+xt ∈ arg max  
+
+> x∈X
+
+Ujt,t −1(x)
+
+Finally, we recall the standard definitions of instantaneous (rt) and cumulative ( RT ) regret 
+
+x⋆ ∈ arg max  
+
+> x∈X
+
+f (x),rt := f (x⋆) − f (xt),RT := 
+
+> T
+
+X
+
+> t=1
+
+rt.
+
+Remark 21. The policy of Definition 20 includes, as special cases, selectors based on for example marginal likelihood, posterior model probability, or any other score computed from Dt−1. In particular, using the prior weights (πi)Nε
+
+> i=1
+
+, a MAP selector is 
+
+jt ∈ arg max 
+
+> 1≤i≤Nε
+
+n
+
+log p(Dt−1 | θ(i)) + log πi
+
+o
+
+Under a uniform prior, this reduces to maximization of the log marginal likelihood. 
+
+(The main text combines the next two lemmas under one “Selected-branch instantaneous regret and variance accumu-lation” statement.) 
+
+Proof. Fix t ≥ 1. By Lemma 10, for every i ∈ { 1, . . . , N ε}
+
+and every x ∈ X,
+
+f (x) ≤ μi,t −1(x) + pβtσi,t −1(x) = Ui,t −1(x)
+
+In particular, for the selected index jt,
+
+f (x⋆) ≤ Ujt,t −1(x⋆)
+
+Since xt is chosen to maximize Ujt,t −1(x), we have 
+
+Ujt,t −1(x⋆) ≤ Ujt,t −1(xt) = μjt,t −1(xt)+ pβtσjt,t −1(xt)
+
+Combining gives 
+
+f (x⋆) ≤ μjt,t −1(xt) + pβtσjt,t −1(xt)
+
+Applying Lemma 10 again at (jt, x t) yields 
+
+μjt,t −1(xt) ≤ f (xt) + pβtσjt,t −1(xt)
+
+Hence 
+
+f (x⋆) − f (xt) ≤ 2pβtσjt,t −1(xt)
+
+which proves the claim. 
+
+Proof. Summing Lemma 11 over t gives 
+
+RT =
+
+> T
+
+X
+
+> t=1
+
+rt ≤ 2
+
+> T
+
+X
+
+> t=1
+
+pβtσjt,t −1(xt)
+
+Since βt ≤ βT for all t ≤ T ,
+
+RT ≤ 2pβTTX
+
+> t=1
+
+σjt,t −1(xt)
+
+Applying Cauchy-Schwarz to the variance term yields 
+
+> T
+
+X
+
+> t=1
+
+σjt,t −1(xt) ≤
+
+vuutT
+
+> T
+
+X
+
+> t=1
+
+σ2
+
+> jt,t −1
+
+(xt)
+
+Substituting this into the previous expression proves the result. Proof. For each i ∈ { 1, . . . , N ε}, define 
+
+Ji := {t ∈ { 1, . . . , T } : jt = i}
+
+Then {Ji}Nε 
+
+> i=1
+
+forms a partition of {1, . . . , T }, so 
+
+> T
+
+X
+
+> t=1
+
+σ2
+
+> jt,t −1
+
+(xt) = 
+
+> Nε
+
+X
+
+> i=1
+
+X
+
+> t∈Ji
+
+σ2
+
+> i,t −1
+
+(xt) ≤
+
+> Nε
+
+X
+
+> i=1
+> T
+
+X
+
+> t=1
+
+σ2
+
+> i,t −1
+
+(xt)
+
+Now fix i. Since each ki is a fixed kernel, Lemma 7 gives 
+
+> T
+
+X
+
+> t=1
+
+σ2
+
+> i,t −1
+
+(xt) ≤ Cinfo γT (ki, X )
+
+Summing over i proves the claim. 
+
+Proof. Let E denote the event of Lemma 10. Then P(E) ≥
+
+1−δ. From here, we work on E. By Lemma 11 and Lemma 12 combined with Lemma 8, 
+
+RT ≤ 2pT β T Cinfo NεγT (k0, X )
+
+Using ΓT = γT (k0, X ) as in Lemma 10 gives the stated regret bound. If 
+
+βT ΓT = o(T )
+
+then the right-hand side is o(T ), so RT /T −→   
+
+> T→∞
+
+0.
+
+Remark 22 (Selector-adaptive variance refinement) .
+
+A crude bound “charges” every branch for all T
+
+rounds, PTt=1 σ2
+
+> jt,t −1
+
+(xt) ≤ PNε
+
+> i=1
+
+PTt=1 σ2
+
+> i,t −1
+
+(xt) ≤
+
+Cinfo NεΓT , even on rounds when that branch is not se-lected. A tighter bound uses only the rounds on which that branch is selected. For each i ∈ {1, . . . , N ε}, let 
+
+Ji ≜ {t ∈ { 1, . . . , T } : jt = i} and ni(T ) ≜ |Ji|. Because each branch-i posterior is conditioned on the full common history, its predictive variance at any t ∈ Ji is at most the variance obtained by conditioning only on the earlier points in Ji. Applying Lemma 7 to each subsequence (xt)t∈Ji there-fore yields PTt=1 σ2
+
+> jt,t −1
+
+(xt) ≤ Cinfo 
+
+PNε 
+
+> i=1
+
+γni(T )(ki, X )
+
+(with the convention γ0 ≡ 0), and hence by Lemma 11 
+
+RT ≤ 2
+
+vuutCinfo T β TNεX
+
+> i=1
+
+γni(T )(ki, X ).
+
+Since ni(T ) ≤ T and γni(T )(ki, X ) ≤ ΓT , this recovers the uniform NεΓT bound of Theorem 13. When the selector concentrates on few branches the refined bound can be much smaller, but the worst-case no-regret rate is unchanged. 
+
+Probability-weighted acquisition averaging. The pre-ceding analysis extends directly to policies that average the library acquisition functions rather than selecting a single branch. 
+
+Definition 23 (Probability-weighted finite-library warped GP-UCB policy) . For each round t ≥ 1, let 
+
+qt = ( qt, 1, . . . , q t,N ε )
+
+be an Ft−1-measurable probability vector, so that 
+
+qt,i ≥ 0,
+
+> Nε
+
+X
+
+> i=1
+
+qt,i = 1 .
+
+Define the probability-weighted posterior mean 
+
+¯μt−1(x) := 
+
+> Nε
+
+X
+
+> i=1
+
+qt,i μi,t −1(x),
+
+and the probability-weighted acquisition function 
+
+¯Ut−1(x) := 
+
+> Nε
+
+X
+
+> i=1
+
+qt,i Ui,t −1(x)= ¯ μt−1(x) + pβtNεX
+
+> i=1
+
+qt,i σi,t −1(x).
+
+At round t, choose 
+
+xt ∈ arg max 
+
+> x∈X
+
+¯Ut−1(x).
+
+Theorem 24 (No-regret for probability-weighted finite-li-brary input-warped GP-UCB) . Under Assumptions 2, 3, and 7 and the probability-weighted policy above, using βt as specified in Lemma 15, with probability at least 1 − δ,
+
+RT ≤ 2pCinfo NεT β T ΓT ,
+
+where 
+
+ΓT := γT (k0, X ).
+
+In particular, if 
+
+βT ΓT = o(T ),
+
+then 
+
+RT = o(T ) and hence RT
+
+T −→ 0 as T → ∞ .
+
+Proof. Let E denote the simultaneous confidence event of Lemma 15, so that P(E) ≥ 1 − δ. We work on E.For every t ≥ 1 and x ∈ X ,
+
+|f (x) − ¯μt−1(x)| =
+
+> Nε
+
+X
+
+> i=1
+
+qt,i 
+
+ f (x) − μi,t −1(x)
+
+≤
+
+> Nε
+
+X
+
+> i=1
+
+qt,i |f (x) − μi,t −1(x)|≤ pβtNεX
+
+> i=1
+
+qt,i σi,t −1(x).
+
+Consequently, 
+
+f (x) ≤ ¯Ut−1(x)
+
+for every x ∈ X . Since xt maximizes ¯Ut−1,
+
+f (x⋆) ≤ ¯Ut−1(x⋆) ≤ ¯Ut−1(xt).
+
+Applying the preceding confidence inequality once more at 
+
+xt gives 
+
+rt = f (x⋆) − f (xt) ≤ 2pβtNεX
+
+> i=1
+
+qt,i σi,t −1(xt).Assuming βt is non-decreasing and summing over t,
+
+RT ≤ 2pβTTX
+
+> t=1
+> Nε
+
+X
+
+> i=1
+
+qt,i σi,t −1(xt).
+
+By Cauchy–Schwarz, 
+
+RT ≤ 2
+
+vuutT β TTX
+
+> t=1
+> Nε
+
+X
+
+> i=1
+
+qt,i σi,t −1(xt)
+
+!2
+
+.
+
+Since z 7 → z2 is convex, Jensen’s inequality yields 
+
+> Nε
+
+X
+
+> i=1
+
+qt,i σi,t −1(xt)
+
+!2
+
+≤
+
+> Nε
+
+X
+
+> i=1
+
+qt,i σ2
+
+> i,t −1
+
+(xt).
+
+Therefore, 
+
+RT ≤ 2
+
+vuutT β TTX
+
+> t=1
+> Nε
+
+X
+
+> i=1
+
+qt,i σ2
+
+> i,t −1
+
+(xt).
+
+Using qt,i ≤ 1 and then Lemma 12 for each fixed kernel ki,
+
+> T
+
+X
+
+> t=1
+> Nε
+
+X
+
+> i=1
+
+qt,i σ2
+
+> i,t −1
+
+(xt) ≤
+
+> Nε
+
+X
+
+> i=1
+> T
+
+X
+
+> t=1
+
+σ2
+
+> i,t −1
+
+(xt)
+
+≤ Cinfo 
+
+> Nε
+
+X
+
+> i=1
+
+γT (ki, X ).
+
+Lemma 13 gives 
+
+γT (ki, X ) ≤ γT (k0, X ) = Γ T
+
+for every i. Hence 
+
+RT ≤ 2pCinfo NεT β T ΓT .
+
+If βT ΓT = o(T ), dividing the preceding bound by T shows that RT /T → 0.
+
+Remark 25. No additional confidence penalty is required for the probability weights. Lemma 15 holds simultaneously over every library member, round, and point in X ; conditional on this event, the weighted inequalities above hold for any Ft−1-measurable probability vector qt.The selective policy of Definition 16 is recovered by taking 
+
+qt,j t = 1 , qt,i = 0 for i̸ = jt.
+
+Thus, probability-weighted acquisition averaging strictly generalizes the selected-branch policy while retaining the same uniform no-regret bound. 
+
+## C Controlled Mechanism Diagnostics 
+
+This section expands the compact diagnostic summary in the main paper. All four comparisons use matched initial obser-vations, noise, base kernels, acquisition rules, and evaluation budgets; only the input geometry differs. Each problem is one constructed trajectory, so the figures diagnose behavior rather than estimate average performance. For each problem, we show the objective, the final fixed and warped surrogate fits, the same fit in learned coordinates, and the complete instantaneous-regret trajectory. 
+
+Figure 6: P1 objective and shared initial design. The objec-tive’s useful variation is confined to a narrow peak on an otherwise nearly constant background. A stationary kernel in the raw coordinate must model both scales with one no-tion of distance. 
+
+Exact Objectives and Shared Protocol 
+
+Each problem Pi optimizes an objective fi on [0 .01 , 0.99] D .Define the common bump function 
+
+q(u, c, s ) = exp[ − 12 (( u − c)/s )2].
+
+For P2, define the latent objective 
+
+g(z) = 0 .50 + 0 .08 z + 0 .055 sin(2 πz + 0 .2) + 0 .035 sin(8 πz − 0.7) + 0 .16 q(z, 0.36 , 0.11) − 0.09 q(z, 0.60 , 0.07) + 0 .24 q(z, 0.86 , 0.035) .
+
+The four diagnostic objectives are 
+
+f1(x) = 0 .58 + 0 .52 q(x, 0.82 , 0.006) ,f2(x) = g BetaCDF( x, 25 .093 , 8.073) ,f3(x) = 0 .45 + 0 .30 q(x1, 0.28 , 0.05) + 0 .50 q(x2, 0.78 , 0.02) ,f4(x) = 0 .5 + 0 .2 sin(2 πx ) + 0 .1 cos(4 πx ).
+
+The one-dimensional tasks P1, P2, and P4 use a Matérn-5/2
+
+base kernel, five fixed initial points, a 256-warp library, and 25 sequential BO evaluations. P3 uses a Matérn-3 base ker-nel, five initial points, a 1296-warp library, and 50 sequential BO evaluations. We report instantaneous regret against a dense-grid optimum. 
+
+P1: Narrow High-Value Region 
+
+P1 is nearly flat except for a very narrow peak near the maxi-mizer. It tests whether a selected monotone warp can expand the consequential part of the domain enough for a stationary base kernel to resolve it. 
+
+P2: Objective Generated by a Latent Warp 
+
+P2 is generated from a smooth latent objective through a known Beta-CDF transformation with (α⋆, β ⋆) =(25 .093 , 8.073) . It is the cleanest recovery diagnostic: useful selection should move toward the planted coordinate sys-tem, although the finite library need not contain the exact generator. Figure 7: P1 final fits in the original coordinate. The fixed model (left) spreads its queries across the flat background and smooths the spike into a modest bump. FLIWBO-UCB (right) selects (α, β ) = (30 .00 , 8.07) , concentrates observations around the peak, and recovers its height. The warp changes the geometry seen by the kernel; it does not add observations. 
+
+Figure 8: P1 before and after the learned coordinate change. In raw x-space (left), the high-value region is easy to smooth away. In learned z = w(x) coordinates (right), that neighborhood occupies substantially more modeling resolution while the uninformative background is compressed. P3: Coordinate-Specific Feature Widths 
+
+P3 extends the mechanism check to two dimensions. Its addi-tive features vary at different locations and widths along the two coordinates, allowing coordinate-wise warps to allocate resolution separately in each dimension. 
+
+P4: Stationary Control 
+
+P4 is smooth in the observed coordinate and requires no latent transformation. It tests the cost of adapting the geometry when the stationary base model is already appropriate. Figure 9: P1 instantaneous regret. The two methods initially behave similarly, but the warped trajectory drops once it resolves the narrow optimum; the fixed model continues querying the broad background. Lower is better and the vertical axis is logarithmic. Figure 10: P2 objective and shared initial design. A smooth latent function becomes strongly non-uniform when ex-pressed in the observed coordinate, concentrating most visi-ble structure toward one side of the domain. Figure 11: P2 final fits in the original coordinate. The fixed model (left) allocates observations broadly. FLIWBO-UCB (right) selects (α, β ) = (28 .01 , 8.07) , close to the planted warp, and concentrates resolution where the objective changes most rapidly. 
+
+Figure 12: P2 before and after the learned coordinate change. The raw-coordinate fit (left) must represent compressed variation near the right boundary. In learned coordinates (right), the same structure is spread over the domain and is better matched to the stationary base kernel. Figure 13: P2 instantaneous regret. The warped trajectory makes its decisive improvements earlier and finishes below the fixed model. Together with the recovered parameters, the curve connects the optimization gain to the planted latent geometry. Lower is better and the vertical axis is logarithmic. Figure 14: P3 objective. Two narrow coordinate-aligned structures intersect at the maximizer. The initial design is omitted from this surface to keep the different feature scales visible. Figure 15: P3 final surfaces in the original coordinates. From left to right: the fixed GP posterior mean, the warped GP posterior mean mapped back to x-space, and the true objective. The fixed fit varies across much of the domain, whereas the warped fit concentrates its structure around the narrow ridges that matter. 
+
+Figure 16: P3 in original and learned coordinates. The upper row compares the fixed posterior in x-space with the warped posterior in z-space; the lower row shows the true objective in the corresponding coordinates. The learned representation broadens the high-value structures seen by the stationary base kernel. Figure 17: P3 instantaneous regret. The fixed trajectory remains on the same plateau, while FLIWBO-UCB makes several improvements and ultimately resolves the maximizer near the end of the budget. Lower is better and the vertical axis is logarithmic. Figure 18: P4 objective and shared initial design. Unlike P1– P3, the objective varies smoothly over the raw coordinate and presents no narrow hidden region for a warp to reveal. Figure 19: P4 final fits in the original coordinate. Both surrogates fit the objective well, but FLIWBO-UCB (right) selects the unnecessary non-identity warp (α, β ) = (4 .09 , 2.09) . The added flexibility changes where queries are spent without repairing a genuine mismatch. 
+
+Figure 20: P4 before and after the selected coordinate change. The original coordinate (left) already presents the objective at a scale well matched to the base kernel. The selected warped coordinate (right) redistributes resolution but supplies no corresponding modeling advantage. Figure 21: P4 instantaneous regret. The stationary model finds low-regret queries sooner and finishes below the warped model, reversing the ordering of P1–P3. This negative control shows that finite-library adaptation is not a free improvement. Lower is better and the vertical axis is logarithmic. D Additional Experimental Design Details 
+
+Shared FLIWBO Implementation 
+
+Raw coordinates are affinely mapped to a task-specific 
+
+[τ, 1 − τ ]D , τ > 0, before applying coordinate-wise Beta-CDF transformations wd(xd) = BetaCDF( xd, α d, β d). The maps and their inverses are therefore smooth on the modeled domain, including at physical-domain endpoints. Regular-ized marginal likelihood selects from a fixed one-coordinate grid of L parameter pairs. In higher dimensions, S coordinate sweeps search within the predeclared LD Cartesian-product library by scoring L joint warps at a time while holding the other coordinates fixed. Every scored GP uses the full shared history, so the selector fits SDL + 1 GPs per round while 
+
+Nε = LD in the confidence schedule. Base Matérn-kernel parameters are fixed within each experiment. The theorem assumes exact UCB maximization, whereas experiments use probabilistic reparameterization as a stochastic acquisition optimizer. Problem-specific constants and complete config-urations are provided with the code. 
+
+Repeated Optimizer Comparisons 
+
+Known-function problems. Each method receives the same initial design in a given run. We report best-so-far simple regret to the known or numerically approximated op-timum, averaged over 50 runs with 95% confidence intervals. The Confidence-Fence Problem separates representation from acquisition. Its latent objective is 
+
+g(z) = exp[ −(( z − 0.20) /0.08) 2]+ 0 .10 sin(8 πz )+ 2 exp[ −(( z − 0.80) /0.008) 2],
+
+(5) and the observed coordinate is mapped by z =BetaCDF( x, 6.08 , 2.0933) . Sixteen fixed initial points char-acterize the broad local peak and bracket, without observing, the narrow global peak. The construction asks whether a use-ful warp paired with UCB exploration can cross this “fence.” EI remaining trapped is an outcome of this setup, not the definition of the task or a general claim about EI, and the ad-versarial construction should not be read as a representative distribution of black-box objectives. The Warped Gaussian-Mixture Problem is a five-mode anisotropic mixture with a low-amplitude oscillatory back-ground in latent coordinates and unequal Beta-CDF dis-tortions in the two observed coordinates. The Warped Hartmann6 Problem similarly composes the standard six-dimensional maximization objective with six distinct coor-dinate warps. Exact objective and warp parameters for these problems are provided with the code. All three problems compare fixed-kernel GP-UCB in ob-served coordinates, FLIWBO-UCB, Snoek-style continu-ously warped GP-EI with MCMC, and oracle GP-UCB/EI in latent coordinates (Snoek et al. 2014). The Warped Gaussian-Mixture Problem and Warped Hartmann6 Problem addi-tionally include FLIWBO-EI. Oracle methods receive the generating warp and are optimistic references under per-fect geometry recovery, not deployable competitors or finite-budget bounds. The objectives are deterministic; run vari-ation comes from initial designs, except for the fixed ini-tialization of the Confidence-Fence Problem, and stochastic acquisition optimization. 
+
+Fashion-MNIST HPO Problem. We optimize validation cross-entropy for a small two-convolutional-layer network trained for five epochs on 12,000 Fashion-MNIST images, using 3,000 validation and 5,000 test images (Xiao, Rasul, and Vollgraf 2017). The five variables are learning rate in 
+
+[10 −4, 10 −1], weight decay in [10 −7, 10 −2], momentum in 
+
+[0 , 0.99] , dropout in [0 , 0.6] , and augmentation strength in 
+
+[0 , 1] . Test metrics are logged but never drive the search; we report the test error of the incumbent chosen by validation loss. We compare FLIWBO-UCB/EI, Snoek-style warped GP-EI, and fixed-kernel GP-UCB/EI under both linear and log encodings of learning rate and weight decay. Profiles are locked across the 20 runs. Methods share run and evaluation seeds and the same initial unit-cube design under their de-clared encoding, so linear and log variants do not start from identical physical learning rates or weight decays. The small network, data subset, short training schedule, and method-specific encodings limit extrapolation to large-scale HPO. 
+
+MAS Feasibility Protocol 
+
+Setting. In collaboration with a participating organization, we applied FLIWBO-UCB to multi-agent workflows for Python program repair, using QuixBugs (Lin et al. 2017) as the evaluation suite. A human engineer from the orga-nization provided a manually designed MAS as a practical baseline. Each BO query executes a full candidate work-flow and incurs model calls, tokens, and wall-clock time, so the study asks whether FLIWBO can operate under these costs and how its selected designs compare to that human reference—not whether warping causes the gain or whether FLIWBO dominates other optimizers. 
+
+Encoding and objective. A candidate contains at most five agents, each encoded by a model, one of 32 tool subsets, one of 48 prompts, and one of six successor choices. This gives a 20-dimensional categorical encoding with nominal size 
+
+(3 · 32 · 48 · 6) 5 ≈ 1.62 × 10 22 , although this overcounts be-haviorally distinct executed workflows. Semantically ordered categories are normalized to [0 .02 , 0.98] 20 before modeling. The objective balances repairs and token cost: 
+
+f (x) = R(x) − 10 −5Ctok (x), (6) where R(x) is the number of programs repaired (40 possible) and Ctok (x) is total token use. 
+
+Protocol and limitations. We perform two runs with three initial and 158 sequential evaluations each. The second run weakens the identity-warp prior after a post-hoc diagnos-tic on the first run’s observations, so the runs are neither independent replications nor a controlled ablation. Each se-lected final design and the human baseline are re-evaluated 58 times. The human baseline uses the same models and tools but may use freely written prompts and more than five agents, making it a practical reference rather than a matched point in the search space. Other optimizers are omitted be-cause reproducing the comparison across methods and seeds would require thousands of complete workflow evaluations. The study can establish application feasibility and a practical comparison against human design, but not a causal benefit from warping, optimizer superiority, or empirical validation of the asymptotic regret guarantee. 
+
+## E Fashion-MNIST HPO Problem: Endpoint Statistics 
+
+Table 4 reports the final incumbent after 150 BO evaluations for the 20 paired runs of the Fashion-MNIST HPO Problem. The endpoint is the lowest validation loss observed in each run; the validation and test errors are those of the correspond-ing incumbent. Method Final validation loss Val. error (%) Test error (%) Paired ∆ (95% CI) p                                                             
+
+> Fixed GP-UCB (linear) 0.3735 ±0.0120 13.86 14.67 +0 .0227 ±0.0154 .009 Fixed GP-EI (linear) 0.3737 ±0.0147 13.66 14.46 +0 .0229 ±0.0190 .029 Fixed GP-UCB (log) 0.3690 ±0.0090 13.58 14.49 +0 .0182 ±0.0147 .026 Fixed GP-EI (log) 0.3509 ±0.0091 12.90 14.08 reference –Snoek-style warped GP-EI 0.3310 ±0.0083 12.03 13.28 −0.0199 ±0.0144 .014 FLIWBO-UCB 0.3580 ±0.0095 13.15 14.06 +0 .0072 ±0.0129 .290 FLIWBO-EI 0.3502 ±0.0076 12.95 13.95 −0.0006 ±0.0141 .930
+
+Table 4: Fashion-MNIST HPO Problem endpoint statistics ( n = 20 ). The first numerical column gives the across-run mean final validation loss and its 95% confidence interval; validation and test errors are percentages. Paired differences are method minus fixed GP-EI with manual log encoding, so negative values favor the listed method; parentheses give 95% confidence intervals and p-values are from two-sided paired t-tests. Linear- and log-encoded methods share run and evaluation seeds but not identical physical initial designs, so cross-encoding comparisons inherit this limitation.

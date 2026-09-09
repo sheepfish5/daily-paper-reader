@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-08</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-09</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 21 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 25 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>9</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>13</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-08 23:13:19 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-09 22:24:13 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日聚焦21篇LLM效率研究，精读9篇、速读12篇，核心围绕长上下文解码与缓存优化。</p>
-<p>最值得关注的高分方向是注意力稀疏加速（Faster Than Flash）与跨模型KV缓存复用（CacheBridge），均获9.0/10高分。</p>
-<p>建议后续可切入高带宽闪存或掩码扩散模型等潜力方向，关注真实硬件特性下的推理设计。</p>
+<p>今日精读13篇、速读12篇，重点聚焦端侧多任务大模型内存管理与异构GPU并发推理调度。</p>
+<p>最值得关注的是两篇9.0分工作：`mzCache` 面向多任务场景优化设备端LLM内存复用；MeanField代理模型则提升共享GPU上并发AI推理的运行时调度可扩展性。</p>
+<p>若想紧跟前沿，可优先浏览这两篇高分论文，并顺带扫读AI代理硬件设计、混合精度量化等8分速读文章以扩展视野。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">9 篇</strong>
+    <strong class="dpr-home-dashboard-count">13 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Faster Than Flash: Exploiting Attention Sparsity for Efficient Long-Context Decoding">Faster Than Flash: Exploiting Attention Sparsity for Efficient Long-Context Decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="CacheBridge: Efficient Cross-Model KV Cache Transfer">CacheBridge: Efficient Cross-Model KV Cache Transfer</span></li><li><span class="dpr-home-dashboard-paper-title" title="Enhancing the Power of Polyhedral-Based Optimizations with Coordinate-Based Hill Climbing">Enhancing the Power of Polyhedral-Based Optimizations with Coordinate-Based Hill Climbing</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="mzCache: On-Device LLM Memory Management under Multitasking">mzCache: On-Device LLM Memory Management under Multitasking</span></li><li><span class="dpr-home-dashboard-paper-title" title="MeanField Surrogate Modeling for Scalable Runtime Scheduling of Concurrent Heterogeneous AI Inference on Shared GPUs">MeanField Surrogate Modeling for Scalable Runtime Scheduling of Concurrent Heterogeneous AI Inference on Shared GPUs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Latency-Aware Orchestration for Multi-Agent LLM Workflows on Heterogeneous GPUs">Latency-Aware Orchestration for Multi-Agent LLM Workflows on Heterogeneous GPUs</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>7</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>11</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -89,9 +89,9 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Serving Masked Diffusion LLMs: Characterization and Design Principles from Real Hardware">Serving Masked Diffusion LLMs: Characterization and Design Principles from Real Hardware</span></li><li><span class="dpr-home-dashboard-paper-title" title="Pipeline-Native Transformers: Co-Designing Model Architecture and CPU Inference for Bandwidth-Efficient Autoregressive Decode">Pipeline-Native Transformers: Co-Designing Model Architecture and CPU Inference for Bandwidth-Efficient Autoregressive Decode</span></li><li><span class="dpr-home-dashboard-paper-title" title="FLINT: Efficiently Leveraging High Bandwidth Flash for Capacity-Scalable LLM Inference Acceleration">FLINT: Efficiently Leveraging High Bandwidth Flash for Capacity-Scalable LLM Inference Acceleration</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Benchmarking AI Agents for Hardware Design Automation via MCP Tool Calling">Benchmarking AI Agents for Hardware Design Automation via MCP Tool Calling</span></li><li><span class="dpr-home-dashboard-paper-title" title="DAMP: Decay-Aware Mixed-Precision Recurrent-State Quantization">DAMP: Decay-Aware Mixed-Precision Recurrent-State Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="From Generation to Discovery: Diffusion Mutation Kernels for Circuit and Physical Design">From Generation to Discovery: Diffusion Mutation Kernels for Circuit and Physical Design</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>10</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
 </section>
 </div>
 
