@@ -1,0 +1,638 @@
+Title: EStream: Fast and Memory-Efficient MoE Prefill through Expert Virtualization on Mobile NPUs
+
+URL Source: https://arxiv.org/pdf/2609.06551v1
+
+Published Time: Wed, 09 Sep 2026 01:43:21 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# EStream: Fast and Memory-Efficient MoE Prefill through Expert Virtualization on Mobile NPUs 
+
+# Junming Zhang ∗
+
+elliott-z@sjtu.edu.cn Shanghai Jiao Tong University Shanghai, China 
+
+# Zhenzhe Zheng ∗† 
+
+zhenzhezheng@sjtu.edu.cn Shanghai Jiao Tong University Shanghai, China 
+
+# Fan Wu 
+
+wu-fan@sjtu.edu.cn Shanghai Jiao Tong University Shanghai, China 
+
+# Xiaoyao Huang 
+
+huangxy32@chinatelecom.cn Cloud Computing Research Institute, China Telecom China 
+
+# Jie Wu 
+
+jiewu@temple.edu Temple University Philadelphia, Pennsylvania, USA 
+
+## Abstract 
+
+Mobile vendors and application developers increasingly de-ploy LLMs on smartphones for diverse prefill-only services. Yet current systems rely mainly on dense models whose reg-ular computation maps efficiently to mobile NPUs, leaving more capable MoEs underused. MoE prefill does not fit mo-bile NPUs: NPU graphs are fixed at compile time, yet MoE picks experts at runtime; and one request touches most ex-perts, more than a phone can hold in memory. We present EStream, which resolves both by separating what the NPU must fix from what MoE decides at runtime. A single com-piled expert graph serves every expert, with each expert’s routed tokens and weight address bound at call time, so dynamic MoE execution runs entirely on the NPU without padding or CPU/GPU fallback. Expert virtualization keeps the expert pool in UFS flash storage and pages it through a fixed-size NPU-addressable arena, group by group, with loading hidden behind computation, so memory is bounded by the arena rather than by the model. It further introduces a hardware-aware configuration algorithm that automatically configures the UFS–NPU pipeline and maximizes loading– computation overlap. Across 18 comparative settings cover-ing three 7B–16B MoEs and 256–4,096-token prompts, we evaluate EStream on a commercial Snapdragon smartphone. Compared to the fastest baseline at each setting, EStream achieves a 2.25–27.57 × pure-prefill TTFT speedup and re-duces peak physical memory by 1.19–12.29 ×. EStream fur-ther scales to MoE models with up to 46.7B parameters. 
+
+## 1 Introduction 
+
+Mobile systems increasingly run language models on the device, where keeping inference local protects user data and enables operation under poor network conditions [57, 60]. Beyond open-ended content generation, these models serve semantic decision tasks, including intent recognition, con-tent moderation, recommendation, factual verification, and candidate ranking [18, 45]; on mobile phones, for example, 
+
+> ∗Junming Zhang and Zhenzhe Zheng contributed equally to this research.
+> †Corresponding author.
+
+Android’s Gemini Nano flags scam calls entirely on the de-vice [25], and Apple’s assistant maps requests to intents [1] (Figure 1, left). These workloads obtain their useful outputs from prefill-stage logits without iterative autoregressive de-coding, are known as prefill-only workloads , and already constitute a substantial class of user requests [45]. However, existing mobile systems remain designed pri-marily around dense Transformers [12, 60], creating a mis-match with the broader LLM landscape, where sparse Mixture-of-Experts (MoE) has emerged as a leading architecture for scaling model capability without a proportional increase in per-token computation [16, 19, 21]. MoE can outperform dense models under similar inference-FLOP budgets [12, 16, 35, 54]. For example, Qwen3-30B-A3B holds 30B parame-ters but activates only 3B per token, yet outperforms dense Qwen3-4B across all reported benchmarks [54]. This capacity– computation advantage could enable more capable mobile services, such as on-device content moderation and per-sonalized content recommendation [22]. Apple’s newly an-nounced on-device model holds 20B sparse parameters in flash, yet routes experts per prompt rather than per token because per-token expert swapping is too slow [4]. Realizing this opportunity on phone-class SoCs remains difficult because MoE prefill creates two coupled mismatches. 
+
+First, dynamic MoE execution conflicts with graph-centric NPU interfaces. Each layer reveals which experts are active, and how many tokens each receives, only after routing. Although low-level NPU primitives support runtime control, addressing, and data movement [27], common de-ployment stacks expose the NPU only through precompiled graphs with fixed tensor shapes [11, 51]. Existing NPU sys-tems therefore compile graphs of fixed capacity and invoke them repeatedly until all routed tokens are processed, while retaining routing, indexing, or dispatch on the CPU/GPU [6] (Figure 1, right, bottom). This adds padding, host-control, and cross-processor synchronization overheads. Second, token-level sparsity becomes nearly dense at request level. 
+
+Although each token activates only a few experts, multi-token prefill collectively touches most of the expert pool 
+
+> 1arXiv:2609.06551v1 [cs.DC] 6 Sep 2026
+
+Figure 1: On-device prefill-only applications process private data, but MoE prefill remains inefficient on mobile devices. 
+
+(Figure 1, right, top), causing severe memory pressure in res-ident runtimes [45]. Existing remedies relieve this pressure at a cost. CPU/GPU offloading systems handle dynamic rout-ing and reduce expert residency by caching and prefetching, but do so on the CPU/GPU rather than the NPU [52, 55, 56]. Model-side pruning or expert substitution trades accuracy for efficiency [8, 13, 26, 33]. In this work, we present EStream, a low-latency, memory-efficient, and accuracy-preserving system for on-device MoE prefill. First, for the graph mismatch, topology-invariant ex-pert graph sharing compiles one expert graph for all experts of the same shape, and runtime route and parameter binding 
+
+passes each expert’s tokens and weight address as inputs on every call; with routing also on the NPU, no expert is padded and no step returns to the CPU/GPU, i.e., full-NPU 
+
+prefill. Second, for the memory mismatch, expert virtualiza-tion keeps the expert pool in UFS flash storage and streams experts, a group at a time, through a fixed-size arena the NPU reads directly, freeing each group’s space after its last use; a request may activate every expert, yet only one arena’s worth is ever in memory. Third, to hide the storage latency that this streaming introduces, a UFS–NPU pipeline overlaps each group’s load with non-expert computation and execu-tion of groups already loaded, with group size, queue depth, and resident group count automatically configured. We implement EStream on a OnePlus 15 with a Snap-dragon 8 Elite Gen 5 SoC using weight-only Q4 quantization, floating-point activations, and no approximation-based spar-sity. We evaluate OLMoE, LFM2.5, and DeepSeek-V2 across 18 model–length settings up to 4,096 tokens, with additional experiments on Qwen3-30B-A3B and Mixtral-8 ×7B. This paper makes the following contributions: • We identify two mismatches that block full-NPU MoE prefill on mobile devices. Input-dependent expert execu-tion conflicts with graph-centric NPU stacks that bind graph structure, tensor capacity, and parameters ahead of execution, while request-level densification activates nearly the entire expert pool even when device memory can hold only a fraction of it. • We design and implement EStream, which reuses a topology-invariant graph across shape-compatible experts, binds routes and parameters at runtime, virtualizes the expert pool over a bounded NPU-addressable arena streamed from UFS, and automatically configures the UFS–NPU pipeline. It thereby enables fast and memory-efficient MoE prefill on mobile SoCs without modifying the model. To our knowledge, it is the first system to run full-NPU large MoE prefill on a commercial smartphone. • Across the 18 primary model–length settings, EStream achieves a 2.25–27.57 × pure-prefill TTFT speedup and uses 6.45–12.29 × less physical memory than the fastest completed non-offloading baseline at each point. Against a same-backend reference with every expert resident, it uses 3.73–6.36 × less memory, while its latency gap nar-rows to 4.3–23.0% at 4K. 
+
+## 2 Background And Motivation 2.1 NPUs on Mobile SoCs 
+
+As on-device AI has advanced, hardware vendors have added neural processing units (NPUs) to unified-memory mobile SoCs, creating heterogeneous systems in which CPUs, GPUs, and NPUs coexist and share physical DRAM. Mobile appli-cations typically access the NPU through a vendor graph runtime. On Qualcomm platforms, QNN represents a neural network as a graph with predefined operator topology, ten-sor capacities, and parameter bindings, then finalizes it into an executable context. The underlying Hexagon Tensor Pro-cessor (HTP) is more flexible than this abstraction suggests. It combines scalar control threads, wide SIMD vector units (HVX), matrix engines (HMX), DMA engines, and software-managed on-chip memory (VTCM) [37, 39]. HMX performs tiled matrix multiplication, HVX handles vector operations and data rearrangement, scalar threads resolve runtime con-trol and addresses, and DMA moves tensor tiles between DRAM and VTCM. These resources can process different tiles concurrently, forming an internally heterogeneous NPU pipeline. This organization is particularly effective for MoE prefill, where routed tokens form large matrix multiplica-tions. Figure 2 shows that experts with at least 64 routes account for 94.8% of CPU expert projection time during a 1K-token OLMoE prefill. At this route count, the NPU is 4.4 ×
+
+and 4.6 × faster than the evaluated CPU and GPU. 
+
+## 2.2 Obstacles to On-Device MoE Prefill 
+
+A prefill-only request processes 𝑇 prompt tokens in one causal forward pass and derives its result from the final hid-den state or next-token distribution, without autoregressive decoding [18, 45]. Its on-device objectives are low latency and a small memory footprint. In an MoE layer, a router assigns each token to the top-𝑘 of 𝐸 experts, increasing  
+
+> 2164 128 256 384 512 640 768 896 1K 1.5K 2K
+> Prefill sequence length
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Expert projection latency (ms)
+> NPU: 3.7x CPU, 6.1x GPU NPU: 4.4x CPU, 4.6x GPU NPU acceleration opportunity
+> 32 routes 64 routes
+> 01416 64 256 1K
+> Routes assigned (symlog)
+
+Figure 2: Longer prompts expose more expert computa-tion to NPU acceleration. Each bar stacks the execution latencies of all experts during OLMoE CPU prefill at one input length. 
+
+model capacity without proportionally increasing computa-tion [16, 21]. Unlike dense models, whose regular computa-tion maps readily onto mobile-SoC NPUs, MoE’s prefilling creates two obstacles to efficient on-device deployment. 
+
+Input-dependent expert execution. Active experts and each expert’s routed-token count 𝑟 𝑒 become known only after routing the layer input. Although the expert operator sequence remains fixed, each request produces a different set of expert invocations, gathered tensors of extent 𝑟 𝑒 × 𝑑 , and selected parameter tensors. This execution pattern conflicts with graph-centric NPU interfaces that optimize around fi-nalized contexts with predetermined graph structure, capac-ity bounds, and parameter bindings [11, 51]. Padding every expert to a worst-case capacity wastes computation, while switching among shape- or expert-specific contexts adds memory, launch, and synchronization overheads. CPU/GPU orchestration avoids these restrictions but leaves the NPU acceleration opportunity in Figure 2 unused. 
+
+Request-level expert densification. Although each to-ken activates only a few experts, their union across multi-token prefill can cover nearly the entire expert pool. Fig-ure 3(a) shows that 512-token prompts activate 80.1–98.1% of layer–expert pairs in our evaluated models, increasing to 92.4–100% at 4K tokens. Expert parameters account for 91.4–94.7% of their whole weight payloads, thus leading to high memory pressure (Figure 3(b)). Demand-paged mmap de-lays rather than eliminates physical residency. Executing an expert touches its weight pages and faults them into memory. These pages accumulate when memory is available, while memory pressure introduces reclamation and subsequent refaults on the execution path, which can stall execution, impair system responsiveness, and degrade user experience. 
+
+## 2.3 Opportunities and Challenges 
+
+Observation 1: Expert-topology invariance. Experts with compatible dimensions perform the same sequence of gather, gate/up projection, activation, down projection, and weighted scatter-add. Only their routed tokens, coefficients, and pa-rameters change at runtime. This invariance creates an op-portunity to keep one expert graph resident and bind it to 1832 128 512 2K 4K     
+
+> Prefill length (tokens)
+> 020 40 60 80 100
+> Activated experts (%)
+> OLMoE-1B-7B LFM2.5-8B-A1B Qwen3-30B-A3B
+> (a) Expert activation Non-expert Expert 0510 15
+> Q4 weight size (GB)
+> 0.30 3.62 0.41 4.36 0.91 16.31 OLMoE-1B-7B LFM2.5-8B-A1B Qwen3-30B-A3B (b) Q4 weight distribution
+
+Figure 3: MoE prefill activates most experts, which dominate the model weights. (a) Activated layer– expert pairs. (b) Q4 expert and non-expert weight sizes. 
+
+request-specific data. Conventional NPU contexts, however, couple graph topology with tensor shapes and parameters. Parameter-update interfaces are narrowly supported and still require host calls and synchronization. The challenge is to dynamically vary routes and parameter addresses without rebuilding or reloading expert-specific NPU contexts. 
+
+Observation 2: Logical activation does not require phys-ical co-residency. Request-level densification determines which experts are touched, but their parameters need not coexist in memory. Expert weights are immutable, stateless, and share a uniform layout. The NPU consumes them group by group, and a resident copy is no longer live once its final routed output has been accumulated. This observation there-fore allows the runtime to reuse a bounded NPU-addressable memory region across expert groups. The challenge is to make this memory reusing lightweight and transparent to the reusable NPU graph. Parameters must be updated cor-rectly and safely without intermediate copy or interruption. 
+
+Observation 3: Compute and expert I/O scale differ-ently with prompt length. NPU work grows with prompt length, whereas expert I/O approaches the fixed size of the expert pool once routing densifies. Longer prompts thus provide more computation behind which UFS reads can be hidden. Realizing this opportunity requires saturating UFS bandwidth and coordinating a bounded parameter arena with NPU execution. The runtime must size the arena, issue reads early enough to hide overhead, and synchronize the I/O producer with the NPU consumer before parameters are published or reused. To reduce the overall latency, I/O con-currency, transfer granularity, arena capacity, and loading schedule must maximize I/O–execution overlap. 
+
+## 3 EStream System Design 3.1 System Overview 
+
+Figure 4 presents the overview of EStream. EStream de-couples reusable NPU computation graphs from request-dependent inputs and expert parameters, and organizes the resulting operations into an efficient NPU compute pipeline. It further virtualizes the experts over a bounded NPU-addressable 
+
+> 3
+
+Figure 4: The system overview of EStream. 
+
+memory arena, enabling the prefill of large MoE models with-out keeping all experts resident. A coordinated UFS–NPU pipeline overlaps expert streaming with computation to re-duce the latency introduced by bounded residency. 
+
+Offline preparation. EStream constructs reusable NPU graphs for the non-expert and expert computation, and con-verts expert parameters into the layout consumed directly by the NPU. It groups the packed experts for efficient storage access and profiles UFS and NPU service times to select the group size, I/O queue depth, and number of resident banks under a given memory budget. 
+
+Online execution. At initialization, EStream creates the reusable graphs and allocates the bounded expert arena. For each request, the host streams expert groups into free banks and publishes their runtime bindings, while the NPU exe-cutes non-expert or already available expert computation. The NPU graph consumes the dynamic routes and parame-ter bindings without reconstruction. Once an expert group has finished execution, its bank is reclaimed for subsequent experts, forming a continuous loading–execution pipeline. 
+
+## 3.2 Intra-NPU MoE Execution 
+
+MoE execution contains state that changes at three timescales. The operator topology and its dependencies remain fixed within a compatible expert shape class. Each invocation de-termines the selected experts, routed token rows, and pa-rameter locations. During that invocation, a tile scheduler assigns work to the heterogeneous resources inside the NPU. EStream represents these three levels independently. It con-structs the expert topology once, supplies routing and param-eter placement as invocation-time metadata, and schedules the resulting route blocks at tile granularity. One topology can therefore serve changing expert parameters and route extents. 
+
+Topology-Invariant Expert Graph Sharing. For each compatible shape class, EStream constructs one shared routed-expert graph. For expert 𝑒 , let 𝑊 𝑔 𝑒 ,𝑊 𝑢 𝑒 , and 𝑊 𝑑 𝑒 denote its gate, up, and down parameters. Given token representa-tion 𝑋 𝑡 , the expert function is 
+
+𝐹 𝑒 (𝑋 𝑡 ) = 𝑊 𝑑 𝑒 
+
+ SiLU (𝑊 𝑔 𝑒 𝑋 𝑡 ) ⊙ 𝑊 𝑢 𝑒 𝑋 𝑡 
+
+ . (1) If R𝑙 (𝑡 ) contains the expert–router-weight pairs selected for token 𝑡 in sparse layer 𝑙 , the layer computes 
+
+𝑌 𝑡 = 𝐴 𝑡 +∑︁    
+
+> (𝑒,𝛼 ) ∈ R 𝑙 (𝑡 )
+
+𝛼𝐹 𝑒 (𝑋 𝑡 ), (2) where 𝐴 𝑡 is the incoming residual. This defines a fixed dataflow: gather routed rows, evaluate gate and up projections, apply SwiGLU, evaluate the down projection, and scatter-add the weighted outputs. Experts in the same shape class share hidden and feed-forward dimensions, parameter types and layouts, and op-erator dependencies. Expert identity changes only the pa-rameter tensors, while routing changes only token rows and coefficients. EStream supplies both as invocation-time meta-data, allowing one graph to serve all matching experts and sparse layers without reconstruction. As shown in Figure 5a, the shared graph allocates stable input, accumulator, descriptor, and expert-arena buffers dur-ing initialization. Its descriptors reserve capacity for at most 
+
+𝐶 routes and 𝑇 max source tokens, but execution uses the exact runtime extent: an invocation with 𝑅 ≤ 𝐶 evaluates exactly 
+
+𝑅 routes, while larger route sets are divided among repeated invocations. Parameter views refer to arena slots whose con-tents may change after prior uses complete. Switching ex-perts or entering another compatible sparse layer therefore requires only new route descriptors and parameter bindings, not graph reconstruction or tensor reallocation. The same reusable context hosts the fused expert operator described below. The next part explains how each invocation constructs its route and parameter bindings. 
+
+Composed Sparse Route and Parameter Binding. Ashared graph becomes dynamic through two runtime map-pings. For invocation 𝑞 of sparse layer 𝑙 , the router sup-plies E = (𝑒 𝑖 )𝑅 −1 
+
+> 𝑖 =0
+
+, T = (𝑡 𝑖 )𝑅 −1 
+
+> 𝑖 =0
+
+, and A = (𝛼 𝑖 )𝑅 −1 
+
+> 𝑖 =0
+
+, where route 𝑖 sends token 𝑡 𝑖 to logical expert 𝑒 𝑖 with weight 𝛼 𝑖 .The host stream manager maintains a placement map Φ𝑙 :
+
+Φ𝑙 (𝑒 ) = 𝑠 means that expert 𝑒 occupies physical slot 𝑠 ,whereas Φ𝑙 (𝑒 ) = ⊥ means that it is not resident. A bind-ing is published only after the gate, up, and down slices of the slot have been populated, and an invocation is submitted only when every referenced binding is valid. The NPU composes the two mappings by first resolving each route’s physical slot 𝜓 𝑖 = Φ𝑙 (𝑒 𝑖 ). Scalar workers count routes with the same 𝜓 𝑖 and use prefix sums of these counts to determine where each slot begins. A second pass stores 
+
+(𝑡 𝑖 , 𝑖 ) contiguously by slot. The records for slot 𝑠 occupy 
+
+rec [offset [𝑠 ]:offset [𝑠 + 1]) .
+
+The retained route index identifies 𝛼 𝑖 during accumulation. This compressed sparse row-style representation requires 
+
+𝑂 (𝑃 + 𝑅 ) time and space, skips empty slots, and is rebuilt as routing and residency change. The graph retains fixed tensor bases for the source acti-vation 𝑋 , destination accumulator 𝑌 , and three parameter planes B𝑔 , B𝑢 , and B𝑑 . Let 𝑠 be one physical slot from each 
+
+> 4
+
+(a) Shared expert graph. 500 1000 1500            
+
+> Execution latency
+> EStream QNN expert-wise context NPU execution span CPU/runtime overhead
+> 64 128 256 512 1K 2K
+> Input sequence length
+> 0100 200
+> Expert-path latency (ms)
+> 64 128 256 512 1K 2K
+> Input sequence length
+> 0200 400 600 800 1000
+> Peak physical memory (MiB)  Memory footprint
+
+(b) Resident-path compari-son. 
+
+Figure 5: Topology-invariant graph sharing improves efficiency. (a) A shared graph binds data at runtime. (b) Latency and memory versus per-expert QNN contexts. 
+
+plane. The address is 
+
+𝑝 𝑗 𝑠 = 𝑝 B 𝑗 + 𝑠𝑆 𝑗 , 𝑗 ∈ { 𝑔, 𝑢, 𝑑 }, (3) where 𝑆 𝑗 is the prepacked size of projection 𝑗 . For each slot, EStream joins (𝑝 𝑔 𝑠 , 𝑝 𝑢 𝑠 , 𝑝 𝑑 𝑠 ) with every (𝑡 𝑖 , 𝑖 ) in that slot’s route segment. The resulting records contain the token row, route weight 𝛼 𝑖 , and parameter addresses. They select acti-vation row 𝑝 𝑋 + 𝑡 𝑖 𝑆 𝑋 and accumulation row 𝑝 𝑌 + 𝑡 𝑖 𝑆 𝑌 . NPU vector units gather the selected rows, DMA transfers param-eter tiles, and matrix units evaluate the projections; weighted outputs are scatter-added to their original positions. Only the route descriptors, valid extent, and placement map change across invocations. The graph topology, tensor bases, and strides remain fixed, allowing different expert in-vocations to reuse one graph without graph reconstruction or tensor reallocation. Algorithm 1 summarizes the com-posed bindings and their subsequent tile-level execution. 
+
+Fused Expert Execution with Intra-NPU Pipelining. 
+
+A routed expert comprises activation gather, gate/up pro-jections, SwiGLU, down projection, and weighted scatter-add. Separate NPU operators introduce repeated dispatch boundaries, materialize intermediates in shared DRAM, and prevent overlap among stages using different resources. ES-tream recognizes this complete pattern during graph con-struction and replaces it with one route-aware fused operator that consumes the upstream sparse route descriptors. VTCM capacity determines the operator’s tiling and con-currency. EStream selects route-row and projection-column tile sizes that fit the available capacity, then partitions VTCM by data lifetime. One region holds gathered activations, while another retains completed SwiGLU tiles until the down pro-jection consumes them. Two compressed-weight buffers re-ceive alternating DMA transfers, and two decoded-weight buffers let vector workers prepare the next matrix operand while the matrix engine consumes the current one. Four out-put buffers retain two adjacent gate/up tile pairs, allowing the matrix engine to produce the next pair while vector work-ers apply SwiGLU to the previous pair. The down projection reuses two output buffers to overlap matrix computation 
+
+Algorithm 1 Composed bindings and VTCM tile pipeline 
+
+Require: Routes 𝜌 = { ( 𝑒 𝑖 , 𝑡 𝑖 , 𝛼 𝑖 ) } 𝑅 −1 
+
+> 𝑖 =0
+
+and placement Φ𝑙 
+
+Require: Arena B = ( B 𝑔 , B𝑢 , B𝑑 )
+
+Require: tensors (𝑋 , 𝑌 ) and VTCM budget 𝑉 
+
+1: 𝜓 𝑖 ← Φ𝑙 (𝑒 𝑖 ) for 𝑖 = 0, . . . , 𝑅 − 1 ⊲ Resolve physical slots 
+
+2: count [𝑠 ] ← Í𝑖 [𝜓 𝑖 = 𝑠 ]
+
+3: offset [0] ← 0; offset [𝑠 +1] ← offset [𝑠 ] + count [𝑠 ] for 𝑠 = 0, . . . , 𝑃 − 1 ⊲
+
+Prefix-sum offsets 
+
+4: cursor ← offset 
+
+5: for 𝑖 ← 0 to 𝑅 − 1 do 
+
+6: 𝑝 ← cursor [𝜓 𝑖 ]
+
+7: rec [𝑝 ] ← ( 𝑡 𝑖 , 𝑖 ); cursor [𝜓 𝑖 ] ← 𝑝 + 1 ⊲ Build route map 
+
+8: V ← PlanVTCM (𝑉 ; 𝑍, 𝐻, 𝐶 [2], 𝐷 [2], 𝑂 [4] ) ⊲ No DDR spills 
+
+9: for all 𝑠 such that count [𝑠 ] > 0 do 
+
+10: W 𝑗 𝑠 ← 𝑝 B 𝑗 + 𝑠𝑆 𝑗 , 𝑗 ∈ { 𝑔, 𝑢, 𝑑 } ⊲ Build parameter map 
+
+11: Q𝑠 ← rec [offset [𝑠 ]:offset [𝑠 + 1] ) 
+
+12: D𝑠 ← AttachWeights ( Q 𝑠 , 𝜌, W𝑠 ) ⊲ Compose both maps 
+
+13: for all 𝑄 in Chunks( D𝑠 ) do 
+
+14: 𝑍 ← GatherToVTCM (𝑋 , 𝑄, V.𝑍 )
+
+15: J ← GateUpTiles ( W 𝑔 𝑠 , W𝑢 𝑠 )
+
+16: for 𝑗 in PipelineSteps( J) do 
+
+17: DMA ( 𝑗 +2) ∥ HVX (dec 𝑗 +1, act 𝑗 −2 ) ∥ HMX (gemm 𝑗 )
+
+18: K ← DownTiles ( W 𝑑 𝑠 )
+
+19: for 𝑐 in PipelineSteps( K) do 
+
+20: DMA (𝑐 +2) ∥ HVX (dec 𝑐 +1, scatter 𝑐 −1→𝑌 ) ∥ HMX (gemm 𝑐 )
+
+21: return 𝑌 
+
+with weighted scatter-add. This lifetime-aware layout pre-vents concurrent stages from overwriting live values without spilling intermediate tiles to shared DRAM. Using this layout, DMA fetches future prepacked param-eter tiles, vector workers decode them into matrix-engine operands, and the matrix engine evaluates the current tile. Gate/up tiles are issued as pairs and transformed in VTCM before feeding the down projection. Completed down tiles are multiplied by router weights and scatter-added directly into the final token accumulator. This DMA–vector–matrix pipeline overlaps parameter preparation, projection, and postprocessing within one NPU invocation, reducing dis-patch overhead and shared-DRAM traffic without material-izing dense per-expert outputs. 
+
+## 3.3 Expert Virtualization with UFS Streaming 
+
+The preceding subsection allows one expert topology to con-sume parameters from runtime-selected addresses. EStream uses this capability to bound the memory cost of request-level expert densification. Rather than retaining every ex-pert that a request may eventually activate, it maintains a fixed NPU-addressable arena, moves groups of expert records through that arena, and stores those records in the layout re-quired for immediate NPU execution. This section describes the arena, the grouping granularity, and the corresponding offline storage layout in turn. 
+
+Bounded Parameter Arena and Safe Slot Reuse. Expert parameters are read-only and stateless. Physical slots can therefore be reused, but reuse separates each expert’s stable logical identity from its changing physical location. EStream implements the placement map as a stateful expert residency table. Each valid entry records the expert’s current slot Φ𝑙 (𝑒 ) and that slot’s state, while a nonresident 
+
+> 5
+
+expert has no valid entry. Like a software-managed page table, it translates logical expert IDs into physical locations and indicates whether each mapping is safe to consume. The scheduler uses only ready entries and passes their slot indices to the shared NPU graph. The bounded arena contains 𝑃 fixed-address slots, each holding the gate, up, and down parameters of one expert. Their graph-visible addresses and strides remain unchanged. The host updates only the slot contents and residency table. For a packed expert size 𝑊 𝑒 , these slots consume 𝑀 arena =
+
+𝑃𝑊 𝑒 , so expert residency is independent of the number of logically activated experts. An Available slot is reserved for an expert before loading, at which point its new owner is recorded and the slot be-comes Filling while its mapping remains hidden. After all parameter slices arrive, the host publishes the slot as Ready. NPU submission then marks it InUse, and the final comple-tion event invalidates the binding and returns the slot to the Available pool. A Ready slot with no routed work may be released directly. This protocol exposes no partially loaded expert and pre-vents reassignment while the NPU may still access a slot. It therefore enables bounded memory reuse without graph reconstruction or changes to model semantics. 
+
+Expert Grouping and Banked Residency. Loading ex-perts individually creates short UFS requests that repeatedly incur I/O submission, completion, and NPU invocation over-heads. EStream amortizes these fixed costs by transferring 
+
+𝐺 experts as one storage group. An offline permutation 𝜋 𝑙 (𝑒 )
+
+determines the storage order of experts in layer 𝑙 , with every 
+
+𝐺 consecutive positions forming one group. Each physical bank mirrors this organization with 𝐺 slots in the bounded arena, so loading one storage group populates one bank. Grouping changes only the granularity of transfer and resi-dency. The fused operator still evaluates only experts with nonempty routes. For expert 𝑒 , let 𝑞 𝑙 (𝑒 ) denote its storage group and 𝑟 𝑙 (𝑒 )
+
+its position within that group. If group 𝑞 𝑙 (𝑒 ) resides in bank 
+
+𝑏 , then 
+
+𝑞 𝑙 (𝑒 ) =
+
+ 𝜋 𝑙 (𝑒 )
+
+𝐺 
+
+
+
+, 𝑟 𝑙 (𝑒 ) = 𝜋 𝑙 (𝑒 ) mod 𝐺, 
+
+Φ𝑙 (𝑒 ) = 𝑏𝐺 + 𝑟 𝑙 (𝑒 ).
+
+(4) The stateful residency table publishes these translations only after the entire bank becomes ready and invalidates them together when the bank is recycled. With 𝐵 resident banks, the arena contains 𝑃 = 𝐵𝐺 slots and bounds expert residency at 𝑀 arena = 𝐵𝐺𝑊 𝑒 . A larger 𝐺 
+
+amortizes fixed transfer and dispatch costs, but may fetch in-active experts and leaves fewer groups available for pipeline overlap. A smaller 𝐺 offers finer scheduling granularity at the cost of fragmented I/O and more runtime operations. More banks permit deeper read-ahead while increasing memory proportionally. Section 3.4 selects 𝐺 and 𝐵 jointly under the deployment memory budget. 
+
+Offline NPU-Consumable Weight Layout. Serialized model-weight files typically arrange each matrix in a storage-oriented, row-major layout with format-specific packing. In contrast, the NPU operator consumes 32 × 32 tiles along the reduction dimension and expects values from multiple output rows in its tile traversal order. Loading the serialized bytes un-changed would require the host to rearrange every expert before publishing its bank, adding temporary buffers, mem-ory copies, and DRAM traffic to the critical path. To remove this latency, EStream transforms serialized expert weights offline into the layout consumed directly by the NPU, elim-inating runtime reformatting from the weight-streaming path. As illustrated in the lower-left of Figure 4, this transfor-mation reorders the weight data and groups experts before deployment. It reorganizes the packed values so that adja-cent elements required by an NPU tile are colocated, and then converts each matrix from row-major to tile-major or-der. It further applies the expert permutation and grouping defined above, placing the gate, up, and down regions of each group in a contiguous UFS extent. At runtime, vectored reads place these regions directly into their designated bank locations. Because the loaded bytes already match the layout expected by the NPU, a completed bank can be published without CPU-side reformatting or an intermediate copy. 
+
+## 3.4 Pipelining UFS Streaming and NPU Execution 
+
+The bounded arena turns expert streaming into a finite-buffer producer–consumer pipeline. Without overlap, each bank refill stalls expert execution, so scheduling determines how much storage latency remains on the critical path. EStream overlaps UFS loading with NPU execution and configures grouping, I/O queue depth, and bank count from measured device behavior. 
+
+Constructing the UFS–NPU Pipeline. At each sparse layer, the loader begins filling free banks while the NPU executes non-FFN computation, before routes are available. Because the active set is not yet known, these initial reads follow the prepacked group order. Once routing completes, the runtime marks required groups, retires already loaded groups with no routes, and skips their reads. Loading and execution then proceed independently. The executor consumes routed groups whose banks are ready, while the loader refills released banks with later groups. A load-completion notification publishes a bank only after its data is ready, and the executor releases it only after its last dependent invocation completes. Thus, an expert cannot execute before its parameters are ready, and a bank cannot be overwritten while a queued invocation still references it. Early loading changes parameter availability without chang-ing routing decisions or numerical results. Figure 6 compares the three schedules. On-demand load-ing places every refill on the critical path and yields a 34.41% bubble rate. Prefetching after routing lowers it to 21.36% 
+
+> 6
+
+Figure 6: Expert-loading schedules for 1,024-token OL-MoE prefill. Earlier prefetch increases I/O–compute overlap and lowers bubble rate, 1 − max (𝑇 io ,𝑇 exec )/ 𝑇 total .
+
+but retains the initial fill bubble. Starting during non-FFN computation reduces it further to 9.05%. 
+
+Automatic Pipeline Configuration. Expert group size 
+
+𝐺 , I/O queue depth 𝑄 , and bank count 𝐵 jointly determine pipeline efficiency. Small 𝐺 fragments reads and increases dispatches, whereas large 𝐺 leaves fewer tasks to overlap. Small 𝑄 underuses UFS parallelism, while extra banks only increase residency once neither stage waits for reuse. We model configuration as a finite-buffer scheduling prob-lem. For profiled sparse layer 𝑤 , consider candidate group size 𝑔 , queue depth 𝑞 , and bank count 𝑏 . Let 𝑘 index the 
+
+𝐾 𝑤 (𝑔 ) scheduled groups and let 𝝆 (𝑔 ) 
+
+> 𝑤,𝑘
+
+contain group 𝑘 ’s per-expert route counts. Let 𝑇 ne  
+
+> 𝑤
+
+denote completion of the layer’s non-expert NPU work, and let (𝑎 𝑘 , 𝑑 𝑘 ) and (𝑠 𝑘 , 𝑓 𝑘 ) denote the read and execution start–completion times. With profiled service times 𝐿 𝑤,𝑘 (𝑔, 𝑞 ) and 𝑋 𝑤,𝑘 (𝑔, 𝝆 (𝑔 ) 
+
+> 𝑤,𝑘
+
+), the dependencies form the max-plus recurrence [5] 
+
+𝑎 𝑘 = max (𝑑 𝑘 −𝑞 , 𝑓 𝑘 −𝑏 ), 𝑑 𝑘 = 𝑎 𝑘 + 𝐿 𝑤,𝑘 (𝑔, 𝑞 ),𝑠 𝑘 = max (𝑑 𝑘 ,𝑇 ne  
+
+> 𝑤
+
+, 𝑓 𝑘 −1), 𝑓 𝑘 = 𝑠 𝑘 + 𝑋 𝑤,𝑘 (𝑔, 𝝆 (𝑔 ) 
+
+> 𝑤,𝑘
+
+), (5) with 𝑑 𝑗 = 𝑓 𝑗 = 0 for 𝑗 ≤ 0. In the first maximum, 𝑑 𝑘 −𝑞 lim-its concurrent reads and 𝑓 𝑘 −𝑏 prevents a bank from being reused before its previous NPU consumer finishes. The sec-ond maximum waits for group data, non-expert NPU work, and prior expert execution. It captures the NPU serialization constraint: storage reads may overlap NPU computation, but non-expert and expert execution cannot overlap each other. Thus 𝑇 pipe (𝑤 ; 𝑔, 𝑞, 𝑏 ) = 𝑓 𝐾 𝑤 (𝑔 ) , and request time sums this prediction over its sparse layers. Let 𝑊 𝑒 be one prepacked expert’s byte size and let 𝑀 other (𝑔 )
+
+include all measured non-arena memory. Under process-memory budget 𝑀 max , the target configuration is 
+
+(𝐺 ∗, 𝑄 ∗, 𝐵 ∗) ∈ arg min  
+
+> 𝐺,𝑄,𝐵
+
+E𝑤 ∼W [𝑇 pipe (𝑤 ; 𝐺, 𝑄, 𝐵 )] 
+
+s.t. 𝐺 ∈ G , 𝑄 ∈ Q , 𝐵 ∈ Z+,𝐵𝐺𝑊 𝑒 + 𝑀 other (𝐺 ) ≤ 𝑀 max , 𝑄 ≤ 𝐵, 
+
+(6) where G and Q are runtime-supported values and W is the deployment workload distribution. Exhaustively measuring every triplet end to end is expensive. We first characterize queue depth once per device, since it is primarily a property of the UFS/controller path rather than of model routing. We choose the smallest supported depth that reaches 95% of peak grouped-read bandwidth for every supported layout, 
+
+𝑄 0 = min 
+
+
+
+𝑞 : min 
+
+> 𝑔 ∈ G
+
+BW (𝑔, 𝑞 )
+
+max 𝑞 ′ ∈ Q BW (𝑔, 𝑞 ′) ≥ 0.95 
+
+
+
+. (7) On our platform, 𝑄 0 = 2; deeper queues provide no measur-able bandwidth gain, so this value is fixed across models. Fixing 𝑄 0 leaves a budget-coupled 𝐺 /𝐵 problem: a larger group consumes more memory per bank and simultaneously reduces the number of groups. For each supported 𝑔 , we first derive the largest feasible bank count 
+
+𝐵 max (𝑔 ) = min 
+
+  𝑁 𝑒 
+
+𝑔 
+
+
+
+,
+
+ 𝑀 max − 𝑀 other (𝑔 )
+
+𝑔𝑊 𝑒 
+
+  
+
+. (8) A 1K-token C4 calibration request supplies 𝑇 ne  
+
+> 𝑤
+
+, route vectors, 
+
+𝐿 𝑤,𝑘 , and 𝑋 𝑤,𝑘 for each 𝑔 . Since expert groups of the same size transfer equal numbers of bytes, we aggregate their loading samples within the request. We also pool the group-independent non-expert times across 𝑔 to remove process-level variation. The smallest-𝑔 run is memory-monitored and therefore supplies both its service profile and the non-arena memory calibration. This reduces profiling to one request per candidate group size. Equation 5 then evaluates every feasible bank count without running complete inference. The inner optimization selects 
+
+𝐵 ∗ (𝑔 ) ∈ arg min    
+
+> 𝑄 0≤𝑏 ≤𝐵 max (𝑔 )
+
+1
+
+|W cal |∑︁ 𝑤 ∈ W cal 
+
+𝑇 pipe (𝑤 ; 𝑔, 𝑄 0, 𝑏 ),
+
+(9) and the outer optimization compares the resulting layouts: 
+
+𝐺 ∗ ∈ arg min  
+
+> 𝑔 ∈ G :𝐵 max (𝑔 ) ≥ 𝑄 0
+
+1
+
+|W cal |∑︁ 𝑤 ∈ W cal 
+
+𝑇 pipe (𝑤 ; 𝑔, 𝑄 0, 𝐵 ∗ (𝑔 )) .
+
+(10) The emitted (𝐺 ∗, 𝑄 0, 𝐵 ∗ (𝐺 ∗)) is stored with the prepacked model and reused across requests. This nested search retains the memory coupling between 𝐺 and 𝐵 but replaces an ex-haustive end-to-end 𝑄 /𝐵 /𝐺 sweep with one short device profile and inexpensive max-plus evaluation. 
+
+## 4 Implementation 
+
+Runtime and HTP operators. EStream comprises a C++20 host runtime and a low-level HTP backend extending llama.cpp’s open-source Hexagon support [24]. It adds approximately 23 K physical lines of C/C++ excluding inherited code, tests, and characterization tools. At initialization, the host allocates reusable graph templates, maps their buffers to cDSP through FastRPC, and submits descriptors through DSPQueue. On cDSP, scalar workers resolve routes and addresses, DMA stages tiles, HVX performs data rearrangement and vector operations, and HMX executes matrix tiles. Our operators cover Q4 embedding, QKV, MLA, short convolution, rout-ing, and the fused expert path from route-map construction through weighted scatter-add. 
+
+Numerical representation. Expert and large non-expert matrices use weight-only GGUF Q4_0. OLMoE retains a                   
+
+> 70.2 110 100
+> WinoGrande MASSIVE HellaSwag ToxicChat ARC-C
+> OpenCL OOM
+> NFCorpus
+> OpenCL OOM
+> SciFact
+> 0.2 110 100 0.2 110 0.2 110 100 0.2 110 0.2 110
+> OpenCL OOM
+> 0.2 110
+> OpenCL OOM
+> 0.2 110
+> OpenCL OOM
+> 0.2 110
+> OpenCL OOM
+> 0.2 110
+> OpenCL OOM
+
+Peak memory envelope during the run (GiB, log scale) Mean request latency (s, log scale)       
+
+> OLMoE LFM2.5 DeepSeek-V2
+> EStream llama.cpp-CPU MNN-CPU MNN-OpenCL ORT GenAI-CPU EdgeMoE PowerInfer
+
+Figure 7: Mean request latency–memory tradeoffs across seven application workloads. Rows denote models and columns denote datasets; both axes are logarithmic and lower left is better. Table 1: Model structures and deployed payloads. Lay-ers gives total (MoE) blocks and 𝐸 experts per block.                         
+
+> Model Layers 𝐸 Non-exp. (GB) Expert (GB) OLMoE-1B-7B 16 (16) 64 0.30 3.62 LFM2.5-8B-A1B 24 (22) 32 0.41 4.36 DeepSeek-V2-Lite 27 (26) 64 0.99 8.10 Qwen3-30B-A3B 48 (48) 128 0.91 16.31 Mixtral-8 ×7B 32 (32) 81.04 25.37
+
+Q6_K output head, while DeepSeek retains FP16 MLA pro-jections. At runtime, DMA stages packed tiles in VTCM and HVX forms the FP16 tiles consumed by HMX. Graph inter-faces remain FP32 and KV caches use FP16. We apply neither activation quantization nor approximation-based sparsity. 
+
+Expert loading and synchronization. The host allocates the expert arena as a UDMABUF-backed DMA-BUF, maps it into its address space, and exposes the same buffer to the NPU through FastRPC. Loader threads issue page-aligned 
+
+O_DIRECT preadv requests that place offline-packed expert weights directly into free banks, avoiding an intermediate staging copy and runtime reformatting. Page population be-gins asynchronously during initialization. A mutex-protected placement table and a condition variable coordinate loading with execution. A loader reserves a bank before I/O and pub-lishes its expert binding only after the read completes and a release fence. The executor waits for that binding, retains the bank while its graph is queued, and releases it only after the NPU completion fence. This prevents both partially loaded weights and premature bank reuse. 
+
+Table 2: Datasets, metrics, and mean prompt lengths.                         
+
+> Dataset Task Metric Mean tokens MASSIVE Intent Accuracy 16 WinoGrande Commonsense Accuracy 23 ToxicChat Safety F1 66 HellaSwag Completion Norm. accuracy 80 ARC-C Science QA Accuracy 368 NFCorpus Retrieval nDCG@10 376 SciFact Fact check F1 405
+
+## 5 Evaluations 5.1 Experiment Settings 
+
+Device and Baselines. All on-device measurements use a OnePlus PLK110 phone running Android 16 with 15.1 GiB of memory. Its Snapdragon 8 Elite Gen 5 platform (SM8850) pro-vides two prime and six performance Oryon CPU cores, an Adreno GPU, a Hexagon v81 HTP, and UFS 4.1 storage [38]. Industrial baselines include llama.cpp-CPU [24], MNN-CPU and MNN-OpenCL [29, 50], and ONNX Runtime GenAI on CPU [34]. We also reproduce EdgeMoE [56] and port the parameter-streaming backend from the PowerInfer reposi-tory to the three evaluated models; we refer to this baseline as PowerInfer. We tune each supported pair and report re-quest latency, conservative peak physical memory, and QPT SoC energy under the protocol specified for each experiment. 
+
+Models. Our phone experiments cover three models no larger than 16B, namely OLMoE-1B-7B [35], LFM2.5-8B-A1B [32], and DeepSeek-V2-Lite [17], and test scaling with Qwen3-30B-A3B [54] and Mixtral-8 ×7B [28]. Expert and large non-expert matrices use GGUF Q4_0, activations re-main FP32, and HMX operands and KV caches use FP16. OL-MoE’s output head uses Q6_K, while DeepSeek’s sensitive MLA projections remain FP16. Table 1 reports the resulting                      
+
+> 8110 100 1000
+> 256 tokens 512 tokens 1K tokens 2K tokens
+> OOM: OpenCL
+> 3K tokens
+> OOM: OpenCL
+> 4K tokens
+> 110 100 1000 0.2 110 110 100 1000 0.2 110
+> OOM: OpenCL
+> 0.2 110
+> OOM: OpenCL
+> 0.2 110
+> OOM: MNN-CPU + OpenCL
+> 0.2 110
+> OOM: MNN-CPU + OpenCL
+> 0.2 110
+> OOM: MNN-CPU + OpenCL
+> Peak memory envelope (GiB, log scale) Pure TTFT (s, log scale)
+> OLMoE LFM2.5 DeepSeek-V2
+> EStream llama.cpp-CPU MNN-CPU MNN-OpenCL ORT GenAI-CPU EdgeMoE PowerInfer
+
+Figure 8: Pure-prefill latency–memory tradeoffs across input lengths on v81. Rows denote models and columns denote input lengths; both axes are logarithmic and lower left is better. Table 3: EStream performance on large MoE models on v81. TTFT is the three-run median; memory and QPT energy are measured separately.                                
+
+> Model Tokens Pure TTFT (s) ↓Peak mem. (GiB) ↓Tokens/J ↑
+> Qwen3-30B-A3B 1K 4.838 1.461 43.59 2K 5.043 1.594 62.36 3K 5.368 1.729 70.64 4K 6.836 1.866 72.18 Mixtral-8 ×7B 1K 7.086 2.767 23.41 2K 8.742 3.352 29.65 3K 10.971 3.917 33.17 4K 13.584 4.114 35.76
+
+measured payloads; DeepSeek’s shared experts are resident and counted in its non-expert payload. 
+
+Datasets. Our application suite covers commonsense and science reasoning with WinoGrande [41], HellaSwag [59], and ARC-Challenge [15], intent and safety classification with MASSIVE [23] and ToxicChat [31], and retrieval with NF-Corpus [7] and SciFact [47]. We share 32 length-stratified examples across systems and tokenize them per model. Ta-ble 2 reports the mean model-token length. Quality tests additionally use C4 perplexity and bits per byte [40], LAM-BADA next-word accuracy [36], and BoolQ accuracy [14]. 
+
+## 5.2 Performance Evaluation 
+
+EStream advances the latency–memory frontier by bound-ing expert residency while delivering increasing speedups as prompt length grows. This advantage persists on application workloads and enables full-NPU prefill of MoE models with up to 46.7B parameters on a commercial smartphone. 
+
+Performance on Application Workloads. Figure 7 reports mean request latency after one warm-up and peak memory across seven datasets whose mean lengths range from 16 to 405 tokens. Peak memory is the larger of the process-attributed footprint and the decrease in system MemAvailable .Optimized CPU runtimes remain faster on MASSIVE and WinoGrande, whose mean lengths are only 16 and 23 to-kens, because these requests cannot sufficiently amortize NPU dispatch and pipeline fill. Nevertheless, EStream uses 5.57–13.43 × less memory than the latency-leading baseline. The crossover occurs between ToxicChat at 66 tokens and HellaSwag at 80 tokens. EStream is within 8% of the fastest baseline on ToxicChat and is 1.03–1.21 × faster on HellaSwag. On the longer ARC-C, NFCorpus, and SciFact workloads, it is 3.79–5.75 × faster while using 5.91–12.87 × less memory. Across all 21 model–dataset pairs, EStream outperforms PowerInfer by 1.49–9.29 × and reduces memory by 1.34– 1.87 ×. Even when EdgeMoE uses up to 3.3% less memory, its latency remains 2.36–48.45 × higher. 
+
+Scaling with Input Length. Figure 8 compares prefill TTFT and peak physical memory for OLMoE-1B-7B, LFM2.5-8B-A1B, and DeepSeek-V2-Lite on C4 prefixes from 256 to 4,096 tokens. Every runtime receives identical token IDs, and we re-port the median TTFT of three fresh-process runs after drop-ping the OS page cache. EStream completes all configura-tions within 0.59–1.76 GiB. Relative to the fastest completed non-offloading baseline at each point, it improves TTFT by 2.25–27.57 × and reduces physical memory by 6.45–12.29 ×.At 4K tokens, its TTFT is 2.12, 2.14, and 9.53 seconds for OLMoE, LFM2.5, and DeepSeek-V2-Lite, respectively, com-pared with 58.45, 51.15, and 120.02 seconds for the fastest non-offloading competitors. EdgeMoE uses up to 16% less memory on short LFM2.5 and DeepSeek inputs but is at least 4.55 × slower. Against PowerInfer, the strongest offloading baseline, EStream is 2.96–50.78 × faster and uses 1.16–1.69 ×
+
+less memory across all 18 configurations.                         
+
+> 9128 256 512 768 1K 1.5K 2K
+> Input length (tokens)
+> 050 100 150 200 250
+> Energy efficiency (tokens/J)
+> OLMoE-1B-7B
+> 128 256 512 768 1K 1.5K 2K
+> Input length (tokens)
+> 050 100 150 200
+> LFM2.5-8B-A1B
+> 128 256 512 768 1K 1.5K 2K
+> Input length (tokens)
+> 020 40 60 80
+> DeepSeek-V2-Lite
+> EStream llama.cpp-CPU MNN-CPU MNN-OpenCL GenAI-CPU EdgeMoE PowerInfer
+
+Figure 9: Steady-state prefill energy efficiency across input lengths; higher is better. Bars show medians and whiskers show ranges over completed runs. The unavailable DeepSeek-V2-Lite EdgeMoE result at 1.5K is omitted. Scaling to Large MoE Models. We further evaluate ES-tream on Qwen3-30B-A3B and Mixtral-8 ×7B, which con-tain 30.5B and 46.7B parameters while activating 3.3B and 12.9B parameters per token, respectively. To our knowledge, EStream is the first system to report full-NPU prefill for MoE models at these scales on a commercial smartphone. As shown in Table 3, Qwen3 sustains 211.7–599.1 tokens/s within 1.46–1.87 GiB, while Mixtral sustains 144.5–301.5 to-kens/s within 2.77–4.11 GiB. 
+
+## 5.3 Energy Efficiency 
+
+Figure 9 evaluates steady-state prefill energy efficiency from 128 to 2,048 input tokens. After loading the model and one unmeasured warm-up, each runtime processes fixed-length C4 requests with KV state reset. Qualcomm QPT integrates gross SoC energy over the measured batch. EStream is the most energy-efficient runtime in every completed model–length setting. Relative to the strongest baseline at each point, it improves efficiency by 1.19–8.41 ×,with a geometric mean of 4.08 × across all 21 settings. The gain grows from 1.19–1.34 × at 128 tokens to 7.78–8.41 × at 2K. Table 3 extends the result to larger models under a stricter boundary that includes process launch and initialization. From 1K to 4K, Qwen3-30B-A3B improves from 43.59 to 72.18 tokens/J and Mixtral-8 ×7B from 23.41 to 35.76 tokens/J. 
+
+## 5.4 Model Accuracy 
+
+EStream retains the deployed Q4 weights and routing deci-sions but changes finite-precision operation order. Its fused NPU path tiles projections differently, executes expert groups as their weights become ready, and scatter-adds routes in a different sequence. Table 4 compares each MoE checkpoint on EStream and the Host reference using the same 200 examples and model-specific tokenization. The resulting quality differences are small. OLMoE and LFM2.5 change C4 PPL by less than 0.1% and every task score by at most 1.5 points. DeepSeek has similarly stable PPL and changes five of six task scores by at most 0.71 points, with a 3.00-point ARC-C exception. Qwen3 has the largest devia-tion: a 5.51% relative PPL increase and at most a 3.00-point 
+
+Table 4: Unified Q4 quality on the same 200 source examples per dataset. C4 is word PPL ( ↓); other values are percentages ( ↑). For paired families, bold compares Host Dense against EStream MoE.                                                                                                  
+
+> Checkpoint Exec. C4 ↓Wino. ↑ARC-C ↑LAMB. ↑Hella. ↑BoolQ ↑SciFact ↑
+> OLMo-1B Host 33.52 65.00 28.00 64.50 65.50 63.50 18.59 OLMoE-1B-7B Host 29.15 68.00 63.50 75.00 78.50 76.50 20.97 EStream 29.15 68.50 63.50 74.00 77.50 76.50 22.12
+> LFM2.5-1.2B Host 51.44 59.00 74.00 49.50 63.50 75.00 20.17
+> LFM2.5-8B-A1B Host 36.51 67.00 85.00 59.50 73.50 72.50 17.82 EStream 36.48 67.50 85.00 59.50 74.50 74.00 17.27 Qwen3-4B Host 50.38 72.00 89.00 63.50 68.00 85.00 55.21 Qwen3-30B-A3B Host 31.41 72.50 95.00 75.50 78.50 91.50 61.64 EStream 33.14 71.50 94.50 72.50 76.50 90.50 60.00
+> DeepSeek-V2-Lite Host 37.50 76.50 74.50 74.00 79.00 85.50 18.18 EStream 37.47 76.00 71.50 74.50 79.50 86.00 18.89
+
+task-score change. Reordering computation for streaming full-NPU execution therefore generally preserves end-to-end model quality, although Qwen3 remains the least numeri-cally aligned path. We additionally compare the MoE checkpoints deployed by EStream with same-family dense checkpoints of com-parable active-parameter scale executed on the host CPU. Across the three model families, the MoE deployments achieve better results on 18 of the 21 reported metrics. They reduce C4 PPL by 13.0–34.2%. OLMoE improves all six downstream-task scores, while LFM2.5 and Qwen3 improve four and five, respectively. This comparison demonstrates the practical advantage of deploying these higher-capacity MoE models. 
+
+## 5.5 Pipeline Configuration and Auto-Tuning 
+
+Figure 10 shows how the pipeline parameters shape the latency–memory operating point and whether the configura-tor in Section 3.4 can find a good point without an end-to-end sweep. For an exact 1,024-token C4 prefix, we exhaustively evaluate all production-supported 𝑄 /𝐵 /𝐺 configurations: 25 for LFM2.5 and 53 for each of the other three models, totaling 184. The sweep exposes strong coupling among the three parameters. At OLMoE 𝐺 = 8, 𝐵 = 3, increasing 𝑄 from 1 to                    
+
+> 10 0.65 0.70 0.75 0.80 0.85 Peak memory (GiB) 1.0 1.2 1.4 1.6 1.8 Pure-prefill latency (s)
+> G4/B2 G8/B2 G8/B4
+> OLMoE-1B-7B
+> 0.95 1.00 1.05 1.10 Peak memory (GiB) 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0
+> G4/B2 G4/B4
+> LFM2.5-8B-A1B
+> 1.3 1.4 1.5 Peak memory (GiB) 2.5 3.0 3.5 4.0 4.5 5.0
+> G4/B2 G4/B9 G16/B4
+> DeepSeek-V2-Lite
+> 1.3 1.4 1.5 Peak memory (GiB) 4.5 5.0 5.5 6.0 6.5 7.0 7.5
+> G8/B2 G32/B2 G32/B3
+> Qwen3-30B-A3B
+> G= 4
+> G= 8
+> G= 16
+> G= 32
+> Q= 1
+> Q= 2 Pareto frontier Sweep minimum Low budget / auto-config Medium budget / auto-config High budget / auto-config
+
+Figure 10: Measured 1K latency–memory tradeoffs across 𝑄 /𝐵 /𝐺 configurations. Curves show Pareto frontiers, crosses mark unconstrained minima, and stars mark auto-configured points under three memory budgets. 10 0                   
+
+> 10 1
+> 10 2
+> Latency (s, log)
+> OLMoE LFM2.5 DeepSeek-V2
+> .25 .5 12340.0 2.5 5.0 7.5 10.0 12.5
+> Memory (GiB)
+> .25 .5 1234
+> Input tokens (K)
+> .25 .5 1234
+> CPU-res. NPU-res. QNN-switch Naive Layer B= 2 Layer B=L
+> EStream
+
+Figure 11: System ablation across compute and expert-loading strategies. The top row shows pure-prefill la-tency, and the bottom row shows peak physical mem-ory. 
+
+2 reduces latency by 11.8% by exposing the available UFS par-allelism. With 𝐺 = 8, 𝑄 = 2, increasing 𝐵 from 2 to 3 further reduces latency from 1.075 to 1.030 s, but retaining all eight banks takes 1.048 s while using 16.0% more memory than the three-bank point. Thus, banks help only until the producer can keep the NPU supplied. Group size changes both request granularity and the number of feasible banks: relative to the best feasible fixed-𝐺 = 8 configurations, searching 𝐺 
+
+reduces latency by 4.8% at the medium DeepSeek budget and by 14.5% at the high Qwen3 budget. No single parameter can therefore be maximized or fixed independently. The auto-configurator closely tracks the sweep oracle. Across the 12 model–budget pairs, it exactly matches 9 con-strained minima. All selected points satisfy their measured budgets, with zero median regret and 3.45% worst-case re-gret. The three misses occur on one OLMoE budget and two LFM2.5 budgets, where bank-dependent synchroniza-tion costs depart from the profiled service model. These results show that lightweight hardware profiles recover near-Pareto configurations without an exhaustive deployment-time search. With one service-profile request per group size and memory monitoring folded into one request, profiling and selection take 5.7–22.4 s. This is 34.2–76.7 × faster than the 302–1,685 s exhaustive sweeps under the same active process-time accounting. The compact profiles are reusable across memory budgets, after which selecting a new config-uration takes only 0.34–2.79 ms. 
+
+## 5.6 System Ablation 
+
+Full-NPU execution and expert virtualization. To mea-sure their combined effect, Figure 11 compares EStream with two fully resident references. CPU-resident uses the optimized llama.cpp CPU path. NPU-resident uses the same EStream NPU execution path, but preloads every model pa-rameters. It therefore isolates the overhead of expert stream-ing. Compared with CPU-resident, EStream is 1.83–30.14 ×
+
+faster and uses 6.05–12.29 × less memory. The I/O-free NPU-resident reference is 1.04–5.63 × faster, but consumes 3.73– 6.36 × more memory. Longer input creates more overlapping windows. At 4K, EStream incurs only 4.3–23.0% higher la-tency than resident execution while using 3.73–5.41 × less memory, and the LFM2.5 trace shows that 94.9% of UFS load-ing overlaps NPU execution. 
+
+Topology-invariant graph sharing. As shown in Figure 5b, QNN-switch uses the same full-NPU non-expert path and ap-proximately the same expert-residency budget as EStream. However, it prepares a fixed QNN graph for every expert and loads the selected expert contexts at runtime. This iso-lates the benefit of sharing one expert graph and binding its parameters dynamically. Despite using only 1.00–1.41 × the memory of EStream, QNN-switch is 6.27–21.02 × slower be-cause context loading and repeated graph invocation remain on the critical path. 
+
+> 11
+
+Fine-grained I/O–execution pipeline. Naive streaming retains the shared graph but uses 𝑄 = 1, 𝐺 = 1, and 𝐵 = 3. Au-tomatic grouping and buffering make EStream 1.18–1.73 ×
+
+faster for only 2.7–14.1% more memory. We further compare two coarse cross-layer schedules with 𝐺 = 𝐸 and 𝑄 = 2. Layer-𝐵 =2 alternates two layer-sized arenas, whereas Layer-
+
+𝐵 =𝐿 keeps one arena per MoE layer. EStream outperforms Layer-𝐵 =2 in 15 of 18 cases by 1.02–1.71 × while using 1.26– 1.58 × less memory. Layer-𝐵 =𝐿 removes reuse stalls and can reduce latency by up to 23.6% (1.31 ×), but requires 3.73–6.61 ×
+
+more memory. Thus, coarse layer streaming either stalls at layer boundaries or abandons bounded residency, while expert-group pipelining provides a better latency–memory balance. 
+
+## 6 Related Work 
+
+LLM parameter offloading. Prior systems move weights across memory and storage tiers to enlarge effective model capacity. FlexGen and LLM in a Flash optimize device place-ment and flash access for dense models [3, 42]. MoE systems cache or prefetch experts [20, 44, 52, 58], reduce transfer precision [46, 48, 56], or pipeline storage with CPU/GPU exe-cution [9, 45]. These designs primarily target decode locality, rely on CPU/GPU computation, or alter precision. None sup-ports full-NPU MoE prefill acceleration on mobile devices. PowerInfer-2 comes closest by overlapping UFS reads with NPU-centric prefill, but uses precompiled graph variants and lacks a public mobile implementation [53]. EStream for the first time realized efficient parameter streaming for dynamic mobile NPU execution and achieves the best performance. 
+
+On-device LLM prefill acceleration. Prior work acceler-ates on-device prefill through computation reuse, model spe-cialization, and heterogeneous execution. AttnCache reuses approximate attention maps, while PRISM prunes low-ranked candidates and streams model layers [43, 60]. MNN-LLM and Transformer-Lite optimize quantized CPU/GPU execution and memory management, whereas MobileMoE co-designs compact MoE architectures for mobile constraints [12, 30, 50]. llm.npu and HeteroInfer partition dense LLM computation across mobile processors, while KTransformers applies asyn-chronous CPU/GPU execution to MoEs [10, 11, 51]. NPUMoE is closest in workload and achieves strong speedups using capacity-tiered, grouped expert graphs on Apple NPUs [6]. However, its expert graphs have precompiled capacities, routing and aggregation remain on the CPU, and all model weights are assumed resident. It therefore cannot bind run-time route extents and streamed expert addresses within reusable NPU execution. EStream provides this dynamism while bounding expert residency on smartphones. 
+
+Programmable mobile-NPU execution. Most mobile in-ference engines access NPUs through vendor-compiled op-erator graphs. Recent work instead exposes programmable execution below this abstraction. Hao et al. build a FastRPC-connected Hexagon operator library that directly coordi-nates HMX, HVX, DMA, and on-chip memory for quantized LLM inference [27]. Hexagon-MLIR compiles Triton kernels and PyTorch graphs into Hexagon binaries, automating fu-sion, TCM tiling, HVX vectorization, multithreading, and asynchronous DMA [2]. llada.cpp builds direct Hexagon ker-nels for diffusion LLMs [49]. These systems establish the benefits of programming mobile NPUs below graph opera-tors, yet do not support the dynamic MoE prefill nor efficient memory management for MoEs. 
+
+## 7 Discussion 
+
+More aggressive quantization. EStream currently uses weight-only Q4_0 without activation quantization. More ag-gressive low-bit and expert-wise mixed-precision schemes are largely orthogonal to our design. EdgeMoE assigns expert bit widths offline according to accuracy sensitivity. D 2MoE instead selects nested bit-width representations at runtime [48, 56]. Integrating such schemes would shrink streamed expert groups, reduce UFS traffic, and fit more groups within a fixed memory budget. The latency gain, however, need not scale linearly with the byte reduction. The NPU must unpack the encoded weights, apply their quantization parameters, and form HMX-consumable operands. Lower or mixed precision can therefore lengthen the HVX stage and disturb the DMA– HVX–HMX pipeline. A quantized extension should jointly optimize quality, I/O latency, and NPU dequantization cost. 
+
+MoE decode. EStream targets prefill-only workloads and does not optimize autoregressive decode. A decode step sup-plies only one routes to each selected expert, leaving little ma-trix work to saturate HMX or hide a storage access. Extend-ing EStream to MoE decode will require a decode-specific policy that retains experts across steps, predicts upcoming routes, and potentially batches or speculatively verifies to-kens to create a larger NPU workload. These techniques can reuse its memory management and NPU execution, but require a separate optimization of cache hit rate, tail TPOT, memory, and energy. We leave this co-design to future work. 
+
+Portability across NPUs. Our implementation is based on Qualcomm Hexagon, but the design does not depend on a particular number of vector or matrix units. Porting ES-tream to other platforms only requires an programmable NPU interfaces for vector and matrix computation and asyn-chronous data movement. Topology-invariant graph sharing applies directly when experts within a layer use the same computational structure. Models with heterogeneous expert dimensions or additional expert-specific operators may in-stead require multiple shared graph templates. 
+
+## 8 Conclusion 
+
+On-device MoE prefill is constrained by a fundamental mis-match between input-dependent expert execution, static NPU abstractions, and the request-level densification of ex-pert working sets. This paper presented EStream, which separates reusable expert computation topology from run-time route and parameter bindings, streams expert weights through a bounded NPU-addressable arena, and overlaps 
+
+> 12
+
+UFS loading with full-NPU prefill execution. On a commer-cial Snapdragon smartphone, EStream consistently achieves a better latency–memory operating point across structurally distinct MoE models and input lengths from 256 to 4,096 to-kens. It accelerates resident CPU and QNN context-switching baselines by up to 30.14 × and 21.02 ×, respectively. Compared with a same-backend, I/O-free resident reference, it requires 3.73–6.36 × less peak physical memory while incurring only 4.3–23.0% higher latency at 4K. EStream also provides the highest energy efficiency in every completed model–length setting. More broadly, these results show that deployable MoE capacity need not be limited by simultaneously resi-dent expert memory when programmable NPU execution is co-designed with storage streaming. 
+
+## References 
+
+[1] Cecilia Aas, Hisham Abdelsalam, Irina Belousova, Shruti Bhargava, Jianpeng Cheng, Robert Daland, Joris Driesen, Federico Flego, Tristan Guigue, Anders Johannsen, Partha Lal, Jiarui Lu, Joel Ruben Antony Moniz, Nathan Perkins, Dhivya Piraviperumal, Stephen Pulman, Diar-muid Ó Séaghdha, David Q. Sun, John Torr, Marco Del Vecchio, Jay Wacker, Jason D. Williams, and Hong Yu. 2023. Intelligent Assistant Language Understanding On Device. arXiv:2308.03905 [2] Mohammed Javed Absar, Muthu Baskaran, Abhikrant Sharma, Ab-hilash Bhandari, Ankit Aggarwal, Arun Rangasamy, Dibyendu Das, Fateme Hosseini, Franck Slama, Iulian Brumar, Jyotsna Verma, Kr-ishnaprasad Bindumadhavan, Mitesh Kothari, Mohit Gupta, Ravis-hankar Kolachana, Richard Lethin, Samarth Narang, Sanjay Motilal Ladwa, Shalini Jain, Snigdha Suresh Dalvi, Tasmia Rahman, Venkat Rasagna Reddy Komatireddy, Vivek Vasudevbhai Pandya, Xiyue Shi, and Zachary Zipper. 2026. Hexagon-MLIR: An AI Compilation Stack for Qualcomm’s Neural Processing Units (NPUs). arXiv:2602.19762 [3] Keivan Alizadeh, Seyed Iman Mirzadeh, Dmitry Belenko, S. Khatam-ifard, Minsik Cho, Carlo C. Del Mundo, Mohammad Rastegari, and Mehrdad Farajtabar. 2024. LLM in a Flash: Efficient Large Language Model Inference with Limited Memory. In Proceedings of the 62nd An-nual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 12562–12584. [4] Apple Machine Learning Research. 2026. Introducing the Third Gen-eration of Apple’s Foundation Models. [5] François Baccelli, Guy Cohen, Geert Jan Olsder, and Jean-Pierre Quadrat. 1992. Synchronization and Linearity: An Algebra for Discrete Event Systems . John Wiley & Sons, Chichester, UK. [6] Afsara Benazir and Felix Xiaozhu Lin. 2026. Efficient Mixture-of-Experts LLM Inference with Apple Silicon NPUs. arXiv:2604.18788 [7] Vera Boteva, Demian Gholipour, Artem Sokolov, and Stefan Riezler. 2016. A Full-Text Learning to Rank Dataset for Medical Information Retrieval. In Proceedings of the 38th European Conference on Information Retrieval . 716–722. [8] Mingyu Cao, Gen Li, Jie Ji, Jiaqi Zhang, Ajay Jaiswal, Li Shen, Xiaolong Ma, Shiwei Liu, and Lu Yin. 2025. Condense, Don’t Just Prune: Enhanc-ing Efficiency and Performance in MoE Layer Pruning. Transactions on Machine Learning Research (2025). [9] Shiyi Cao, Shu Liu, Tyler Griggs, Peter Schafhalter, Xiaoxuan Liu, Ying Sheng, Joseph E. Gonzalez, Matei Zaharia, and Ion Stoica. 2025. MoE-Lightning: High-Throughput MoE Inference on Memory-Constrained GPUs. In Proceedings of the 30th ACM International Conference on Ar-chitectural Support for Programming Languages and Operating Systems, Volume 1 . 715–730. [10] Hongtao Chen, Weiyu Xie, Boxin Zhang, Jingqi Tang, Jiahao Wang, Jianwei Dong, Shaoyuan Chen, Ziwei Yuan, Chen Lin, Chengyu Qiu, Yuening Zhu, Qingliang Ou, Jiaqi Liao, Xianglin Chen, Zhiyuan Ai, Yongwei Wu, and Mingxing Zhang. 2025. KTransformers: Unleashing the Full Potential of CPU/GPU Hybrid Inference for MoE Models. In 
+
+Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Principles . 1014–1029. [11] Le Chen, Dahu Feng, Erhu Feng, Yingrui Wang, Rong Zhao, Yubin Xia, Pinjie Xu, and Haibo Chen. 2025. Characterizing Mobile SoC for Accelerating Heterogeneous LLM Inference. In Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Principles . 359–374. [12] Yanbei Chen, Hanxian Huang, Ernie Chang, Jacob Szwejbka, Di-gant Desai, Zechun Liu, Vikas Chandra, and Raghuraman Krish-namoorthi. 2026. MobileMoE: Scaling On-Device Mixture of Experts. arXiv:2605.27358 [13] Longkai Cheng, Along He, Mulin Li, Xueshuo Xie, and Tao Li. 2025. HookMoE: A Learnable Performance Compensation Strategy of Mixture-of-Experts for LLM Inference Acceleration. In Proceed-ings of the 2025 Conference on Empirical Methods in Natural Language Processing . 31594–31606. [14] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael Collins, and Kristina Toutanova. 2019. BoolQ: Exploring the Surprising Difficulty of Natural Yes/No Questions. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers) . 2924–2936. [15] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabhar-wal, Carissa Schoenick, and Oyvind Tafjord. 2018. Think You Have Solved Question Answering? Try ARC, the AI2 Reasoning Challenge. arXiv:1803.05457 [16] Damai Dai, Chengqi Deng, Chenggang Zhao, R. X. Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangding Zeng, Xingkai Yu, Y. Wu, Zhenda Xie, Y. K. Li, Panpan Huang, Fuli Luo, Chong Ruan, Zhifang Sui, and Wenfeng Liang. 2024. DeepSeekMoE: Towards Ultimate Expert Special-ization in Mixture-of-Experts Language Models. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 1280–1297. [17] DeepSeek-AI. 2024. DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model. arXiv:2405.04434 [18] Kuntai Du, Bowen Wang, Chen Zhang, Yiming Cheng, Qing Lan, Hejian Sang, Yihua Cheng, Jiayi Yao, Xiaoxuan Liu, Yifan Qiao, Ion Stoica, and Junchen Jiang. 2025. PrefillOnly: An Inference Engine for Prefill-only Workloads in Large Language Model Applications. In 
+
+Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Principles . 399–414. [19] Nan Du, Yanping Huang, Andrew M. Dai, Simon Tong, Dmitry Lep-ikhin, Yuanzhong Xu, Maxim Krikun, Yanqi Zhou, Adams Wei Yu, Orhan Firat, Barret Zoph, Liam Fedus, Maarten P. Bosma, Zongwei Zhou, Tao Wang, Emma Wang, Kellie Webster, Marie Pellat, Kevin Robinson, Kathleen Meier-Hellstern, Toju Duke, Lucas Dixon, Kun Zhang, Quoc V. Le, Yonghui Wu, Zhifeng Chen, and Claire Cui. 2022. GLaM: Efficient Scaling of Language Models with Mixture-of-Experts. In Proceedings of the 39th International Conference on Machine Learning .5547–5569. [20] Artyom Eliseev and Denis Mazur. 2023. Fast Inference of Mixture-of-Experts Language Models with Offloading. arXiv:2312.17238 [21] William Fedus, Barret Zoph, and Noam Shazeer. 2022. Switch Trans-formers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity. Journal of Machine Learning Research 23 (2022), 1–39. [22] Hamed Firooz, Maziar Sanjabi, Adrian Englhardt, Aman Gupta, Ben Levine, Dre Olgiati, Gungor Polatkan, Iuliia Melnychuk, Karthik Ram-gopal, Kirill Talanine, Kutta Srinivasan, Luke Simon, Natesh Siva-subramoniapillai, Necip Fazil Ayan, Qingquan Song, Samira Sriram, Souvik Ghosh, Tao Song, Tejas Dharamsi, Vignesh Kothapalli, Xiaoling Zhai, Ya Xu, Yu Wang, and Yun Dai. 2025. 360Brew: A Decoder-only Foundation Model for Personalized Ranking and Recommendation. arXiv:2501.16450 [23] Jack FitzGerald, Christopher Hench, Charith Peris, Scott Mackie, Kay Rottmann, Ana Sanchez, Aaron Nash, Liam Urbach, Vishesh Kakarala, Richa Singh, Swetha Ranganath, Laurie Crist, Misha Britan, Wouter 
+
+> 13
+
+Leeuwis, Gokhan Tur, and Prem Natarajan. 2023. MASSIVE: A 1M-Example Multilingual Natural Language Understanding Dataset with 51 Typologically-Diverse Languages. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 4277–4302. [24] Georgi Gerganov and llama.cpp contributors. 2023. llama.cpp: LLM Inference in C/C++. GitHub repository. [25] Google. 2025. New AI-Powered Scam Detection Features to Help Protect You on Android. Google Security Blog. [26] Jiawei Hao, Zhiwei Hao, Jianyuan Guo, Li Shen, Yong Luo, Han Hu, and Dan Zeng. 2026. LightMoE: Reducing Mixture-of-Experts Redundancy through Expert Replacing. arXiv:2603.12645 [27] Zixu Hao, Jianyu Wei, Tuowei Wang, Minxing Huang, Huiqiang Jiang, Shiqi Jiang, Ting Cao, and Ju Ren. 2026. Scaling LLM Test-Time Com-pute with Mobile NPU on Smartphones. In Proceedings of the 21st European Conference on Computer Systems . 2157–2172. [28] Albert Q. Jiang, Alexandre Sablayrolles, Antoine Roux, Arthur Mensch, Blanche Savary, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Emma Bou Hanna, Florian Bressand, Gianna Lengyel, Guil-laume Bour, Guillaume Lample, Lélio Renard Lavaud, Lucile Saulnier, Marie-Anne Lachaux, Pierre Stock, Sandeep Subramanian, Sophia Yang, Szymon Antoniak, Teven Le Scao, Théophile Gervet, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and William El Sayed. 2024. Mixtral of Experts. arXiv:2401.04088 [29] Xiaotang Jiang, Huan Wang, Yiliu Chen, Ziqi Wu, Lichuan Wang, Bin Zou, Yafeng Yang, Zongyang Cui, Yu Cai, Tianhang Yu, Chengfei Lv, and Zhihua Wu. 2020. MNN: A Universal and Efficient Inference Engine. In Proceedings of Machine Learning and Systems .[30] Luchang Li, Sheng Qian, Jie Lu, Lunxi Yuan, Rui Wang, and Qin Xie. 2024. Transformer-Lite: High-efficiency Deployment of Large Lan-guage Models on Mobile Phone GPUs. arXiv:2403.20041 [31] Zi Lin, Zihan Wang, Yongqi Tong, Yangkun Wang, Yuxin Guo, Yujia Wang, and Jingbo Shang. 2023. ToxicChat: Unveiling Hidden Chal-lenges of Toxicity Detection in Real-World User–AI Conversation. In 
+
+Findings of the Association for Computational Linguistics: EMNLP 2023 .4694–4702. [32] Liquid AI. 2026. LFM2.5-8B-A1B: An Even Better On-Device Mixture of Experts. Liquid AI Blog. [33] Xudong Lu, Qi Liu, Yuhui Xu, Aojun Zhou, Siyuan Huang, Bo Zhang, Junchi Yan, and Hongsheng Li. 2024. Not All Experts Are Equal: Efficient Expert Pruning and Skipping for Mixture-of-Experts Large Language Models. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 6159– 6172. [34] Microsoft. 2025. ONNX Runtime GenAI: Generative AI Extensions for ONNX Runtime. GitHub repository. [35] Niklas Muennighoff, Luca Soldaini, Dirk Groeneveld, Kyle Lo, Ja-cob Morrison, Sewon Min, Weijia Shi, Evan Pete Walsh, Oyvind Tafjord, Nathan Lambert, Yuling Gu, Shane Arora, Akshita Bhagia, Dustin Schwenk, David Wadden, Alexander Wettig, Binyuan Hui, Tim Dettmers, Douwe Kiela, Ali Farhadi, Noah A. Smith, Pang Wei Koh, Amanpreet Singh, and Hannaneh Hajishirzi. 2025. OLMoE: Open Mixture-of-Experts Language Models. In International Conference on Learning Representations .[36] Denis Paperno, Germán Kruszewski, Angeliki Lazaridou, Ngoc Quan Pham, Raffaella Bernardi, Sandro Pezzelle, Marco Baroni, Gemma Boleda, and Raquel Fernández. 2016. The LAMBADA Dataset: Word Prediction Requiring a Broad Discourse Context. In Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . 1525–1534. [37] Qualcomm Technologies, Inc. 2021. Qualcomm Hexagon V69 HVX Programmer’s Reference Manual . Qualcomm Technologies, Inc. [38] Qualcomm Technologies, Inc. 2025. Snapdragon 8 Elite Gen 5 Mobile Platform Product Brief. Product brief 87-93124-1 Rev. A. [39] Qualcomm Technologies, Inc. 2026. Qualcomm Hexagon V81 HMX Programmer’s Reference Manual . Qualcomm Technologies, Inc. [40] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. 2020. Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer. Journal of Machine Learning Research 21 (2020), 1–67. [41] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula, and Yejin Choi. 2020. WinoGrande: An Adversarial Winograd Schema Challenge at Scale. In Proceedings of the AAAI Conference on Artificial Intelligence .8732–8740. [42] Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max Ryabinin, Daniel Y. Fu, Zhiqiang Xie, Beidi Chen, Clark Barrett, Joseph E. Gon-zalez, Percy Liang, Christopher Ré, Ion Stoica, and Ce Zhang. 2023. FlexGen: High-Throughput Generative Inference of Large Language Models with a Single GPU. In Proceedings of the 40th International Conference on Machine Learning . 31094–31116. [43] Dinghong Song, Yuan Feng, Yiwei Wang, Shangye Chen, Cyril Guyot, Filip Blagojevic, Hyeran Jeon, Pengfei Su, and Dong Li. 2025. At-tnCache: Accelerating Self-Attention Inference for LLM Prefill via Attention Cache. arXiv:2510.25979 [44] Xiaoniu Song, Zihang Zhong, Rong Chen, and Haibo Chen. 2024. ProMoE: Fast MoE-based LLM Serving Using Proactive Caching. arXiv:2410.22134 [45] Zhaoyuan Su, Olatunji Ruwase, Karthik Ganesan, Aurick Qiao, Samyam Rajbhandari, Juncheng Yang, Yue Cheng, and Yuxiong He. 2026. MoE-Prefill: Zero Redundancy Overheads in MoE Prefill Serving. arXiv:2605.02960 [46] Peng Tang, Jiacheng Liu, Xiaofeng Hou, Yifei Pu, Jing Wang, Pheng-Ann Heng, Chao Li, and Minyi Guo. 2024. HOBBIT: A Mixed Precision Expert Offloading System for Fast MoE Inference. arXiv:2411.01433 [47] David Wadden, Shanchuan Lin, Kyle Lo, Lucy Lu Wang, Madeleine van Zuylen, Arman Cohan, and Hannaneh Hajishirzi. 2020. Fact or Fiction: Verifying Scientific Claims. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing . 7534–7550. [48] Haodong Wang, Qihua Zhou, Zicong Hong, and Song Guo. 2025. 
+
+𝐷 2MoE: Dual Routing and Dynamic Scheduling for Efficient On-Device MoE-based LLM Serving. In Proceedings of the 31st Annual International Conference on Mobile Computing and Networking . 574– 588. [49] Tuowei Wang, Yanfan Sun, and Ju Ren. 2026. Efficient On-Device Diffusion LLM Inference with Mobile NPU. arXiv:2606.13740 [50] Zhaode Wang, Jingbang Yang, Xinyu Qian, Shiwen Xing, Xiaotang Jiang, Chengfei Lv, and Shengyu Zhang. 2024. MNN-LLM: A Generic Inference Engine for Fast Large Language Model Deployment on Mo-bile Devices. In Proceedings of the 6th ACM International Conference on Multimedia in Asia Workshops . 1–7. [51] Daliang Xu, Hao Zhang, Liming Yang, Ruiqi Liu, Gang Huang, Meng-wei Xu, and Xuanzhe Liu. 2025. Fast On-device LLM Inference with NPUs. In Proceedings of the 30th ACM International Conference on Ar-chitectural Support for Programming Languages and Operating Systems, Volume 1 . 445–462. [52] Leyang Xue, Yao Fu, Zhan Lu, Chuanhao Sun, Luo Mai, and Mahesh K. Marina. 2024. MoE-Infinity: Efficient MoE Inference on Personal Machines with Sparsity-Aware Expert Cache. arXiv:2401.14361 [53] Zhenliang Xue, Yixin Song, Zeyu Mi, Xinrui Zheng, Yubin Xia, and Haibo Chen. 2024. PowerInfer-2: Fast Large Language Model Inference on a Smartphone. arXiv:2406.06282 [54] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Dayiheng Liu, Fan Zhou, et al. 2025. Qwen3 Technical Report. arXiv:2505.09388 [55] Yuchen Yang, Yaru Zhao, Pu Yang, Shaowei Wang, and Zhi-Hua Zhou. 2026. ZipMoE: Efficient On-Device MoE Serving via Lossless Com-pression and Cache-Affinity Scheduling. In Proceedings of the 43rd International Conference on Machine Learning .[56] Rongjie Yi, Liwei Guo, Shiyun Wei, Ao Zhou, Shangguang Wang, and Mengwei Xu. 2025. EdgeMoE: Empowering Sparse Large Language Models on Mobile Devices. IEEE Transactions on Mobile Computing 24 
+
+> 14
+
+(2025), 7059–7073. [57] Wangsong Yin, Mengwei Xu, Yuanchun Li, and Xuanzhe Liu. 2024. LLM as a System Service on Mobile Devices. arXiv:2403.11805 [58] Hanfei Yu, Xingqi Cui, Hong Zhang, Hao Wang, and Hao Wang. 2026. Taming Latency-Memory Trade-Off in MoE-Based LLM Serving via Fine-Grained Expert Offloading. In Proceedings of the 21st European Conference on Computer Systems . 176–191. [59] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi. 2019. HellaSwag: Can a Machine Really Finish Your Sentence?. In Proceedings of the 57th Annual Meeting of the Association for Com-putational Linguistics . 4791–4800. [60] Jiahao Zhou, Chengliang Lin, Dingji Li, Mingkai Dong, and Haibo Chen. 2026. On-device Semantic Selection Made Low Latency and Memory Efficient with Monolithic Forwarding. In Proceedings of the 21st European Conference on Computer Systems . 126–143.

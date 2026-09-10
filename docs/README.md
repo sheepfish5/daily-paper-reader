@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-09</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-10</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 25 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>13</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-09 22:24:13 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-10 21:38:01 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读13篇、速读12篇，重点聚焦端侧多任务大模型内存管理与异构GPU并发推理调度。</p>
-<p>最值得关注的是两篇9.0分工作：`mzCache` 面向多任务场景优化设备端LLM内存复用；MeanField代理模型则提升共享GPU上并发AI推理的运行时调度可扩展性。</p>
-<p>若想紧跟前沿，可优先浏览这两篇高分论文，并顺带扫读AI代理硬件设计、混合精度量化等8分速读文章以扩展视野。</p>
+<p>今天筛完19篇论文，精读7篇、速读12篇，重点落在LLM推理系统、多轮对话调度与MoE优化三条线上。</p>
+<p>最值得看的是两篇9.0分：一篇用平均场渐近和命中率近似分析LRU策略下的多轮LLM对话，另一篇AMEND用审计边距在GPU-PIM解码中实现非阻塞丢弃；速读中DynaNDE、PCoMoE等8.0分工作也集中在MoE专家调度、路径组合与计算通信重叠。</p>
+<p>普通读者可先读两篇9.0分抓核心结论，再顺着MoE推理优化扫一遍8.0分速读，建立“调度+资源重叠”的系统视角。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">13 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="mzCache: On-Device LLM Memory Management under Multitasking">mzCache: On-Device LLM Memory Management under Multitasking</span></li><li><span class="dpr-home-dashboard-paper-title" title="MeanField Surrogate Modeling for Scalable Runtime Scheduling of Concurrent Heterogeneous AI Inference on Shared GPUs">MeanField Surrogate Modeling for Scalable Runtime Scheduling of Concurrent Heterogeneous AI Inference on Shared GPUs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Latency-Aware Orchestration for Multi-Agent LLM Workflows on Heterogeneous GPUs">Latency-Aware Orchestration for Multi-Agent LLM Workflows on Heterogeneous GPUs</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Multi-Turn LLM Conversations under the Least-Recently-Used Policy: Mean-Field Asymptotics and Hit Ratio Approximation">Multi-Turn LLM Conversations under the Least-Recently-Used Policy: Mean-Field Asymptotics and Hit Ratio Approximation</span></li><li><span class="dpr-home-dashboard-paper-title" title="AMEND: Audited Margins Enable Nonblocking Drops in GPU-PIM LLM Decoding">AMEND: Audited Margins Enable Nonblocking Drops in GPU-PIM LLM Decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="DASC: Decay-Aware State Compression for Hybrid Linear-Attention Serving">DASC: Decay-Aware State Compression for Hybrid Linear-Attention Serving</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>11</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>5</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -89,9 +89,9 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Benchmarking AI Agents for Hardware Design Automation via MCP Tool Calling">Benchmarking AI Agents for Hardware Design Automation via MCP Tool Calling</span></li><li><span class="dpr-home-dashboard-paper-title" title="DAMP: Decay-Aware Mixed-Precision Recurrent-State Quantization">DAMP: Decay-Aware Mixed-Precision Recurrent-State Quantization</span></li><li><span class="dpr-home-dashboard-paper-title" title="From Generation to Discovery: Diffusion Mutation Kernels for Circuit and Physical Design">From Generation to Discovery: Diffusion Mutation Kernels for Circuit and Physical Design</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="DynaNDE: Dynamic Near-Data Expert Scheduling for Batched MoE Inference">DynaNDE: Dynamic Near-Data Expert Scheduling for Batched MoE Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="PCoMoE: Shifting MoE Inference from Monolithic Expert Selection to Fine-Grained Path Composition">PCoMoE: Shifting MoE Inference from Monolithic Expert Selection to Fine-Grained Path Composition</span></li><li><span class="dpr-home-dashboard-paper-title" title="Analytical Resource Management for Fine-grained MoE Computation-Communication Overlap">Analytical Resource Management for Fine-grained MoE Computation-Communication Overlap</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>11</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
 </section>
 </div>
 
