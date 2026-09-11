@@ -1,30 +1,71 @@
 {
-  "generated_at": "2026-09-10T21:27:57.396434+00:00",
-  "updated_date": "20260910",
+  "generated_at": "2026-09-11T21:19:42.996054+00:00",
+  "updated_date": "20260911",
   "carryover_days": 9,
   "tag_states": {
     "li": {
-      "updated_date": "20260910",
+      "updated_date": "20260911",
       "carryover_days": 9,
       "items": [
         {
-          "id": "2609.09768v1",
+          "id": "2609.10937v1",
           "source": "arxiv",
-          "title": "Fine-Tuning a KV Cache Concatenation-Aware Model or Recomputing KV Caches? Why Not Both?",
-          "abstract": "In Retrieval-Augmented Generation (RAG) systems, a large number of retrieved chunks are concatenated to form the input context so that users can receive high-quality responses based on external knowledge. As a result, the input context length increases substantially, leading to a larger prefill workload and, in turn, a longer time to first token (TTFT). While previous works that reuse precomputed key-value (KV) caches effectively reduce TTFT for long-context inputs, it remains unclear whether response quality is preserved when the input context becomes very long. In this paper, we propose a combined approach that (i) fine-tunes the model while taking KV cache concatenation into account and (ii) selectively recomputes a subset of the KV caches. By applying both techniques, we demonstrate improved accuracy for long-context inputs. Experiments on the RULER benchmark show that, for a 124k-token input, our method improves the RULER score by 9.7 point over the baseline that recomputes KV caches only. Moreover, TTFT is reduced by 80% compared with full attention.",
+          "title": "The Art of Closed-Formula Defaults: Search-Free Code Generation for Tensor Operators",
+          "abstract": "Agentic search and automated optimization of GPU kernels are powerful tools for large language model inference. Their effectiveness, however, depends not on the sophistication of the search itself, but on the clarity of the optimization problem being solved. We provide an application-first approach that drives a hierarchical code generation tool from operator specifi cation down to GPU instructions, and show that a clearly defined computational model makes the optimization problem tractable.",
           "authors": [
-            "Fumihiko Tachibana",
-            "Daisuke Miyashita",
-            "Jun Deguchi"
+            "Paolo D'Alberto",
+            "Ashish Sirasao"
+          ],
+          "primary_category": "cs.MS",
+          "categories": [
+            "cs.MS"
+          ],
+          "published": "2026-09-10T00:55:11+00:00",
+          "link": "https://arxiv.org/pdf/2609.10937v1",
+          "tags": [
+            "keyword:dse",
+            "keyword:li",
+            "query:dse",
+            "query:li"
+          ],
+          "llm_score": 8.0,
+          "llm_evidence_en": "search-free hierarchical code generation from operator specs to GPU instructions for LLM inference kernels",
+          "llm_evidence_cn": "从算子规格到GPU指令的免搜索层次化代码生成，服务大模型推理算子优化",
+          "llm_evidence": "从算子规格到GPU指令的免搜索层次化代码生成，服务大模型推理算子优化",
+          "canonical_evidence": "从算子规格到GPU指令的免搜索层次化代码生成，服务大模型推理算子优化",
+          "llm_tldr_en": "A search-free application-first approach drives hierarchical code generation from operator specifications down to GPU instructions, arguing that a clearly defined computational model, not search sophistication, makes kernel optimization tractable.",
+          "llm_tldr_cn": "针对大模型推理中GPU算子自动搜索优化效果不稳定的问题，本文提出应用优先的层次化代码生成方法，从算子规格逐层下降到GPU指令。作者论证优化成效并不取决于搜索复杂度，而取决于优化问题定义是否清晰。结果表明，清晰的计算模型能让算子优化问题变得可解，从而降低对复杂搜索的依赖。该工作为免搜索的高性能GPU算子生成提供了新思路。",
+          "llm_tldr": "针对大模型推理中GPU算子自动搜索优化效果不稳定的问题，本文提出应用优先的层次化代码生成方法，从算子规格逐层下降到GPU指令。作者论证优化成效并不取决于搜索复杂度，而取决于优化问题定义是否清晰。结果表明，清晰的计算模型能让算子优化问题变得可解，从而降低对复杂搜索的依赖。该工作为免搜索的高性能GPU算子生成提供了新思路。",
+          "llm_tags": [
+            "query:li"
+          ],
+          "matched_query_tag": "query:li",
+          "matched_query_text": "GPU kernel optimization",
+          "matched_requirement_id": "req-1",
+          "selection_source": "carryover_cache",
+          "paper_id": "2609.10937v1",
+          "carry_days": 1
+        },
+        {
+          "id": "2609.11133v1",
+          "source": "arxiv",
+          "title": "Phase-Decoupled, Model-Calibrated Power Control for Disaggregated LLM Serving",
+          "abstract": "Datacenter GPU power is the binding constraint on LLM serving capacity, and production serving has shifted to prefill/decode (PD) disaggregation. Deploying NVIDIA's Max-Q inference profile on a disaggregated B200 system, we found its realized gain modest (+8.6% tokens/J), model-dependent, and carrying a mean end-to-end latency cost (+5.2%) that throughput-only evaluation does not surface; the profile also applies one setting to prefill and decode GPUs that operate in opposite hardware regimes. We hypothesize that the optimal power setting is a property of the deployed (model, quantization, engine, hardware) combination rather than of the GPU class, that each lane warrants its own profile, and that converting SLO headroom into energy safely requires latency-gated calibration under a runtime SLO guard rather than a fixed recipe. We present a phase-decoupled, model-calibrated controller: the prefill lane runs under an SM-clock window whose floor is a latency guarantee by construction, and the decode lane under a power cap placed by automatic calibration just above a measured throughput/latency cliff. Because a disaggregated decode lane draws flat, memory-bound power, the cap binds continuously, the reactive-overshoot weakness that led POLCA to reject capping is absent, and the GPU's own power manager retains throughput under the cap. On an 8x B200 node serving Qwen3-Coder-480B (FP8) under agentic load, our balanced mode delivers +20.4% tokens/J at +3.5% mean e2e versus +8.6% at +5.2% for Max-Q, a Pareto improvement on both axes. On Qwen3-235B-A22B (NVFP4) every operating mode meets the ITL-p99 SLO in every repetition; both vendor profiles miss it. A decode-actuator A/B shows the calibrated cap beats static clock locks, and a three-day sustained run saves 32.3% of a lane pair's electricity. Both models are MoE; a dense model recovers roughly 5x less, so we scope our claims to MoE serving.",
+          "authors": [
+            "Jae Gon Kim",
+            "Donghoon Yoo",
+            "Hanyul Ryu",
+            "Sungho Ha",
+            "Juyeon Lee",
+            "Soojung Ryu"
           ],
           "primary_category": "cs.LG",
           "categories": [
             "cs.LG",
-            "cs.AI",
-            "cs.CL"
+            "cs.DC"
           ],
-          "published": "2026-09-09T06:12:39+00:00",
-          "link": "https://arxiv.org/pdf/2609.09768v1",
+          "published": "2026-09-10T06:23:37+00:00",
+          "link": "https://arxiv.org/pdf/2609.11133v1",
           "tags": [
             "keyword:dse",
             "keyword:li",
@@ -32,107 +73,27 @@
             "query:li"
           ],
           "llm_score": 8.0,
-          "llm_evidence_en": "KV cache concatenation and selective recomputation for RAG",
-          "llm_evidence_cn": "面向RAG的KV缓存拼接与选择性重算",
-          "llm_evidence": "面向RAG的KV缓存拼接与选择性重算",
-          "canonical_evidence": "面向RAG的KV缓存拼接与选择性重算",
-          "llm_tldr_en": "RAG concatenates many retrieved chunks into long context, raising prefill cost and time-to-first-token; this paper fine-tunes a KV-cache-concatenation-aware model while selectively recomputing a subset of KV caches.",
-          "llm_tldr_cn": "RAG系统将大量检索片段拼接成超长上下文，导致prefill负载增大与首token延迟升高，而现有KV缓存复用虽能降低TTFT，却可能损害长上下文下的回答质量。本文提出结合方法：在微调中考虑KV缓存拼接，并有选择地重算部分KV缓存。实验验证其在降低TTFT的同时保持响应质量，为长上下文RAG服务提供兼顾效率与质量的方案。",
-          "llm_tldr": "RAG系统将大量检索片段拼接成超长上下文，导致prefill负载增大与首token延迟升高，而现有KV缓存复用虽能降低TTFT，却可能损害长上下文下的回答质量。本文提出结合方法：在微调中考虑KV缓存拼接，并有选择地重算部分KV缓存。实验验证其在降低TTFT的同时保持响应质量，为长上下文RAG服务提供兼顾效率与质量的方案。",
+          "llm_evidence_en": "power control for disaggregated prefill/decode LLM serving",
+          "llm_evidence_cn": "面向PD分离式LLM服务的功耗控制",
+          "llm_evidence": "面向PD分离式LLM服务的功耗控制",
+          "canonical_evidence": "面向PD分离式LLM服务的功耗控制",
+          "llm_tldr_en": "This work shows a single Max-Q profile underperforms on disaggregated B200 serving and proposes phase-decoupled, model-calibrated power control for prefill and decode lanes.",
+          "llm_tldr_cn": "数据中心GPU功耗已成为LLM服务容量的瓶颈，而生产部署正转向预填充/解码（PD）分离架构。作者在分离式B200系统上评测NVIDIA Max-Q配置，发现其能效增益有限且带来端到端延迟代价，且未区分处于相反硬件状态的预填充与解码GPU。本文提出按阶段解耦、基于模型校准的功耗控制，为PD分离服务在SLO约束下安全换取能效提供方法。",
+          "llm_tldr": "数据中心GPU功耗已成为LLM服务容量的瓶颈，而生产部署正转向预填充/解码（PD）分离架构。作者在分离式B200系统上评测NVIDIA Max-Q配置，发现其能效增益有限且带来端到端延迟代价，且未区分处于相反硬件状态的预填充与解码GPU。本文提出按阶段解耦、基于模型校准的功耗控制，为PD分离服务在SLO约束下安全换取能效提供方法。",
           "llm_tags": [
             "query:li"
           ],
           "matched_query_tag": "query:li",
-          "matched_query_text": "KV cache",
-          "matched_requirement_id": "req-4",
+          "matched_query_text": "disaggregated inference",
+          "matched_requirement_id": "req-2",
           "selection_source": "carryover_cache",
-          "paper_id": "2609.09768v1",
-          "carry_days": 1
-        },
-        {
-          "id": "2609.09208v1",
-          "source": "arxiv",
-          "title": "Shift-Accumulate Attention: Multiplier-Free Query--Key Products for Transformer Decoding",
-          "abstract": "Power-of-two (PoT) quantisation turns a multiplication into a bit shift, so far only for the post-softmax attention--value product. The earlier and larger product, S=QK^T, has not been reformulated the same way. We quantise the key cache to a signed power-of-two fixed-point code, so that every scalar multiplication in QK^T becomes a sign flip, a bit shift and an integer accumulation. A fixed-point head-room F>= e_max turns every shift index r=F-e into a non-negative left shift, making the accumulation exact in integer arithmetic. We add a sub-power mantissa extension that halves the score error for one extra shift-add, a shift-exact online softmax whose running maximum lives in an integer log2 domain so that every rescaling is itself an exact shift, and a log-quantised AV product.   Fused CUDA kernels in a 1.1B Llama decoder on an RTX 4090: at B=8, T=32k the 4-bit kernel is 4.60x faster than FP16 scaled dot-product attention with a 2.5x smaller KV cache, and batched decoding crosses over at B=64 to 1.22x FP16 throughput at 11.02 against 13.77 GB peak memory. A matched INT8 multiply--accumulate kernel on the same tiling reaches 5.29x: on a GPU with a hardware 4-way INT8 dot product, shift-accumulate is not faster than the MAC it replaces. An iso-storage control--an 8-bit shift code of exactly one byte per key, run through the identical kernel--prices the arithmetic substitution alone at 2.02x at comparable accuracy. The advantage of the PoT representation is therefore its density and the removal of the multiplier, not raw GPU throughput. A sweep over exponent width, mantissa levels, granularity and rounding gives the design lesson: nearest-PoT relative error is scale-free, so extra exponent bits buy nothing (eps_S=0.1302 at 3, 4 and 5 bits) and accuracy must come from mantissa terms.",
-          "authors": [
-            "Khubaib Ahmed",
-            "Amna Noor",
-            "Ahsan Ul haq"
-          ],
-          "primary_category": "cs.AR",
-          "categories": [
-            "cs.AR"
-          ],
-          "published": "2026-09-05T21:14:28+00:00",
-          "link": "https://arxiv.org/pdf/2609.09208v1",
-          "tags": [
-            "keyword:dse",
-            "keyword:li",
-            "query:dse",
-            "query:li"
-          ],
-          "llm_score": 8.0,
-          "llm_evidence_en": "multiplier-free quantized key-cache attention for Transformer decoding",
-          "llm_evidence_cn": "面向Transformer解码的无乘法量化键缓存注意力",
-          "llm_evidence": "面向Transformer解码的无乘法量化键缓存注意力",
-          "canonical_evidence": "面向Transformer解码的无乘法量化键缓存注意力",
-          "llm_tldr_en": "Power-of-two quantization was only applied to the attention-value product. This work quantizes the key cache to signed power-of-two fixed-point, turning QK^T multiplications into sign flips, shifts and integer accumulation, with a sub-power mantissa and shift-exact online softmax for exact decoding.",
-          "llm_tldr_cn": "幂次量化能把乘法变为位移，但此前只用于softmax后的注意力-值乘积，更大更早的QK^T乘积未被同样重构。论文把键缓存量化为带符号幂次定点码，使QK^T中每次标量乘法退化为符号翻转、位移与整数累加，并用定点余量保证移位非负与累加精确。方法还引入亚幂尾数扩展与移位精确在线softmax，以一次额外移位加法减半分数误差。该工作为Transformer解码提供了无乘法的注意力计算路径。",
-          "llm_tldr": "幂次量化能把乘法变为位移，但此前只用于softmax后的注意力-值乘积，更大更早的QK^T乘积未被同样重构。论文把键缓存量化为带符号幂次定点码，使QK^T中每次标量乘法退化为符号翻转、位移与整数累加，并用定点余量保证移位非负与累加精确。方法还引入亚幂尾数扩展与移位精确在线softmax，以一次额外移位加法减半分数误差。该工作为Transformer解码提供了无乘法的注意力计算路径。",
-          "llm_tags": [
-            "query:li"
-          ],
-          "matched_query_tag": "query:li",
-          "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
-          "matched_requirement_id": "req-9",
-          "selection_source": "carryover_cache",
-          "paper_id": "2609.09208v1",
-          "carry_days": 1
-        },
-        {
-          "id": "2609.09643v1",
-          "source": "arxiv",
-          "title": "UNISON: A Co-Designed Near-Memory Scheduler of Session KV Residency for LLM Agents",
-          "abstract": "Large language models are increasingly composed into agent loops that plan, call tools, and resume the same task after each action. These loops press a shared memory hierarchy harder than conventional multi-turn chat, because they hold a growing key-value (KV) prefix across tool waits and place many sessions on one SRAM/HBM pool, so that eviction and hierarchical placement become a session-level efficiency problem orthogonal to compute-mode optimization. Existing proxies based on recency, timeout, or identity miss the mechanism information of the loop and therefore treat a live wait as a cold, discardable unit. We present Unified Native Inter-turn Session Orchestration Nexus (UNISON), an event-driven near-memory scheduler in which Survival-Penalty Eviction for Agent Return-gap (SPEAR) and Tiering in Idle-window DMA Events (TIDE) share one live ranking. SPEAR selects who leaves from a gap average and a turn-indexed hazard, while TIDE spends the observed wait as a DMA budget for who sits in the fast tier. On coding and general-mission benchmarks with three model families, totaling 1,415 sessions and 33,596 turns, the joint policy is the best non-oracle entry on every trace, raising hit rate by 0.3% to 23.1%, reducing AMAT by 22% to 51%, and lowering TTFT by 58% to 89% on long-horizon traces. A structural necessity analysis shows that the unified near-memory design cannot be decomposed into independent IPs or realized in software without re-introducing documented failure modes. The 28-nm CMOS scheduling core occupies 0.169 mm^2 at 13.6 mW and 150 MHz, a negligible overhead relative to the KV hierarchy it manages, reproducing the floating-point ranking at Kendall tau exceeding 0.998.",
-          "authors": [
-            "Fan He",
-            "Yan Li",
-            "Xiaoyang Zeng"
-          ],
-          "primary_category": "cs.AR",
-          "categories": [
-            "cs.AR"
-          ],
-          "published": "2026-09-09T02:58:40+00:00",
-          "link": "https://arxiv.org/pdf/2609.09643v1",
-          "tags": [
-            "keyword:dse",
-            "keyword:li",
-            "query:dse",
-            "query:li"
-          ],
-          "llm_score": 8.0,
-          "llm_evidence_en": "session-level KV cache residency and placement for LLM agents",
-          "llm_evidence_cn": "面向LLM智能体的会话级KV缓存驻留与放置",
-          "llm_evidence": "面向LLM智能体的会话级KV缓存驻留与放置",
-          "canonical_evidence": "面向LLM智能体的会话级KV缓存驻留与放置",
-          "llm_tldr_en": "Agent loops hold growing KV prefixes across tool waits, turning eviction and hierarchical placement into a session-level efficiency problem. UNISON is an event-driven near-memory scheduler that uses loop mechanism information to keep live sessions resident instead of discarding them as cold.",
-          "llm_tldr_cn": "LLM日益被组合为智能体循环，需在工具等待间持有不断增长的KV前缀，并把大量会话置于同一SRAM/HBM池，使驱逐与分层放置成为独立于计算模式优化的会话级效率问题。现有基于最近使用、超时或身份的代理策略忽略循环机制信息，会把活跃等待误当作可丢弃冷单元。论文提出事件驱动的近内存调度器UNISON，用生存期等机制信息管理会话KV驻留与层级放置。该工作把KV缓存管理提升到会话级，为LLM智能体服务提供新调度视角。",
-          "llm_tldr": "LLM日益被组合为智能体循环，需在工具等待间持有不断增长的KV前缀，并把大量会话置于同一SRAM/HBM池，使驱逐与分层放置成为独立于计算模式优化的会话级效率问题。现有基于最近使用、超时或身份的代理策略忽略循环机制信息，会把活跃等待误当作可丢弃冷单元。论文提出事件驱动的近内存调度器UNISON，用生存期等机制信息管理会话KV驻留与层级放置。该工作把KV缓存管理提升到会话级，为LLM智能体服务提供新调度视角。",
-          "llm_tags": [
-            "query:li"
-          ],
-          "matched_query_tag": "query:li",
-          "matched_query_text": "KV cache",
-          "matched_requirement_id": "req-4",
-          "selection_source": "carryover_cache",
-          "paper_id": "2609.09643v1",
+          "paper_id": "2609.11133v1",
           "carry_days": 1
         }
       ]
     },
     "dse": {
-      "updated_date": "20260910",
+      "updated_date": "20260911",
       "carryover_days": 9,
       "items": []
     }
