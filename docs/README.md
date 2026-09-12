@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-11</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-12</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 13 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-11 21:31:24 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-12 21:12:35 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-09-11 日报：筛读19篇LLM系统论文，精读7篇、速读12篇，聚焦大规模LLM服务与推理优化。最值得看的是两篇9分精读：ExaServe（超算级HPC上的大规模LLM服务）和PATTON（把商品化PIM用于生产级LLM服务），另有UNISON、PELM、Epoch等速读工作涉及KV缓存调度、端侧节能推理与MoE服务。普通读者可先从两篇9分精读入手，再按兴趣选读速读中的端侧或调度方向。</p>
+<p>今日扫完13篇论文，精读2篇、速读11篇，重点锁定LLM服务功耗控制与张量算子代码生成。</p>
+<p>最值得看的是《Phase-Decoupled, Model-Calibrated Power Control for Disaggregated LLM Serving》（9.0）和《The Art of Closed-Formula Defaults: Search-Free Code Generation for Tensor Operators》（8.0）。</p>
+<p>普通读者可先读这两篇摘要，若关心工程落地再跟进速读中的MoE调度与Agentic工作流尾延迟调度。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ExaServe: Large-Scale LLM Serving on Exascale HPC Systems">ExaServe: Large-Scale LLM Serving on Exascale HPC Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="PATTON: Enabling Commodity PIM for Production LLM Serving">PATTON: Enabling Commodity PIM for Production LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="OmniKVQuant: KV Cache Quantization for Omni-LLMs">OmniKVQuant: KV Cache Quantization for Omni-LLMs</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Phase-Decoupled, Model-Calibrated Power Control for Disaggregated LLM Serving">Phase-Decoupled, Model-Calibrated Power Control for Disaggregated LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="The Art of Closed-Formula Defaults: Search-Free Code Generation for Tensor Operators">The Art of Closed-Formula Defaults: Search-Free Code Generation for Tensor Operators</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>5</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">12 篇</strong>
+    <strong class="dpr-home-dashboard-count">11 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="UNISON: A Co-Designed Near-Memory Scheduler of Session KV Residency for LLM Agents">UNISON: A Co-Designed Near-Memory Scheduler of Session KV Residency for LLM Agents</span></li><li><span class="dpr-home-dashboard-paper-title" title="PELM: Power Efficient On-Device LLM Inference with Speculative Decoding and Dynamic Voltage Frequency Scaling">PELM: Power Efficient On-Device LLM Inference with Speculative Decoding and Dynamic Voltage Frequency Scaling</span></li><li><span class="dpr-home-dashboard-paper-title" title="Epoch: Compiling Diffusion Blocks for Sparse MoE Serving">Epoch: Compiling Diffusion Blocks for Sparse MoE Serving</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="HDA-MoE: Hybrid Parallelism and Dynamic, Adaptive Scheduling for Mixture-of-Experts with 3D Near-Memory Processing">HDA-MoE: Hybrid Parallelism and Dynamic, Adaptive Scheduling for Mixture-of-Experts with 3D Near-Memory Processing</span></li><li><span class="dpr-home-dashboard-paper-title" title="$Φ$-Bench: Can Large Language Models Engineer the Infrastructure That Powers Them?">$Φ$-Bench: Can Large Language Models Engineer the Infrastructure That Powers Them?</span></li><li><span class="dpr-home-dashboard-paper-title" title="Decoupling Readiness from Release for Tail-Aware Scheduling of Agentic LLM Workflows">Decoupling Readiness from Release for Tail-Aware Scheduling of Agentic LLM Workflows</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
 </section>
 </div>
 

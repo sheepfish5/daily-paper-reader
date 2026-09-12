@@ -1,0 +1,1613 @@
+Title: Maverick: Private and Verifiable LLM Inference Made Practical via Matrix-Vector Multiplication Delegation
+
+URL Source: https://arxiv.org/pdf/2609.10264v1
+
+Published Time: Thu, 10 Sep 2026 01:13:42 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# Maverick : Private and Verifiable LLM Inference Made Practical via Matrix–Vector Multiplication Delegation 
+
+## Ben Merbaum ∗
+
+## Yale University 
+
+## Mohammad Amin Raeisi ∗
+
+## Yale University 
+
+## Wenhao Wang ∗
+
+## Yale University, IC3 
+
+## Charalampos Papamanthou 
+
+## Yale University 
+
+## Katerina Sotiraki 
+
+## Yale University 
+
+## Fan Zhang 
+
+## Yale University, IC3 
+
+## Abstract 
+
+Open-source large language models (LLMs) are increasingly competitive with closed-source models while offering trans-parency and the ability to run inference without exposing user inputs to a service provider. However, running large-scale models locally requires substantial computational resources. In practice, users may still resort to a third-party provider, giving rise to privacy and correctness concerns. Existing so-lutions that address these problems often impose substantial server overhead or introduce additional trust assumptions. In this paper, we present Maverick , a novel approach to private and verifiable LLM inference based on a protocol for delegating matrix–vector multiplication, a dominant operation in LLMs. At its core, Maverick provides, to our knowledge, the first information-theoretically sound verification protocol for matrix–vector multiplication delegation with transparent preprocessing , efficient (batch) verification , and virtually no server overhead . We combine this verification primitive with LPN-based pseudorandom masking to provide input privacy. We implement our matrix–vector delegation primitive and use it to build an end-to-end prototype of Maverick , which we evaluate on Qwen3-4B by measuring throughput in tokens per second. We evaluate client configurations with 1–8 threads. With one client thread and a CPU server using up to 128 threads, Maverick achieves throughput gains over local infer-ence of up to 17 × when privacy masks are generated online, 45 × when they are precomputed, and 44 × when only verifi-cation is required. With four client threads, the corresponding gains are 13 ×, 18 ×, and 17 ×. When server computation is no longer the bottleneck, client-side microbenchmarks with simulated network delay show speedups of 12 ×–20 ×, 34 ×–135 ×, and 38 ×–157 ×.   
+
+> *These authors contributed equally to this work and are ordered alphabet-ically.
+> †Emails: { ben.merbaum ,amin.raeisi ,
+> wenhao.wang ,charalampos.papamanthou ,
+> katerina.sotiraki ,f.zhang }@ yale.edu .
+
+## 1 Introduction 
+
+Open-source models such as DeepSeek, Qwen, and Kimi are increasingly matching the performance of closed-source models [32, 56, 77]. For example, as of July 2026, Kimi K3 outperforms Claude models on frontend design tasks [33]. In addition, open-source models can be run locally, allowing users with sufficient hardware to keep their inputs private from service providers. Their publicly available weights also offer better transparency [27] and reproducibility [29], while re-ducing dependence on provider-controlled changes to pricing, model availability, and access policies. Despite various ad-vantages, their substantial computational requirements make local deployment impractical or undesirable for most users (e.g., running Kimi K3 requires a cluster of high-end GPUs estimated to cost $0.55–$1 million to set up [35]). In practice, users resort to specialized service providers, reintroducing privacy and correctness concerns. The problem of private and verifiable outsourcing of AI and LLM inference has been extensively studied. However, aside from recent systems based on trusted execution environments (TEEs) [5, 6, 74], existing cryptographic approaches typically incur significant overhead on the server side. For instance, proof systems [15, 36, 41, 42, 61, 62, 69, 70, 76, 85, 86, 88] and homomorphic encryption [43, 47–49, 51, 52, 59, 64, 66, 87, 92] have been used, either individually or in combination, to pro-vide verifiability, input privacy, or both. However, generating proofs and performing fully homomorphic encryption (FHE) computations can be orders of magnitude more expensive than the original workload. Solutions based on TEEs offer practical performance, though their security guarantees may not always hold in practice [31]. In this paper, we present a lightweight protocol for private and verifiable outsourced LLM inference. Our protocol allows a computationally constrained client , such as a mobile device, to use an open-source model run by a powerful, untrusted server while hiding the client’s private input and supporting verification, all with negligible server overhead. In particular, our technical contributions are as follows. 1arXiv:2609.10264v1 [cs.CR] 9 Sep 2026 1) A protocol for fast verifiable matrix–vector multiplica-tion delegation (vMVMD). To our knowledge, it is the first information-theoretically sound construction with transparent preprocessing and efficient verification runtime. 2) We com-bine vMVMD with pseudorandom masks using coding theory to hide client inputs without introducing server overhead, providing private and verifiable matrix–vector multiplication delegation (pvMVMD). 3) Building on pvMVMD, we present 
+
+> Maverick
+
+, a system for private and verifiable LLM inference.  
+
+> Maverick
+
+outsources the linear operations of LLM inference to an untrusted server. Nonlinear operations [82] are inexpen-sive by comparison and are performed locally. We present an end-to-end prototype implementation and evaluation using the open-source model Qwen3-4B. 
+
+## 1.1 Verifiable Matrix–Vector Multiplication Delegation (vMVMD) 
+
+In a vMVMD protocol, a client with input x ∈ Fn verifies that a server’s output y ∈ Fm satisfies y = Mx for a public matrix M ∈ Fm×n. Since the client can always compute y
+
+locally in O(mn ) time, verification time must be less than 
+
+O(mn ) for delegation to be meaningful. One idea is to apply Freivalds’ algorithm [40]. Given matrices A, B, C, Freivalds’ algorithm checks whether AB ?
+
+= C by sampling a random vector r and checking (r⊤A)B ?
+
+= r⊤C. However, when ap-plied to the matrix–vector multiplication (MVM) Mx ?
+
+= y, it requires the client to compute r⊤M, which is as expensive as computing y locally. Our idea is to use a sparse vector in Freivalds’ algorithm. Rather than sampling a uniform challenge r, we sample a sparse vector e from Fm with t nonzero elements. To check 
+
+Mx ?
+
+= y, the client computes (e⊤M)x and e⊤y in time O(tn )
+
+and accepts if and only if they match. When t = O(κ), verifi-cation takes Oκ(m + n) time instead of O(mn ) time. However, this strawman protocol is not sound. Consider an invalid claim Mx ̸ = y for which Mx and y differ at only one index, say k. The above protocol only rejects if the k-th element of e happens to be nonzero, which happens with probability t/m, i.e., the soundness error is at least 1 − t/m.To reduce the soundness error, we use error-correcting codes to perform checks on encoded values. Let G ∈ Fm×N
+
+be the generator matrix of a linear code. The client samples a sparse challenge (of length N) and checks (e⊤G⊤M)x =
+
+e⊤G⊤y. Intuitively, the encoding spreads every nonzero error vector ∆∆∆ := Mx − y into a codeword G⊤∆∆∆ ∈ FN with enough nonzero entries that its support is likely to intersect the sup-port of e. This requires a code with high minimum Hamming weight (equivalently, high relative distance) and also fast en-coding for fast client online time, properties satisfied by, for example, RAA codes [3]. Computing G⊤M is relatively heavy, but Q = G⊤M is independent of client inputs and thus can be prepared in a 
+
+preprocessing phase . The preprocessing adds no extra trust assumption because both G and M are public and anyone can verify the correctness of Q. With Q preprocessed, verification is efficient since e is sparse and G has linear-time encoding. To further optimize client verification time, we develop a protocol for efficiently verifying a batch of MVMs involving different matrices and vectors. For each matrix Mb, prepro-cessing produces Qb = G⊤Mb. The same sparse challenge e
+
+can be shared across all claims in a repetition, but the client would still need to compute the expensive vectors Q⊤ 
+
+> b
+
+e sep-arately for every matrix. We instead stack the computation of Q⊤ 
+
+> b
+
+e into a single MVM and delegate it to the server. We then recursively apply vMVMD to verify this computation. Crucially, its input is now the sparse vector e itself, so the second check can be evaluated efficiently by the client. 
+
+## 1.2 Private and Verifiable Matrix–Vector Mul-tiplication Delegation (pvMVMD) 
+
+We now show how to add privacy (i.e., hiding x from the server) on top of vMVMD without introducing server over-head. A naive construction is to have the client sample a uni-formly random mask x′ and send bx = x+x′ to the server; upon receiving by, the client performs vMVMD to check Mbx ?
+
+= by.To remove the mask from by = M(x + x′), however, the client needs to compute Mx ′ and subtract it from by; computing Mx ′
+
+takes O(mn ) work. To avoid this overhead, we use another code Gx to gen-erate pseudorandom privacy masks x′ = Gxex from sparse random vectors ex under standard cryptographic assumptions. To distinguish this code from the one used for verification, we denote it by Gx, using the subscript x because privacy masks are added to the input x. The resulting mask can be removed efficiently as follows. Because MG x is independent of the client’s input, it can be computed during preprocessing. With 
+
+P := MG x ∈ Fm×Nx , we can write Mx ′ = ( MG x)ex = Pe x.Since ex is sparse, computing Pe x requires combining only the columns of P corresponding to the nonzero entries of ex.In our construction, we use a code that satisfies the above requirement under the dual-LPN assumption [20]. Overall, the client time is Oλ,κ(m + n), while the server performs the ordinary multiplication without any overhead. 
+
+## 1.3 Maverick : Private and Verifiable Out-sourced LLM Inference  
+
+> Maverick
+
+uses pvMVMD to outsource linear operations in LLM inference. Before nonlinear operations, the server re-turns the result of each linear operation to the client. The client evaluates nonlinear operations locally until it reaches the next linear operation, which it outsources to the server. In our evaluation, nonlinear operations account for less than 1% of total inference time, so this simple design outsources most of the computation. Moreover, our implementation uses 2pipelining so the client can use its idle time to prepare for upcoming computation, such as generating the output masks used in decryption. To leverage batch verification, the client defers verification to the end of the inference execution. We call this strategy optimistic verification .We also implement and evaluate an optimization in which the client precomputes privacy masks. This optimization is similar to how Beaver triples are pre-generated in multi-party computation (MPC) protocols to speed up multiplica-tions [12]. We further present a verification-only variant of  
+
+> Maverick
+
+for scenarios where privacy is not a concern, e.g., when user prompts do not include sensitive information. 
+
+## 1.4 Implementation and Evaluation 
+
+We implement our pvMVMD protocol and an end-to-end pro-totype of Maverick . We evaluate pvMVMD on square matrices of dimension up to n = 214 . The client time grows approx-imately linearly with n, while the preprocessing and native MVM grow quadratically. At n = 214 , the client completes its online work in 9 .33 ms, whereas performing the native matrix– vector multiplication locally would take 116 .00 ms, yielding a 12 .44 × client-side speedup. We compare the pvMVMD protocol against Dumas–Zucca [34], which is specialized for verifying matrix–vector products, and against Sum-Check instantiated with BaseFold [78, 91], which represents the gen-eral proof-based approach used by recent verifiable-ML sys-tems, including DeepProve [41]. Across the evaluated di-mensions up to n = 212 , our implementation is up to 34 .8×
+
+faster than Dumas–Zucca and up to 194 .8× faster than Sum-Check+BaseFold, and our reported client time additionally includes input privacy. We then evaluate Maverick using the open-source model 
+
+Qwen3-4B [77]. We study the throughput gains achieved when a client outsources inference to a powerful server, where throughput is measured in tokens per second. We configure the client with 1–8 threads to model a computationally con-strained device. For the server, we consider two regimes. First, we measure the throughput gain from outsourcing inference to our CPU server using 32–128 server threads, and we ex-clude network latency to isolate the computational benefit of outsourcing. Second, we measure the client-side throughput limit when server computation is sufficiently fast, as could be achieved with GPU acceleration, so that the client becomes the bottleneck. We evaluate this regime using client-side mi-crobenchmarks that treat server computation as negligible. To capture the impact of communication in realistic deploy-ments, this experiment incorporates simulated network RTTs to evaluate client throughput. With one client thread and up to 128 server threads, stan-dard, boost, and verification-only modes improve through-put over local inference by 17 ×, 45 ×, and 44 ×, respectively. With four client threads, the corresponding improvements are 13 ×, 18 ×, and 17 ×.Using the results from the first experiment, we compare  
+
+> Maverick
+
+against DeepProve [41], which provides verification but not input privacy. Although the model sizes, number of input tokens, and hardware differ, our verification-only mode evaluates Qwen3-4B in 531 .6 ms, including inference, with 45 .1 ms of verification. DeepProve’s proof generation takes 34 .2 s for GPT-2 and 81 .6 s for Gemma 3, excluding native inference. Its corresponding verification times are 1 .35 s and 1.91 s. Both models are at least 10 × smaller than Qwen3-4B .In the second experiment, we measure steady-state client throughput under simulated network RTTs of 50 ms and 100 ms with sufficiently fast server computation. Across 1–8 client threads, standard mode improves throughput over lo-cal inference by 12 ×–20 ×, boost mode by 34 ×–135 ×, and verification-only mode by 38 ×–157 ×.
+
+## 2 Related Work 
+
+HE- and MPC-based private-inference systems protect client inputs and, in some settings, model parameters, but replace native linear algebra with encrypted or secure computa-tion [43, 44, 47–49, 51–53, 59, 64–66, 72, 92]. Specialized protocols exploit the structure of linear computation to re-duce this overhead. EMVP [13], for instance, uses structured codes to efficiently delegate encrypted matrix–vector prod-ucts while additionally hiding the stored matrix, but assumes a semi-honest server and cannot provide verifiability. Braver-man and Newman [23] use trapdoored matrices for delegated linear algebra, including matrix multiplication and batched MVMs with efficiency in the amortized setting. Relatedly, Abbaszadeh et al. [1] use dual-LPN-friendly codes and trans-parent preprocessing to privately delegate multi-scalar mul-tiplications. However, these works do not provide efficient verifiable delegation of a single MVM in our setting. A large body of work verifies neural-network and LLM inference using interactive proofs and SNARKs [10, 36, 41, 42, 61, 62, 69, 70, 76]. These systems can certify substantially more of the inference computation, but require additional proof-generation work at the server. Since linear layers ac-count for a substantial fraction of inference computation, effi-cient verification of matrix products is a central subproblem. A direct Freivalds-style check provides information-theoretic soundness, but the verification requires quadratic time [40]. Prior work has also combined Freivalds-style verification with coding theory to reduce its randomness complexity [14]; however, the resulting verification time remains quadratic. Slalom [80] performs quadratic verification work in a private preprocessing by computing a secret reusable Freivalds state; however, this state encounters leakage over a bounded num-ber of queries. Further, Slalom uses fresh one-time masks to provide privacy for MVMs, but the corresponding demasking term is computed in preprocessing via an independent MVM, leaving quadratic preprocessing work per query. Slalom at the Carnival [25] reduces this per-query privacy-preprocessing 3cost by deriving fresh masks from reusable public structure. However, we show in Appendix E that its vector-space instan-tiation can leak linear information about the client’s input, violating its claimed input-privacy guarantee. Publicly verifiable schemes such as Fiore–Gennaro [37], Dumas–Zucca [34], and general sum-check or SNARK-based approaches [78] instead require authentication or proof gener-ation in addition to the underlying computation, introducing considerable additional server-side work beyond the target MVM. LAMP [58] also combines Freivalds-style verification with error-correcting codes, but uses them inside a commit-and-prove SNARK for matrix multiplication. Other systems that provide both privacy and verifiability include verifiable computation over encrypted data through FHE+ZKP and verifiable-FHE constructions [8, 26, 38, 39, 67, 83, 94], SNARGs specialized to matrix multiplication over encrypted data [79], plaintext-authentication approaches such as VERITAS [28], whose main encodings were subsequently cryptanalyzed in the fully homomorphic setting [30], VOLE-based proof systems [84–86, 88], DataSeal’s FHE-based re-dundancy checks [75], and schemes combining homomorphic matrix computation with Freivalds-style verification [60, 93]. These approaches require encrypted server computation, an auxiliary proof or authentication protocol, trusted hardware, or client-specific secret verification state. In contrast, Maverick achieves linear online client work with reusable transparent preprocessing and no secret verifier state; its base protocol requires neither trusted hardware nor heavy cryptographic machinery, and the server performs only one field MVM. 
+
+Concurrent work. We are aware of two concurrent papers, MOSAIC [90], and Gupta et al. [45], which have similarly employed matrix–vector multiplication delegation toward out-sourcing LLM inference. MOSAIC provides privacy for the client input and model, but does not provide verifiability. Like 
+
+> Maverick
+
+, MOSAIC achieves asymptotically optimal online client time for an MVM; however, under the concrete param-eterizations of the two protocols, Maverick has a substantially smaller constant, while its online client work additionally includes information-theoretic verification. Moreover, MO-SAIC relies on both LWE and LPN and introduces Gaussian noise into the delegated computation, resulting in a nonzero protocol-error probability, whereas the MVM delegation of  
+
+> Maverick
+
+introduces no such error. Furthermore, Gupta et al. [45] provide both privacy and verifiability, but security relies on two non-colluding servers, whereas Maverick out-sources inference to only a single server. Meanwhile, their verifiability mechanism requires a trusted setup party (as op-posed to our transparent preprocessing) not to collude with the server performing outsourced computation; the verifica-tion protocol requires group rather than field operations, and soundness is computational rather than information-theoretic. Nevertheless, we note that both concurrent works require substantially less client-side storage for preprocessing state, which is a key bottleneck of our approach. 
+
+## 3 Preliminaries 
+
+Notation. We use F to denote a finite field, F∗ = F \ { 0},and Fq for a prime power q to denote the field with q elements. Matrices are denoted by bold uppercase letters (e.g., M) and vectors by bold lowercase letters (e.g., x). For a vector v,we write wt (v) to denote its Hamming weight, the number of nonzero entries of v. For a vector v of length n, we use supp (v) to denote the support, the set of indices in [n] where v
+
+is nonzero. We say that a vector v is t-sparse for a constant t if wt (v) = t. We denote the set of t-sparse vectors in Fn by Ent .We denote λ as a computational security parameter and κ as a statistical parameter. negl (·) denotes a negligible function and X ≈c Y denotes computational indistinguishability. 
+
+## 3.1 Freivalds’ Algorithm 
+
+Given matrices A, B, C, Freivalds’ algorithm [40] allows a verifier to efficiently check whether AB ?
+
+= C without explic-itly computing the matrix product AB . The verifier samples a uniformly random vector r of the appropriate dimension and checks whether (r⊤A)B ?
+
+= r⊤C. For square n × n matri-ces, this requires only matrix–vector multiplications, cost-ing O(n2) field operations, whereas explicitly computing 
+
+AB costs O(n3) operations using the standard algorithm. If 
+
+AB = C, the check always accepts; otherwise, it accepts with probability at most |F|−1.For verifying a matrix–vector multiplication Ab ?
+
+= c,Freivalds’ algorithm does not asymptotically improve the verifier’s work. Computing (r⊤A)b ?
+
+= r⊤c requires O(n2)
+
+field operations, equivalent to directly computing Ab .
+
+## 3.2 Linear Error-Correcting Codes 
+
+An error-correcting code encodes messages as fixed-length vectors, called codewords, by adding redundancy that enables error detection or correction; it is linear when its codewords form a linear subspace. Mathematically, let n < N be integers and let G ∈ Fn×N have linearly independent rows. The corre-sponding linear code is C = C (G) := {G⊤v : v ∈ Fn} ⊆ FN ,and G is its generator matrix. The parameters n and N are the dimension and block length, respectively, and R(C ) = n/N is the rate of C . The minimum distance d of a linear code C is the minimum Hamming weight of a nonzero codeword. The 
+
+relative distance of C is δ = d/N.We say that a family of codes {Cn}∞ 
+
+> n=1
+
+over a field F is 
+
+asymptotically good if both the code rate R and the relative distance δ are constant for large enough n (see, e.g. [46]). Such codes provide efficiency in our constructions as they enable maximal error detection under minimal redundancy. 43.3 Learning Parity with Noise 
+
+Let G be a distribution over code generators G ∈ Fn×N and let E be a noise distribution over sparse vectors e ∈ FN . Infor-mally, we say the (G, E, F)-dual-LPN assumption holds for dimensions n and N if (G, Ge ) ≈c (G, u) where G ← G, e ←
+
+E, and u ← Fn. We say G is dual-LPN-friendly if this as-sumption is believed to hold for the exact noise distributions 
+
+E = ENt for a suitable sparsity parameter t. A formal defi-nition of the LPN assumption and a discussion of plausibly dual-LPN-friendly code families is provided in Appendix A. 
+
+## 4 Model and Security Definitions 
+
+We study cryptographic primitives for private and verifi-able delegation of matrix–vector products, and their appli-cations for LLM inference. The core primitives, vMVMD and pvMVMD, involve a client holding private inputs x, and an untrusted server . In both primitives, the client wishes to obtain y = M · x from the server for a given public matrix M.vMVMD allows the client to verify the correctness of y, and pvMVMD additionally hides x from the server. Before defining their security guarantees, we explain what it means for these primitives to be efficient and field-agnostic. For a matrix M ∈ Fm×n and vectors x ∈ Fn and y ∈ Fm, com-puting y = Mx locally takes O(mn ) time. We call a protocol 
+
+efficient if it runs in time oλ,κ(mn ) and asymptotically time-optimal if it runs in time Oλ,κ(m + n), matching the time required to process the input and output vectors x and y.We call a protocol field-agnostic if it treats F as a black box, allowing field elements to have arbitrary labels and ac-cessing them only through an oracle for field operations. As in [13], we assume that the oracle provides access to addition, subtraction, multiplication, inversion, unit, zero testing, and uniform sampling of field elements. 
+
+## 4.1 Verifiable Matrix–Vector Multiplication Delegation (vMVMD) 
+
+In verifiable matrix–vector multiplication delegation (vMVMD), a client would like to efficiently verify if a server’s claim y ?
+
+= Mx is correct. We formalize this primitive in Definition 4.1. A vMVMD protocol consists of two algorithms: PREPROCESS , which takes the matrix M and outputs public parameters pp , and V ERIFY , which uses pp to verify input-output pairs (x, y).Our soundness definition guarantees information-theoretic (statistical) security. In particular, it is not only computa-tionally hard for an adversary to find a pair (x, y) that fools VERIFY , but furthermore, there does not exist any such pair 
+
+(x, y) that fools V ERIFY with non-negligible probability taken over the random coins within the V ERIFY algorithm. 
+
+Definition 4.1 (Verifiable Matrix–Vector Multiplication Dele-gation) . A vMVMD protocol Π is a pair of PPT algorithms 
+
+(PREPROCESS , VERIFY ) defined by: 
+
+• P REPROCESS (1κ, M) → pp . On input statistical parameter 
+
+κ and matrix M ∈ Fm×n, outputs public parameters pp .
+
+• V ERIFY (pp , x, y) → { 0, 1}. On input public parameters pp ,input vector x ∈ Fn, and output vector y ∈ Fm, either accepts (outputs 1) or rejects (outputs 0). The protocol should satisfy the following properties: 
+
+• Completeness : Π is complete if for all M ∈ Fm×n and x ∈
+
+Fn,
+
+Pr 
+
+b = 1
+
+pp ← PREPROCESS (1κ, M)
+
+y = Mx 
+
+b ← VERIFY (pp , x, y)
+
+ = 1.
+
+• Soundness : Π is sound if for all unbounded adversaries A
+
+there exists a negligible function negl (·) such that for all 
+
+M ∈ Fm×n and x ∈ Fn1,           
+
+> Pr
+> y̸=Mx ∧b=1
+> pp ←PREPROCESS (1κ,M)
+> y←
+
+A(pp , M, x)      
+
+> b←VERIFY (pp ,x,y)
+> <negl (κ).
+
+## 4.2 Private and Verifiable Matrix–Vector Mul-tiplication Delegation (pvMVMD) 
+
+In private and verifiable matrix–vector multiplication delega-tion (pvMVMD), a client would like to outsource the com-putation of Mx to the server without revealing x. The client encrypts x to obtain bx, the server evaluates by = Mbx, and the client verifies and decrypts the result. The server may devi-ate from the prescribed protocol, and a public verification algorithm provides soundness for the client against such devi-ations. We formalize this primitive in Definition 4.2. 
+
+Definition 4.2 (Private and Verifiable Matrix–Vector Multipli-cation Delegation) . A pvMVMD protocol Π is a tuple of PPT algorithms (P REPROCESS ,E NCRYPT ,V ERIFY ,D ECRYPT )
+
+defined by: 
+
+• P REPROCESS (1λ, 1κ, M) → pp . On input security parame-ter λ, statistical parameter κ, and matrix M ∈ Fm×n, outputs public parameters pp .
+
+• E NCRYPT (pp , x) → (bx, st ). On input public parameters pp 
+
+and plaintext vector x ∈ Fn, outputs the ciphertext bx and a private state st .
+
+> 1The adversary is unbounded, providing information-theoretic security.
+
+5• V ERIFY (pp ,bx,by) → { 0, 1}. On input public parameters pp ,ciphertext bx ∈ Fn, and output vector by ∈ Fm, either accepts (outputs 1) or rejects (outputs 0). 
+
+• D ECRYPT (pp , st ,by) → y. On input public parameters pp ,private state st , and ciphertext by ∈ Fm, outputs the plaintext vector y which is claimed to equal Mx .
+
+The protocol should satisfy the following properties: 
+
+• Completeness : Π is complete if, whenever Π is executed honestly by both the client and the server, then the client outputs y = Mx on input x and public matrix M. Formally, for any M ∈ Fm×n and x ∈ Fn,                      
+
+> Pr
+> 
+> y=Mx ∧b=1
+> pp ←PREPROCESS (1λ,1κ,M)(bx,st )←ENCRYPT (pp ,x)
+> by=Mbx
+> b←VERIFY (pp ,bx,by)
+> y←DECRYPT (pp ,st ,by)
+> 
+> =1.
+
+• Soundness : Π is sound if a computationally unbounded server A that returns a vector by̸ = Mbx will be rejected by 
+
+VERIFY with high probability. Formally, there exists some negligible function negl (·) such that for any M ∈ Fm×n and 
+
+x ∈ Fn,                
+
+> Pr
+> 
+> y̸=Mx ∧b=1
+> pp ←PREPROCESS (1λ,1κ,M)(bx,st )←ENCRYPT (pp ,x)
+> by←
+
+A(pp , M,bx)      
+
+> b←VERIFY (pp ,bx,by)
+> y←DECRYPT (pp ,st ,by)
+> 
+> <negl (κ).
+
+• Client privacy : Π is private for the client if executing Π
+
+reveals no information about x to the server. Formally, there exists a PPT simulator Sim such that for any ma-trix M ∈ Fm×n and x ∈ Fn, the following distributions are computationally indistinguishable with respect to κ and λ:
+
+Sim (1λ, 1κ, M) ≈c View Π
+
+> Server
+
+(M, x),
+
+where View Π
+
+> Server
+
+(M, x) := ( pp , M,bx) denotes the server’s view, given by pp ← PREPROCESS (1λ, 1κ, M) and (bx, st ) ←
+
+ENCRYPT (pp , x).
+
+Remark 4.3 (Multi-query privacy) . Client privacy extends to multiple queries via a standard hybrid argument, and the multi-query distinguishing advantage for q queries is at most q times the single-query advantage. 
+
+Remark 4.4 (Composition of vMVMD with pvMVMD) . We remark that any possibly unsound pvMVMD protocol can be made sound by using the VERIFY algorithm of a sound vMVMD protocol. A formal proof appears in Appendix D. 
+
+ΠvMVMD 
+
+Input parameters :• Distribution G over generator matrices G ∈ Fm×N of codes with rate R = Θ(1), relative distance δ = Θ(1), and linear encoding time. • Sparsity parameter t = t(κ) and repetition parameter ℓ =
+
+ℓ(κ).• Block length N = O(m).
+
+• Field oracle F.
+
+PREPROCESS (1κ, M) → pp :• Sample G ← G.• Compute Q := G⊤M ∈ FN×n and output pp = ( G, Q,t, ℓ ).
+
+VERIFY (pp , x, y) → { 0, 1}:• Compute G⊤y ∈ FN
+
+• Repeat ℓ times: 
+
+– Sample e ← ENt .
+
+– Compute vL := ( e⊤Q)x and vR := e⊤(G⊤y)
+
+– If vL̸ = vR, output 0 (reject) and halt. • If all ℓ checks pass, output 1 (accept). 
+
+Protocol 1: Verifiable matrix–vector multiplication delegation protocol 
+
+## 4.3 Transparent preprocessing 
+
+We call the preprocessing transparent if its output contains no secret trapdoor or client-specific verification key and can be validated against the public matrix M by any party. The server or a third party may therefore generate and publish the prepro-cessing state once for all clients delegating the same matrix. A client that does not trust the publisher can independently validate the state at a cost comparable to preprocessing and then reuse it for all future queries involving M. Alternatively, the publisher may attach a proof of correct preprocessing to reduce this per-client validation cost. 
+
+## 5 Verifiable Matrix–Vector Multiplication Del-egation (vMVMD) 
+
+In this section, we present a novel asymptotically time-optimal vMVMD protocol using tools from coding theory. We present our construction in Section 5.1, demonstrate its secu-rity in Section 5.2, analyze its costs in Section 5.3, and extend it with a batch verification protocol in Section 5.4, tailored to the batched MVM claims arising in our LLM application. 
+
+## 5.1 Our Construction 
+
+We begin by modifying Freivalds’ algorithm to enable faster client verification of MVMs. Recall that Emt denotes the set of t-sparse vectors of dimension m. Rather than sampling a Freivalds’ challenge uniformly at random, we sample a t-6sparse vector e ∈ Emt . Given a verification claim Mx ?
+
+= y, the client can compute (e⊤M)x and e⊤y in time O(tn ) and accept if and only if they match. When t = O(κ), we have a protocol that runs in Oκ(m + n) to verify instead of O(mn ).However, the soundness of this protocol is not ideal. Con-sider an invalid expression Mx ̸ = y, and define the error vector 
+
+∆∆∆ := Mx − y ∈ Fm. The previous protocol accepts whenever 
+
+e⊤∆∆∆ = 0. For instance, if there is exactly one nonzero entry in ∆∆∆ (i.e., wt (∆∆∆) = 1), then the protocol rejects only if e is nonzero in the same coordinate as ∆∆∆, which occurs with prob-ability t/m. This yields a soundness error of at least 1 − t/m.To reduce the soundness error, we use linear codes (see Section 3.2) for dimension m and a block length N with the following two properties: (1) the code has high relative dis-tance δ when the rate R = m/N is kept constant for security, and (2) the code has fast encoding time for efficiency. Intu-itively, the encoding spreads every nonzero error vector ∆∆∆ into a codeword G⊤∆∆∆ ∈ FN with at least δN nonzero entries. Let G ∈ Fm×N be the generator matrix of such a linear code. Rather than verifying the original claim directly, we verify its encoding under G⊤. That is, the client samples a sparse challenge e ∈ ENt and accepts if (e⊤G⊤M)x = e⊤G⊤y.If ∆∆∆ = Mx − y̸ = 0, the minimum distance of the code guarantees that G⊤∆∆∆ ∈ FN has at least δN nonzero entries. Thus, the support of a uniformly random t-sparse vector e is likely to intersect the support of G⊤∆∆∆.Computing G⊤M for every query incurs heavy work, but we recognize that the term Q = G⊤M is independent of client input, and thus can be prepared in a preprocessing phase. Any-one can verify the correctness of Q since both G and M are public; our preprocessing phase adds no extra trust assump-tion. The full protocol is formally presented in Protocol 1. Meanwhile, (e⊤Q)x and e⊤(G⊤y) can be computed ef-ficiently, since e⊤Q can be computed in time proportional to the sparsity of e and the fast encoding time of G makes computing G⊤y efficient. 
+
+## 5.2 Security 
+
+We show that ΠvMVMD satisfies soundness for suitable param-eters t, ℓ, and δ. We first prove the following lemma. 
+
+Lemma 5.1. Let Q := G⊤M ∈ FN×n, and let e be sampled uniformly from ENt . If the code generated by G has relative distance δ, then for any x ∈ Fn and y ∈ Fm such that Mx ̸ = y,we have Pr e⊤(G⊤y) = ( e⊤Q)x ≤ (1 − δ)t + 1 
+
+> |F|− 1
+
+.Proof. Let u := y − Mx ∈ Fm be the nonzero error vector and 
+
+z := G⊤u ∈ FN its encoding. The event e⊤(G⊤y) = ( e⊤Q)x
+
+is equivalent to e⊤z = 0. Since G generates a code of relative distance δ, we have wt (z) ≥ Nδ.Let Se := supp (e) and Sz := supp (z). We bound Pr [e⊤z =
+
+0] by splitting into two cases based on whether Se and Sz
+
+intersect and applying the law of total probability. Pr [e⊤z = 0]= Pr [e⊤z = 0 | Se ∩ Sz = /0] Pr [Se ∩ Sz = /0]+ Pr [e⊤z = 0 | Se ∩ Sz̸ = /0] Pr [Se ∩ Sz̸ = /0]
+
+≤ Pr [Se ∩ Sz = /0] + Pr [e⊤z = 0 | Se ∩ Sz̸ = /0]
+
+Term 1. By assumption, |Sz| ≥ Nδ and |Se| = t. Since Se is a uniformly random size-t subset of [N] and Sz is fixed, then, Pr [Se ∩ Sz = /0] ≤ (N−Nδ          
+
+> t)(Nt)=∏t−1
+> i=0N−Nδ−iN−i≤
+> N−Nδ
+> N
+> t
+> = ( 1−δ)t.
+
+Term 2. Define the multivariate polynomial fz(e) = e⊤z.Conditioned on Se ∩ Sz̸ = /0, fz is nonzero and has total de-gree 1 in the variables {e j} j∈Se . These variables are sampled uniformly at random from the set F \ { 0}. By the Schwartz-Zippel lemma, the probability that this polynomial evaluates to 0 is at most Pr [ fz(e) = 0 | Se ∩ Sz̸ = /0] ≤ 1 
+
+> |F|− 1
+
+.
+
+Combining both cases yields the final probability. The soundness bound of Lemma 5.1 can be amplified using independent repetitions. We choose t so that the two terms in the single-iteration bound are comparable, and repeat ℓ times to obtain soundness error at most 2 −κ. We show that ΠvMVMD 
+
+satisfies Definition 4.1 with the following theorem. 
+
+Theorem 5.2. If the code generated by G has relative dis-tance δ, then the protocol ΠvMVMD satisfies completeness and soundness as defined in Definition 4.1 for |F| ≥ 4, ℓ =l κ
+
+> log 2(|F|− 1)−1
+
+m
+
+, and t =
+
+l max (log 2(|F|− 1),κ+1) 
+
+> −log 2(1−δ)
+
+m
+
+.Proof. Completeness is immediate. For any M ∈ Fm×n and 
+
+x ∈ Fn, let y = Mx . Then, for every t-sparse vector e ∈ FN ,
+
+(e⊤Q)x = e⊤G⊤Mx = e⊤G⊤y.
+
+For soundness, fix any unbounded adversary A, matrix M ∈
+
+Fm×n, and vector x ∈ Fn. Condition on any public parameters 
+
+pp output by P REPROCESS for which the code generated by 
+
+G has relative distance δ, and on any output y ← A(pp , M, x)
+
+such that Mx ̸ = y. By Lemma 5.1, each iteration of V ERIFY 
+
+accepts with probability at most (1 − δ)t + 1 
+
+> |F|− 1
+
+. The proto-col accepts only if all ℓ iterations pass. Since the iterations sample their challenges e independently, the total acceptance probability is at most 
+
+
+
+(1 − δ)t + 1
+
+> |F|− 1
+
+ℓ
+
+.We now consider the two parameter spaces. 
+
+Case 1: Suppose 1 
+
+> |F|− 1
+
+≤ 2−(κ+1). The choice of t gives 
+
+(1 − δ)t ≤ 2−(κ+1). Since ℓ = 1, the soundness error is at most 
+
+(1 − δ)t + 1
+
+|F| − 1 ≤ 2−(κ+1) + 2−(κ+1) = 2−κ.
+
+Case 2: Suppose 1 
+
+> |F|− 1
+
+> 2−(κ+1). The choice of t
+
+gives (1 − δ)t ≤ 1 
+
+> |F|− 1
+
+. Therefore, the soundness error is at 7most 
+
+ 2
+
+> |F|− 1
+
+ℓ
+
+= 2−ℓ(log 2(|F|− 1)−1). By the choice of ℓ, then 
+
+ℓ log 2(|F| − 1) − 1 ≥ κ, and hence 
+
+ 2
+
+> |F|− 1
+
+ℓ
+
+≤ 2−κ.The bound holds for every public parameter pp satisfying the relative distance condition and every incorrect output chosen by A. We therefore obtain Pr 
+
+y̸ = Mx ∧ b = 1
+
+pp ← PREPROCESS (1κ, M)
+
+y ← A(pp , M, x)
+
+b ← VERIFY (pp , x, y)
+
+ ≤ 2−κ.
+
+Thus, ΠvMVMD satisfies Definition 4.1. 
+
+Remark 5.3 (Composing with code failure probability) . Sup-pose G ← G is sampled from a code distribution and let pfail = pfail (G, N, δ) be the probability that the sampled code has relative distance smaller than δ, then the overall sound-ness error of ΠvMVMD is at most p fail + 2−κ, which remains negligible when p fail is negligible. Thus, for code families where p fail can be made arbitrarily small under practical parameters, the protocol satisfies Definition 4.1. 
+
+## 5.3 Efficiency                            
+
+> Operation Cost G⊤yO(N)
+> e⊤(G⊤y) = ∑j∈supp (e)ej(G⊤y)j2t−1
+> e⊤Q=∑j∈supp (e)ejQj,∗(2t−1)n
+> (e⊤Q)x2n−1
+> ℓrepetitions total O(N+ℓtn )
+
+Table 1: Cost tally for the client online phase of ΠvMVMD .For optimal efficiency, we instantiate ΠvMVMD with a code with linear encoding time, constant rate, and constant distance. Under the parameters for ℓ and t specified in Theorem 5.2, 
+
+ℓ ·t = O(κ), so ΠvMVMD has asymptotic time Oκ(m + n). The verification cost is summarized in Table 1. The cost is asymp-totically time-optimal, since reading the input x and output y
+
+takes O(m + n) time. 
+
+Preprocessing time. The preprocessing phase computes 
+
+Q = G⊤M ∈ FN×n, i.e., n encodings of the columns of M.Since the encoding time is linear with linear-encodable codes, PREPROCESS has running time O(mn ).
+
+## 5.4 Batch Verification 
+
+In our LLM application, a single inference produces many MVM claims that must eventually be verified. The same set-ting arises more generally whenever a client verifies computa-tions under a fixed collection of matrices. Suppose the client wishes to verify Mbxb ?
+
+= yb for b ∈ [B], where Mb ∈ Fm×n;claims with different dimensions can be grouped by shape and verified in separate batches. Recall that preprocessing computes Qb := G⊤Mb. Within each verification repetition, the same sparse challenge e can be shared across all B claims without increasing the sound-ness error. However, the client must still compute Q⊤ 
+
+> b
+
+e for every claim and every repetition, costing O(Bℓtn ) field opera-tions, which is usually the bottleneck. Our first observation is that these challenge-dependent projections can themselves be delegated to the server. For one challenge e, define ub := Q⊤ 
+
+> b
+
+e and stack all the 
+
+B computations into the single relation eu = eQe where eQ :=[Q1 | Q2 | . . . |QB]⊤. We ask the server to compute eu and ver-ify this auxiliary relation using a second code G′ ∈ FBn ×N′
+
+.Preprocessing computes eQaux := eQ⊤G′. After the server fixes its auxiliary response, the client samples a fresh t′-sparse chal-lenge e′, computes r := G′e′, and checks e⊤ eQaux e′ ?
+
+= r⊤eu. The full protocol repeats this primary check ℓ times and uses ℓ′
+
+independent secondary repetitions. Several observations make this second verification much more efficient. Unlike the original challenge projection, this auxiliary relation can be checked directly by the client: be-cause both e and e′ are sparse, the left-hand side accesses only a t × t′ submatrix of eQaux , while the right-hand side is a single inner product of length Bn . Thus, no further delega-tion is needed. Moreover, the full protocol runs ℓ independent primary repetitions and ℓ′ independent secondary repetitions. Within each secondary repetition, the same challenge e′ can be used to check all ℓ auxiliary responses, since all of them are fixed before e′ is sampled. Consequently, G′e′ is computed only once per secondary repetition, although the resulting scalar check is performed against each primary response. The resulting protocol adds one challenge–response round and moves the expensive projection work from the client to the server, reducing the client’s online time from O(BN +
+
+Bℓtn ) naively to O(BN + Bℓ(n + t) + ℓ′t′Bn + ℓℓ ′(Bn + tt ′)) .We give the complete protocol in Protocol 2. In the following, we analyze this protocol. We first prove the security of ΠBatch-vMVMD . The proof follows the ideas in the primary ΠvMVMD analysis. 
+
+Theorem 5.4 (Security of batch verification) . Suppose G and 
+
+G′ generate codes of relative distances at least δ and δ′, re-spectively. Let ε := ( 1−δ)t + 1 
+
+> |F|− 1
+
+and ε′ := ( 1−δ′)t′
+
++ 1 
+
+> |F|− 1
+
+.Then ΠBatch -vMVMD has perfect completeness and soundness error at most 
+
+εℓ + ( ε′)ℓ′
+
+.
+
+In particular, the parameters can be chosen so that the sound-ness error is at most 2−κ.Proof. Completeness follows directly from u(q) 
+
+> b
+
+= Q⊤ 
+
+> b
+
+e(q)
+
+and eu(q) = eQe (q).For soundness, first suppose every auxiliary response is correct. Fix any incorrect original claim b⋆ and let ∆∆∆b⋆ :=
+
+8yb⋆ − Mb⋆ xb⋆̸ = 0. Acceptance in primary repetition q re-quires (e(q))⊤G⊤∆∆∆b⋆ = 0. By Lemma 5.1, this occurs with probability at most ε per repetition, and hence with proba-bility at most εℓ over all ℓ independent repetitions. Sharing 
+
+e(q) across the B claims introduces no factor B, since batch acceptance requires this fixed incorrect claim to accept. Otherwise, fix any incorrect auxiliary response q⋆ ∈ [ℓ] and define ΓΓΓ(q⋆) := eu(q⋆) − eQe (q⋆)̸ = 0. This vector is fixed be-fore the secondary challenges are sampled. Acceptance in secondary repetition j requires (e′( j))⊤G′⊤ ΓΓΓ(q⋆) = 0, which again occurs with probability at most ε′ by Lemma 5.1. Thus all ℓ′ secondary repetitions accept with probability at most 
+
+(ε′)ℓ′
+
+. Sharing each secondary challenge across the ℓ auxil-iary responses introduces no factor ℓ, since batch acceptance requires the fixed incorrect response q⋆ to accept. Combining the two cases gives the claimed bound. If either code is sampled from a distribution that may have relative distance below its target value, the corresponding code-distance failure probabilities are added to the above bound, as in Remark 5.3. 
+
+Client online time. The client first computes zb := G⊤yb
+
+for all b ∈ [B], costing O(BN ) using the primary linear-time encoder. The original checks then cost O(Bℓ(n + t)) .For each secondary repetition j, since e′( j) is t′-sparse, 
+
+G′e′( j) = ∑k∈supp (e′( j)) e′
+
+> k
+
+G′∗,k and can therefore be computed in O(t′Bn ) field operations. Because the same secondary chal-lenge is shared across all ℓ primary responses, this cost is incurred only ℓ′ times. For every pair (q, j), computing (e(q))⊤ eQaux e′( j) costs 
+
+O(tt ′), while (r( j))⊤eu(q) costs O(Bn ). Hence the total online client time is 
+
+O BN + Bℓ(n + t) + ℓ′t′Bn + ℓℓ ′(Bn + tt ′) .
+
+Independent verification instead pays O(Bℓtn ) for computing the challenge-dependent projections Q⊤ 
+
+> b
+
+e(q). Thus, batch ver-ification moves this work to the server. For constant-distance codes, t, ℓ, t′, and ℓ′ depend only on κ, so the client time is 
+
+Oκ(B(m + n)) .The optimization adds one challenge–response round. The server performs O(Bℓtn ) additional field operations and re-turns Bℓn field elements. 
+
+Preprocessing and state. Batch verification additionally pre-processes eQaux := eQ⊤G′ ∈ FN×N′
+
+. If applying the secondary encoder to a vector in FBn costs TG′ (Bn , N′), this requires 
+
+O(NT G′ (Bn , N′)) preprocessing time and NN ′ field elements of additional state. For a constant-rate, linear-time encodable secondary code, N′ = Θ(Bn ), so both quantities are O(Bmn ).The storage can be reduced when G′ is a systematic code. If G′ = [ IBn | P], then eQaux = [ eQ⊤ | eQ⊤P]. The first block is already represented by Q1, . . . , QB, so only eQ⊤P needs additional storage. This optimization reduces storage but does not inherently reduce preprocessing time, which depends on the cost of applying the secondary encoder. The auxiliary preprocessing depends only on the fixed matrices in the batch and can therefore be reused across future batches involving the same matrices. 
+
+ΠBatch-vMVMD 
+
+Input parameters :• Distribution G over generator matrices G ∈ Fm×N of codes with rate R = Θ(1), relative distance δ = Θ(1), and efficient encoding time. • Distribution G′ over generator matrices G′ ∈ FBn ×N′
+
+of codes with rate R′ := Bn /N′, relative distance δ′, and ef-ficient encoding time. • Primary sparsity and repetition parameters t and ℓ.• Secondary sparsity and repetition parameters t′ and ℓ′.• Primary block length N = O(m) and secondary block length 
+
+N′.• Field oracle F.
+
+PREPROCESS (1κ, {Mb}b∈[B]) → pp :• Sample G ← G and G′ ← G′.• For every b ∈ [B], compute Qb := G⊤Mb ∈ FN×n.• Form eQ := ( Q1, . . . , QB)⊤ ∈ FBn ×N .• Compute eQaux := eQ⊤G′ ∈ FN×N′
+
+.• Output pp :=
+
+
+
+G, G′, {Qb}b∈[B], eQaux ,t, ℓ, t′, ℓ ′
+
+.• Make the public matrices {Qb}b∈[B] available to the server. 
+
+VERIFY (pp , {(xb, yb)}b∈[B]) → { 0, 1}:• Client: Require that all alleged outputs y1, . . . , yB are fixed before sampling any verification challenge. • Client: For every b ∈ [B], compute zb := G⊤yb ∈ FN .• Client: Sample independent primary challenges 
+
+e(1), . . . , e(ℓ) ← ENt and send {e(q)}q∈[ℓ] to the server. Within each repetition q, the same challenge e(q) is used for all B claims. • Server: For every q ∈ [ℓ], compute eu(q) := eQe (q) ∈ FBn and return {eu(q)}q∈[ℓ] to the client. • Client: After all server responses are fixed, sample indepen-dent secondary challenges e′(1), . . . , e′(ℓ′) ← EN′ 
+
+> t′
+
+.• Client: For every j ∈ [ℓ′], compute r( j) := G′e′( j) ∈ FBn .• Client: For every q ∈ [ℓ] and j ∈ [ℓ′], check 
+
+(e(q))⊤ eQaux e′( j) ?
+
+= ( r( j))⊤eu(q). If any secondary check fails, output 0 (reject) and halt. • Client: For every q ∈ [ℓ], parse eu(q) :=(( u(q) 
+
+> 1
+
+)⊤, . . . , (u(q) 
+
+> B
+
+)⊤)⊤, where u(q) 
+
+> b
+
+∈ Fn.• Client: For every b ∈ [B] and q ∈ [ℓ], check (u(q) 
+
+> b
+
+)⊤xb ?
+
+=(e(q))⊤zb. If any original check fails, output 0 (reject) and halt. If all checks pass, output 1 (accept). 
+
+Protocol 2: Batch verification for multiple matrices and vec-tors. The client delegates the stacked matrix-dependent chal-lenge projection to the server and verifies the returned vector using a second coded check. 96 Private and Verifiable Matrix–Vector Multi-plication Delegation (pvMVMD) 
+
+In this section, we present a construction for pvMVMD by combining ΠvMVMD in Section 5 for verification with dual-LPN-friendly linear codes for efficient privacy. We introduce our construction in Section 6.1, analyze its security in Sec-tion 6.2, and its costs in Section 6.3. 
+
+## 6.1 Our Construction 
+
+To encrypt a vector x ∈ Fn, the client masks x with a vector 
+
+x′ to form the ciphertext bx = x + x′ ∈ Fn. The client sends 
+
+bx to the server, which returns by = Mbx. The client verifies the correctness of by by running a vMVMD protocol over the ciphertexts. The client decrypts by by computing y = by−Mx ′ ∈
+
+Fm. However, if x′ is sampled uniformly at random, the time required for the client to compute Mx ′ matches the time for the client to locally compute y = Mx , rendering it useless to outsource this computation. To solve the efficiency problem, we prepare x′ pseudorandomly such that Mx ′ can be computed in time O(m + n). We make use of coding theory to construct such pseudorandom vectors. Our construction for privacy follows the idea of prior works [1,13,23]. We use a separate distribution of linear codes 
+
+Gx for privacy, distinct from the code used by ΠvMVMD in Sec-tion 5. Let Gx ∈ Fn×Nx denote a sampled generator matrix, where Nx is the block length of the privacy code. Under the 
+
+(Gx, ENx 
+
+> tx
+
+, F)-dual-LPN assumption, if ex ∈ FNx is tx-sparse then x′ := Gxex is a pseudorandom vector. We mask x by computing bx = x + x′. By first computing P := MG x ∈ Fm×Nx
+
+in a preprocessing phase, we can remove the mask by comput-ing Mx ′ = M(Gxex) = ( MG x)ex = Pe x. Since ex is sparse, computing Pe x requires combining only the columns of P
+
+corresponding to the nonzero entries of ex.The full protocol ΠpvMVMD is presented in Protocol 3. The client privacy property can be strengthened to addition-ally hide a private matrix M owned by the client. While such a protocol enables greater privacy, our construction requires a private client-run preprocessing, rendering this most useful when the preprocessing can be amortized across many queries. For further details on our construction, see Appendix C. 
+
+## 6.2 Security 
+
+We now demonstrate that ΠpvMVMD satisfies completeness, soundness, and client privacy according to Definition 4.2. For verification, we use the same parameters as in Section 5. For privacy, the security analysis of prior works [20] demon-strates that a good minimum distance suffices for the dual-LPN assumption against known attacks under certain con-ditions (see Appendix A), and they provide the following 
+
+ΠpvMVMD 
+
+Input parameters :• Distribution Gx over generator matrices Gx ∈ Fn×Nx of codes with rate Rx = Θ(1) and relative distance δx = Θ(1),linear encoding time, and satisfying the dual-LPN assump-tion for error distribution ENx 
+
+> tx
+
+.
+
+• Distribution Gy over generator matrices Gy ∈ Fm×Ny of codes with rate Ry = Θ(1), relative distance δy = Θ(1), and linear encoding time. • Sparsity parameters tx = tx(λ) and ty = ty(κ) and repetition parameter ℓ = ℓ(κ).• Block lengths Nx = O(n) and Ny = O(m).
+
+• Field oracle F.
+
+PREPROCESS (1λ, 1κ, M) → pp :• Sample Gx ← Gx and Gy ← Gy.• Compute P := MG x ∈ Fm×Nx .• Compute Q := G⊤ 
+
+> y
+
+M ∈ FNy×n.• Output pp = ( Gx, Gy, P, Q,tx,ty, ℓ ).
+
+ENCRYPT (pp , x) → (bx, st ):• Sample ex ← ENx 
+
+> tx
+
+and compute x′ := Gxex ∈ Fn.• Output bx := x + x′ and st := ex.
+
+VERIFY (pp ,bx,by) → { 0, 1}:• Compute G⊤ 
+
+> y
+
+by ∈ FNy
+
+• Repeat ℓ times: 
+
+– Sample ey ← ENy 
+
+> ty
+
+.
+
+– Compute vL := ( e⊤ 
+
+> y
+
+Q)bx and vR := e⊤ 
+
+> y
+
+(G⊤ 
+
+> y
+
+by)
+
+– If vL̸ = vR, output 0 (reject) and halt. • If all ℓ checks pass, output 1 (accept). 
+
+DECRYPT (pp , st ,by) → y:• Output y := by − Pe x ∈ Fm.
+
+Protocol 3: Private and verifiable matrix–vector multiplication delegation protocol heuristic for selecting tx as a function of λ, Nx and δx:
+
+tx ≥ (ln 2 )( λ − log 2(Nx)) 
+
+δx
+
+. (1) We therefore choose an asymptotically good code for Gx,with constant rate Rx = Θ(1), Nx = n/Rx = O(n), and good relative distance δx = Θ(1), guaranteeing tx = Oλ(1) under this heuristic. We show that ΠpvMVMD satisfies Definition 4.2 in Theorem 6.1. 
+
+Theorem 6.1. Suppose that Gx is a distribution over codes with relative distance at least δx satisfying the (Gx, ENx 
+
+> tx
+
+, F)-dual-LPN assumption for polynomially many independent samples, and that the code generated by Gy has rela-tive distance δy. Then ΠpvMVMD satisfies completeness, soundness, and client privacy as defined in Definition 4.2 when instantiated with |F| ≥ 4, ℓ =
+
+l κ
+
+> log 2(|F|− 1)−1
+
+m
+
+, t y =
+
+10 l max (log 2(|F|− 1),κ+1) 
+
+> −log 2(1−δy)
+
+m
+
+.Proof. Completeness is immediate. For any M ∈ Fm×n and 
+
+x ∈ Fn, let ex ← ENx 
+
+> tx
+
+, x′ := Gxex, and bx := x + x′. If the server evaluates honestly, then by = Mbx. By completeness of the ver-ification protocol, V ERIFY accepts with probability 1. More-over, since P = MG x, decryption gives 
+
+y = by − Pe x = Mbx − MG xex
+
+= M(x + Gxex) − MG xex = Mx .
+
+For soundness, fix any unbounded adversary A, matrix 
+
+M ∈ Fm×n, and input x ∈ Fn. Condition on any public param-eters pp output by P REPROCESS for which the code generated by Gy has relative distance δy, and on any fresh privacy ran-domness ex used to form bx = x + Gxex. Let by ← A(pp , M,bx)
+
+be the server’s response, and suppose that verification accepts. The decrypted output satisfies y = by − Pe x. Using P = MG x,we have 
+
+y − Mx = by − MG xex − Mx 
+
+= by − M(x + Gxex)= by − Mbx.
+
+Therefore, if y̸ = Mx , then by̸ = Mbx. By Theorem 5.2, under the stated choices of ty and ℓ, V ERIFY accepts such an incorrect response with probability at most 2 −κ, proving soundness. For client privacy, the simulator Sim on input (1λ, 1κ, M)
+
+runs pp ← PREPROCESS (1λ, 1κ, M), samples ex ← Fn uni-formly at random, and outputs (pp , M,ex). By the (Gx, ENx 
+
+> tx
+
+, F)-dual-LPN assumption, (Gx, Gxex) ≈c (Gx, u), where Gx ←
+
+Gx, ex ← ENx 
+
+> tx
+
+, and u ← Fn. Consequently, for any x ∈ Fn,
+
+(pp , M, x + Gxex) ≈c (pp , M, x + u). Because u is uniformly distributed over Fn, the vector x + u is also identically dis-tributed to a uniform vector ex ← Fn. Hence, 
+
+View Π
+
+> Server
+
+(M, x) = ( pp , M,bx)
+
+≈c (pp , M,ex) = Sim (1λ, 1κ, M).
+
+Remark 6.2 (Code failure probability in ΠpvMVMD ). As in Remark 5.3, when the verification code Gy is sampled from a distribution with failure probability p fail , the overall sound-ness error is at most p fail + 2−κ. Similarly, the privacy guar-antee relies on the dual-LPN assumption, which requires that 
+
+Gx generates a code with sufficient minimum distance. Both failure probabilities can be made negligible for suitable code families that we consider for instantiation. 
+
+## 6.3 Efficiency 
+
+We now analyze the online runtime of the client for ΠpvMVMD 
+
+under the specified parameters above. In Table 2, we break down the runtime of each operation performed by the client in E NCRYPT and D ECRYPT .                                        
+
+> Phase Operation Cost
+> ENCRYPT x′:=GxexO(Nx)
+> bx:=x+x′n
+> DECRYPT Pe x=∑j∈supp (ex)ex,jP∗,j(2tx−1)m
+> y:=by−Pe xm
+> VERIFY See Table 1 O Ny+ℓtyn
+> Total –O Nx+Ny+nℓty+mt x
+> 
+
+Table 2: Cost tally for the client online phase of ΠpvMVMD .Since we use the V ERIFY algorithm of ΠvMVMD (Sec-tion 5.1), V ERIFY runs in time Oκ (m + n). E NCRYPT and DECRYPT have running time Oλ (m + n), which guarantees that the total client online time of ΠpvMVMD is Oλ,κ (m + n) .
+
+Preprocessing time. The preprocessed matrix P = MG x
+
+can be computed by realizing P⊤ = G⊤ 
+
+> x
+
+M⊤ as m encodings of the rows of M. Similarly, Q = G⊤ 
+
+> y
+
+M can be realized as n
+
+encodings of the columns of M. When Gx and Gy have linear encoding times, P REPROCESS has running time O(mn ).
+
+## 7 Evaluations 
+
+We implement ΠpvMVMD and an end-to-end prototype of Mav-erick . In this section, we report on the implementation details and the evaluation results. 
+
+## 7.1 Evaluation of pvMVMD 
+
+Instantiation of codes. We implement ΠpvMVMD (Pro-tocol 3) in Rust. We use the BabyBear field Fq, where 
+
+q = 15 · 227 + 1, and set the computational and statistical se-curity parameters to λ = 128 and κ = 40, respectively. We instantiate the privacy and verification codes using the RAA code construction of Akhiani et al. [3] (also see Ap-pendix B), with rate Rx = Ry = 18 and target relative distance 
+
+δx = δy = 12 . We use RAA codes because they are linear-time encodable, field-agnostic, asymptotically good, and plausibly dual-LPN-friendly. For further discussion on these properties for RAA codes, see Appendix B. We choose sparsity tx according to (1): for n ∈ 210 , 211 , 212 , 213 , 214 this gives tx ∈{160 , 159 , 157 , 156 , 154 }, respectively. We choose sparsity parameter ty = 31 and number of repetitions ℓ = 2 per Theorem 6.1. 
+
+Experimental setup. We evaluate our pvMVMD imple-mentation on an AWS c8i.4xlarge instance with 32 GB of memory, using a single thread. Unless otherwise noted, we measure computation time and exclude network communica-tion. For simplicity, our experiments focus on square matrices where m = n.11 nnn Server Client Client speedup Total Verification Privacy                                    
+
+> 280.14 0.19 0.09 0.09 0.77 ×
+> 290.30 0.32 0.18 0.13 0.95 ×
+> 210 0.39 0.79 0.50 0.29 0.50 ×
+> 211 1.59 1.55 1.09 0.46 1.02 ×
+> 212 9.54 2.33 1.47 0.85 4.10 ×
+> 213 34 .68 4.56 2.51 2.05 7.60 ×
+> 214 116 .00 9.33 4.65 4.68 12 .44 ×
+
+Table 3: Online server and client runtime in ΠpvMVMD , in mil-liseconds. The server runtime is the time required to perform the MVM on the masked vector. The client runtime is divided into verification-related and privacy-related. Client speedup is the server MVM time divided by the total client time. 
+
+Online Time. The online runtime refers to the run-time after preprocessing. For clients, this includes E N-
+
+> CRYPT
+
+, V ERIFY , and D ECRYPT . Client (total) reports the total online time, broken down into Client (verifi-cation) for ΠpvMVMD .VERIFY , and Client (privacy) for 
+
+ΠpvMVMD .ENCRYPT and ΠpvMVMD .DECRYPT . For servers, the online computation is the MVM on the masked input. The results are shown in Table 3. For small matrices, the client online time is worse than the server time (i.e., outsourcing is not worthwhile). However, the advantage becomes significant as matrix dimension grows. At n = 213 , the total client online time is 4 .56 ms, consisting of 2 .51 ms for verification and 2 .05 ms for privacy, while the server multiplication takes 34 .68 ms. Thus, the client’s online work is approximately 7 .6× smaller than the delegated mul-tiplication. At n = 214 , this gap increases to approximately 12 .4×, consistent with linear client and quadratic server costs. 
+
+Preprocessing time. Table 4 presents the preprocessing over-head. Recall that preprocessing involves computing P := MG x
+
+and Q := G⊤ 
+
+> y
+
+M where M is the public matrix and Gx, Gy are sampled from code generator distributions. The computation overhead is essentially the same as encoding M. As expected, preprocessing grows approximately quadratically with the matrix dimension because both P and Q require processing the complete matrix. At n = 214 , preprocessing takes approxi-mately 135 .80 s, including 46 .57 s for privacy-related prepro-cessing and 89 .23 s for verification-related preprocessing. 
+
+Comparison with related work. We compare our pro-tocol with Dumas–Zucca [34] and Sum-Check instantiated with the BaseFold polynomial commitment scheme [78, 91], where Dumas–Zucca is a specialized protocol for verifying matrix–vector products and Sum-Check+BaseFold represents the general proof-based approach used by recent verifiable-ML systems, including DeepProve [41]. Since both schemes provide verification only, we compare their runtime with our client verification time. To make a fair comparison, we bench-mark over the scalar field of BLS12-381. 
+
+nnn
+
+Preprocessing (total) Preprocessing (verification) Preprocessing (privacy) 
+
+28 18 .76 10 .72 8.04 29 69 .04 39 .08 29 .97 210 329 .54 194 .84 134 .69 211 1,499 .06 945 .06 554 .00 212 6,030 .76 3,928 .78 2,101 .98 213 25 ,063 .59 16 ,245 .40 8,818 .19 214 135 ,800 .06 89 ,233 .69 46 ,566 .37 
+
+Table 4: One-time preprocessing runtime for square matrices in milliseconds. Across the evaluated matrix dimensions, our end-to-end time is between 2.5× and 34 .8× faster than Dumas– Zucca and between 60 .7× and 194 .8× faster than Sum-Check+BaseFold. At n = 4,096, for example, our protocol completes in 421 .943 ms, compared with 1 .056 s for Dumas– Zucca and 82 .196 s for Sum-Check+BaseFold. Our client ver-ification time is also comparable to theirs. The performance numbers are detailed in Table 5. 
+
+## 7.2 Design and Evaluation of Maverick 
+
+In this section, we present the design of Maverick and the evaluation results using the open-source model Qwen3-4B. 
+
+7.2.1 Design of Maverick 
+
+We use the term inference execution to refer to the process of converting a sequence of input tokens into the logits for the output tokens. An inference execution involves both lin-ear and nonlinear operations [82]. Clients in Maverick use pvMVMD to outsource the MVMs in the linear operations while computing nonlinear operations locally. As shown in Fig. 1, we denote an inference execution as a sequence of T operations (( M1, f1), . . . , (MT , fT )) , where 
+
+M j is the matrix for the linear operation, and f j is the non-linear function. In each step j ∈ [T ], the client outsources the computation of y j = M jx j to the server, where x j is a private vector computed from step j − 1 (with x1 being the client’s initial input); then the client runs the nonlinear function lo-cally to compute x j+1 = f j(y j), which is the input to the next step. xT +1 is the final output, the logits of the next token. To leverage batch verification, we defer verification of all server response pairs (bx j,by j) to the end, a strategy we call 
+
+optimistic verification . The client accepts the logits only if every check accepts; otherwise, it discards the execution. 
+
+Boost mode. Generating input masks and computing the corresponding output masks are a significant part of client overhead. Since these masks are independent of the model or the client input, they can be generated beforehand (e.g., when the client’s device is idle). This optimization is similar 12 nnn Scheme Preprocessing Server multiplication Server proof Server total Client online Client verification 
+
+27 Ours 23 .16 0.39 – 0.39 0.88 0.23 Dumas–Zucca 70 .24 0.35 20 .82 21 .17 23 .14 23 .14 Sum-Check+BaseFold 101 .80 0.36 74 .92 75 .29 1.99 1.99 28 Ours 85 .22 1.51 – 1.51 1.81 0.49 Dumas–Zucca 114 .19 1.40 39 .80 41 .19 28 .30 28 .30 Sum-Check+BaseFold 428 .44 1.47 300 .14 301 .61 2.48 2.48 29 Ours 316 .83 6.12 – 6.12 3.89 1.16 Dumas–Zucca 195 .50 5.59 75 .82 81 .41 35 .88 35 .88 Sum-Check+BaseFold 1,843 .15 6.58 1,229 .57 1,236 .15 3.29 3.29 210 Ours 1,275 .83 24 .08 – 24 .08 7.14 1.64 Dumas–Zucca 351 .70 22 .37 160 .90 183 .27 48 .32 48 .32 Sum-Check+BaseFold 8,069 .29 26 .80 5,051 .12 5,077 .93 4.14 4.14 211 Ours 5,890 .08 97 .23 – 97 .23 14 .74 3.20 Dumas–Zucca 685 .06 89 .44 308 .67 398 .11 60 .67 60 .67 Sum-Check+BaseFold 34 ,915 .39 107 .84 20 ,521 .54 20 ,629 .39 5.07 5.07 212 Ours 27 ,339 .81 392 .26 – 392 .26 29 .68 6.76 Dumas–Zucca 1,453 .98 359 .55 616 .93 976 .47 79 .30 79 .30 Sum-Check+BaseFold 150 ,894 .69 433 .04 81 ,756 .33 82 ,189 .37 6.39 6.39 
+
+Table 5: Comparison with verifiable matrix–vector multiplication baselines. All times are in milliseconds. Our client online time includes both privacy and verification, where client verification reports only the verification component. PREP  Privacy preprocessing                                                        
+
+> j∈[T] : Gj
+> $
+> ←− G ,Pj:= MjGj
+> Batch verification preprocessing
+> ONLINE  j = 1 , . . . , T
+> ej
+> $
+> ←− E Nt,x′
+> j:= Gjej
+> y′
+> j:= Pjej
+> Masked input ̂xj:= xj+x′
+> ĵ
+> yj:= Mĵxj
+> Masked output ̂yj
+> yj:= ̂yj−y′
+> j=Mjxj
+> T:= T ∪ { (̂xj,̂yj)}
+> Non-linear operations xj+1 := fj(yj)
+> VERIFY
+> ∀(̂xj,̂yj)∈ T :Mĵxj
+> ?
+> =̂yj
+> (with batch verification)
+> Output x T+1 if accepted; else ⊥.
+
+Client C    
+
+> (Input x1, Model weights M1, . . . , MT)
+
+Server S   
+
+> (Model weights M1, . . . , MT)
+
+Figure 1: Private and verifiable LLM inference using Maver-ick . The client locally evaluates the nonlinear operations and delegates the linear operations M1, . . . , MT to the server. The output is the logits of the next token. to how MPC protocols generate Beaver Triples ahead of time to accelerate the online phase. We call this the boost mode 
+
+of Maverick . We refer to the original workflow where the client generates these masks during inference as the standard mode ; we implement pipelining so the masks for step j + 1are generated while waiting for the server to complete step j.
+
+Verification-only mode. Some users may not always require input privacy, for example when their prompts contain no sensitive information or when they are willing to share them with the service provider, but may still want assurance that the provider performs the inference correctly. In this case, the protocol can be simplified and, importantly, the interaction with the server can be removed. The client first sends the model input to the server. The server evaluates the complete model, including the nonlinear operations, and then sends the output vectors y1, . . . , yT back to the client. Starting from the original input, the client replays the nonlinear operations locally to reconstruct each input x j and verifies M jx j ?
+
+= y j
+
+together. Thus, the inference itself requires only one round of interaction and batch verification. The protocol is illustrated in Fig. 2. 
+
+Model quantization. In Maverick , all arithmetic operations are done in the BabyBear field. To get a fair baseline, we run a quantized Qwen3-4B model over the BabyBear field Fq
+
+as follows. The model parameters are stored in FP8 format. Let Wreal denote the weight matrix in FP8. We quantize it element-wise as Wq := round (2sWreal ), rounding to the nearest 13 PREP                                     
+
+> Batch verification preprocessing
+> ONLINE
+> Input x1
+> For j= 1 , . . . , T
+> yj:= Mjxj
+> Non-linear operations xj+1 := fj(yj)
+> VERIFY
+> Outputs y1, . . . , yT
+> j= 1 , . . . , T :xj+1 := fj(yj)
+> T:= {(xj,yj)}j∈[T]
+> ∀(xj,yj)∈ T :Mjxj
+> ?
+> =yj
+> (with batch verification)
+> Output x T+1 if accepted; else ⊥.
+
+Client C    
+
+> (Input x1, Model weights M1, . . . , MT)
+
+Server S   
+
+> (Model weights M1, . . . , MT)
+
+Figure 2: Maverick in the verification-only mode. integer. We embed the resulting signed integers into Fq and use s = 8. After each delegated linear operation, the client demasks the result, interprets it as a centered integer, divides it by 2 2s, and converts it to BF16 before evaluating the next nonlinear operation. The protocol performs the MVM over Fq,and we observe no modular overflow in our experiments. We omit these representation conversions from Fig. 1 for clarity. This quantization methodology is consistent with how related works execute models in finite fields, such as DeepProve [41] and Slalom [80]. 
+
+7.2.2 Evaluation of Maverick 
+
+Experimental setup. We evaluate all three modes of Mav-erick using the open-source model Qwen3-4B [77]. The di-mensions of the linear operations in each transformer block are shown in Table 6. Our inference execution takes an eight-token prompt as input and outputs the logits for the next token. The client runs on an AWS c8i.4xlarge instance, while the server runs on an AWS c8i.32xlarge instance. Our baseline is the client running the inference locally. We organize our evaluation in two stages. First, we mea-sure the end-to-end throughput, excluding network latency, to quantify the client speedup relative to local inference. Sec-ond, we evaluate client throughput under simulated network latency, as in practice the client is the bottleneck. For this experiment, we assume a powerful enough server, allowing us to isolate the maximum throughput sustained by the client. 
+
+Linear Operation Input dimension Output dimension 
+
+q_proj 2560 4096 
+
+k_proj 2560 1024 
+
+v_proj 2560 1024 
+
+o_proj 4096 2560 
+
+gate _proj 2560 9728 
+
+up _proj 2560 9728 
+
+down _proj 9728 2560 Table 6: Dimensions of the linear operations in each Qwen transformer block. 
+
+End-to-end throughput. We measure the speedup of Mav-erick relative to running the inference entirely locally on the client. Figure 3 compares standard, boost, and verification-only modes across different client and server thread counts. Communication time is excluded. All three modes provide substantial speedups. The benefit is largest for resource-constrained clients and decreases as more client threads become available, since local inference also benefits substantially from additional client-side paral-lelism and has better parallelism than our client protocol with more threads. Standard mode achieves between 8 .08 × and 17 .62 × speedup, while boost mode reaches up to 45 .85 × by moving privacy mask generation time outside the online time. Verification-only mode behaves similarly to boost mode for clients with few threads, reaching 44 .38 ×.Increasing the server thread count from 32 to 64 gener-ally improves the speedup, while increasing it further to 128 provides no consistent benefit. This suggests that the cur-rent implementation reaches its parallelization limit near 64 server threads. We therefore fix 64 server threads and 2 client threads, and report the end-to-end throughput and time break-down in Table 7. Our end-to-end time measures the time from when the client processes the input tokens to when the client accepts the verification and outputs the next-token logits. We note that the client and server computation may overlap.                         
+
+> Metric Standard Boost Verification-only
+> Throughput (tokens/s) 8.35 15 .46 15 .05 End-to-end time 958 .3517 .6531 .6Client time 856 .6227 .4206 .8Client verification 45 .546 .545 .1Client nonlinear operations 50 .553 .730 .6Server computation 353 .5341 .6324 .8Local client inference 14110 .914110 .914110 .9
+
+Table 7: Online time breakdown in milliseconds for one eight-token prompt, using 2 client threads and 64 server threads. In standard mode, Maverick completes the inference in 958 .3 ms and reaches a throughput of 8 .35 tokens/s, giving a 14 .7× speedup over the 0 .57 tokens/s local baseline. The client remains the main bottleneck because privacy masks are generated during inference. Boost mode achieves a 27 .3×
+
+14 1 2 4 8         
+
+> Client threads
+> 32 64 128
+> Server threads
+> 17.53x 14.63x 12.05x 8.08x 17.62x 14.73x 13.28x 8.88x 17.51x 15.18x 13.19x 8.39x
+> 6x 8x 10x 15x 20x 30x 40x 50x
+> Speedup
+
+(a) Standard mode. 1 2 4 8          
+
+> Client threads
+> 32 64 128
+> Server threads
+> 40.10x 21.20x 14.11x 9.35x 45.85x 27.26x 18.70x 11.53x 44.21x 22.47x 16.65x 9.92x
+> 6x 8x 10x 15x 20x 30x 40x 50x
+> Speedup
+
+(b) Boost mode. 1 2 4 8          
+
+> Client threads
+> 32 64 128
+> Server threads
+> 39.48x 21.84x 11.45x 8.89x 44.38x 26.54x 17.09x 10.69x 37.90x 26.52x 16.23x 10.03x
+> 6x 8x 10x 15x 20x 30x 40x 50x
+> Speedup
+
+(c) Verification-only mode. 
+
+Figure 3: Client speedup of Maverick relative to local inference across different client and server thread numbers. speedup over local inference, and verification-only mode has similar end-to-end performance as boost mode. In both boost and verification-only modes, the server computation becomes the bottleneck rather than the client. Across all three modes, client verification takes only approximately 45 ms. In Table 8, we also provide the end-to-end results of 64 fixed server threads and varying the number of client threads. 
+
+Communication. Standard and boost modes have identical communication. In both modes, the client sends 21 .83 MB and receives 36 .00 MB, for 57 .83 MB in total over 182 rounds of communication. Verification-only mode sends only 81 .92 kB and receives the 36 .00 MB transcript, totaling 36 .08 MB in a single round. 
+
+Comparison with DeepProve. DeepProve [41] is a recent proof-based system for verifiable LLM inference (though it does not protect input privacy). The authors evaluate 124M-parameter GPT-2 and 270M-parameter Gemma 3 models with 12-bit quantization at input lengths between 64 and 512. On its faster AMD Ryzen 9 7950X3D machine with 16 cores and 32 threads, its faster BaseFold instantiation at 64 input to-kens requires 34 .2 s to prove and 1 .35 s to verify GPT-2, and 81 .6 s to prove and 1 .91 s to verify Gemma 3. Furthermore, DeepProve reports proof sizes between 9 and 43 MiB. By comparison, our verification-only mode evaluates an eight-token prompt using the substantially larger Qwen3-4B 
+
+model in only 531 .6 ms, including the model computation, with 45 .1 ms of client verification with only 36 MB of com-munication. Although these measurements are not apples-to-apples as DeepProve’s experiments use different hardware and LLM, we note that relative to DeepProve’s 64 input token results, our end-to-end time is about 64 × lower than that of GPT-2 and 153 × lower than that of Gemma 3, while our veri-fication time is about 30 × and 42 × lower, respectively. These gaps are particularly notable since Maverick is evaluated on the substantially larger Qwen3-4B model. 
+
+Client throughput. The end-to-end results show that the performance bottleneck depends on the execution mode. Stan-dard mode has the client as the bottleneck, while boost and verification-only modes shift more work to the server so the bottleneck becomes the server. In a deployed service, how-ever, the provider can increase server capacity using better hardware like GPUs, whereas the computational resources of the client are fixed. We therefore next measure the maximum throughput that one client can sustain, assuming a powerful server that responds in negligible time. We use microbenchmarks to evaluate the standard, boost, and verification-only modes of Maverick . We measure throughput under simulated network RTTs to account for communication delays in realistic deployments. Steady-state 
+
+throughput measures the aggregate number of prompt tokens processed per second. For each mode and client thread count, we use a pilot run to find the smallest number of input tokens whose client computation can cover one network RTT. Ta-ble 9 reports the corresponding number of input tokens and the sustained client throughput. Doubling the RTT approximately doubles the number of input tokens required to hide network waiting, but changes throughput by less than 0 .6%. Standard mode achieves an 11 .73 ×–19 .81 × throughput improvement over local infer-ence. Moving mask generation offline increases the boost-mode improvement to 33 .97 ×–135 .33 ×, while verification-only mode achieves 37 .59 ×–156 .68 ×. The larger speedups with fewer client threads reflect that the client in our protocol is less parallelizable than local inference. 
+
+## 7.3 TTFT of Maverick 
+
+We measure TTFT (time to first token) using one eight-token input with 2 client threads and 64 server threads. Network latency is varied between 50 ms and 100 ms RTT, while Mav-erick is run in standard, boost, and verification-only mode. The timer starts when the input enters the online protocol and ends when the next-token logits are available and the ver-ification is accepted. The corresponding local execution takes 14 .11 s. We report the detailed TTFT numbers in Table 10. Communication dominates the TTFT in the standard mode and the boost mode because both require multiple rounds of communication. Standard and boost modes are respectively 1.42 × and 1 .46 × faster than local inference at an RTT of 50 ms. At an RTT of 100 ms, however, communication makes both modes slower than local inference. Verification-only mode requires one round of communi-15 Client threads Mode Throughput (tokens/s) End-to-end time (ms) Client time (ms) Client verification (ms) Client nonlinear operations (ms) Server computation (ms) Local client inference (ms)                                                                                     
+
+> 1Standard 5.17 1547 .71460 .589 .658 .6363 .327278 .6Boost 13 .45 594 .9292 .491 .863 .2349 .727278 .6Verification-only 13 .01 614 .7260 .287 .137 .4354 .527278 .62Standard 8.35 958 .3856 .645 .550 .5353 .514110 .9Boost 15 .46 517 .6227 .446 .553 .7341 .614110 .9Verification-only 15 .05 531 .6206 .845 .130 .6324 .814110 .94Standard 12 .64 633 .0533 .623 .634 .4345 .88407 .0Boost 17 .80 449 .5173 .523 .842 .6347 .28407 .0Verification-only 16 .27 491 .8173 .522 .526 .9318 .38407 .08Standard 14 .55 550 .0433 .617 .722 .4345 .14885 .9Boost 18 .88 423 .7159 .215 .634 .8346 .44885 .9Verification-only 17 .51 456 .9142 .512 .817 .4314 .44885 .9
+
+Table 8: Online computation breakdown for an eight-token prompt with 64 server threads. 
+
+RTT = 50 ms RTT = 100 ms 
+
+Mode Client threads Input tokens Throughput (tokens/s) Input tokens Throughput (tokens/s) Local throughput (tokens/s) Speedup over local (50/100 ms) 
+
+Standard 1 56 5.78 112 5.81 0.29 19 .71 × /19 .81 ×
+
+2 96 9.82 184 9.84 0.57 17 .32 × /17 .36 ×
+
+4 144 15 .64 288 15 .66 0.95 16 .44 × /16 .46 ×
+
+8 176 19 .20 352 19 .22 1.64 11 .73 × /11 .74 ×
+
+Boost 1 368 39 .49 728 39 .69 0.29 134 .65 × /135 .33 ×
+
+2 408 43 .99 808 44 .10 0.57 77 .59 × /77 .79 ×
+
+4 488 53 .28 976 53 .35 0.95 55 .99 × /56 .06 ×
+
+8 512 55 .63 1,016 55 .68 1.64 33 .97 × /34 .00 ×
+
+Verification-only 1 368 45 .70 728 45 .95 0.29 155 .82 × /156 .68 ×
+
+2 408 49 .21 808 49 .34 0.57 86 .80 × /87 .03 ×
+
+4 488 52 .85 976 52 .92 0.95 55 .54 × /55 .61 ×
+
+8 512 61 .55 1,016 61 .60 1.64 37 .59 × /37 .62 ×
+
+Table 9: Client throughput under simulated network latency. cation. Its TTFT is 0 .66 s and 0 .71 s at RTTs of 50 ms and 100 ms, respectively. This is 15 .0× and 26 .8× faster than standard mode, and 21 .4× and 19 .9× faster than local execu-tion. Thus, this mode is less latency-sensitive. 
+
+## 8 Conclusions and Future Directions 
+
+We develop Maverick , a protocol for private and verifiable LLM inference that delegates the model’s linear operations using a new matrix–vector multiplication primitive with transparent preprocessing and efficient client verification. Our implementation on Qwen3-4B demonstrates substantial speedups. An important direction for future work is reducing the communication rounds for private inference. 
+
+## Acknowledgements 
+
+Wenhao Wang is supported in part by a research grant from IC3. 16 RTT Mode TTFT (s) Communication wait (s) Client work (s) Server computation (s) Verification (s)                               
+
+> 50 ms Standard 9.92 9.13 0.86 0.35 0.05 Boost 9.65 9.13 0.23 0.34 0.05 Verification-only 0.66 0.05 0.21 0.40 0.05 100 ms Standard 19 .02 18 .24 0.86 0.35 0.05 Boost 18 .75 18 .23 0.23 0.34 0.05 Verification-only 0.71 0.10 0.21 0.40 0.05
+
+Table 10: Time to first token for one eight-token request under simulated network delay, using 2 client threads and 64 server threads. 
+
+## References 
+
+[1] Kasra Abbaszadeh, Hossein Hafezi, Jonathan Katz, and Sarah Meiklejohn. Single-server private outsourcing of zk-snarks. Cryptology ePrint Archive , 2025. [2] Carlos Aguilar-Melchor, Olivier Blazy, Jean-Christophe Deneuville, Philippe Gaborit, and Gilles Zémor. Effi-cient encryption from random quasi-cyclic codes. IEEE Transactions on Information Theory , 64:3927–3943, 2016. [3] Pariya Akhiani and Yupeng Zhang. Distance of RAA codes over large finite fields (with applications in zk-SNARKs and PCGs). Cryptology ePrint Archive, Paper 2026/524, 2026. [4] Michael Alekhnovich. More on average case vs approx-imation complexity. In Proceedings of the 44th Annual IEEE Symposium on Foundations of Computer Science ,FOCS ’03, page 298, USA, 2003. IEEE Computer Soci-ety. [5] Sarah Allen, Pranay Anchuri, James Austgen, Maryam Bahrani, Samuel Breckenridge, Aaron Buchwald, Christian Cachin, Andrés Fábrega, Jared Fernandez, James Hsin yu Chiang, Marwa Mouallem, Roi Bar-Zur, Neil DeSilva, Ittay Eyal, Giulia Fanti, Ari Juels, An-drew Miller, Christian Sillaber, Dani Vilardell, Pramod Viswanath, Wenhao Wang, Matt Weinberg, Sen Yang, Jianzhu Yao, and Fan Zhang. Crypto x AI, AI x crypto: A survey. Technical report, Initiative for CryptoCurren-cies and Contracts (IC3), June 2026. Version 1.0. [6] Anthropic and Pattern Labs. Confidential inference systems: Design principles and security risks. White paper, Anthropic and Pattern Labs, June 2025. Version 1.0. [7] Nicolas Aragon, Paulo Barreto, Slim Bettaieb, Loïc Bidoux, Olivier Blazy, Jean-Christophe Deneuville, Philippe Gaborit, Santosh Ghosh, Shay Gueron, Tim Güneysu, et al. Bike: bit flipping key encapsulation, 2022. [8] Diego F. Aranha, Anamaria Costache, Antonio Guimarães, and Eduardo Soria-Vazquez. Heliopolis: Verifiable computation over homomorphically en-crypted data from interactive oracle proofs is practical. In Kai-Min Chung and Yu Sasaki, editors, Advances in Cryptology – ASIACRYPT 2024 , pages 302–334, Singapore, 2025. Springer Nature Singapore. [9] Sanjeev Arora and Rong Ge. New algorithms for learn-ing in presence of errors. In Luca Aceto, Monika Hen-zinger, and Jiˇ rí Sgall, editors, Automata, Languages and Programming , pages 403–415, Berlin, Heidelberg, 2011. Springer Berlin Heidelberg. [10] David Balbás, Dario Fiore, Maria Isabel González Vasco, Damien Robissout, and Claudio Soriente. Modular sum-check proofs with applications to machine learning and image processing. In Proceedings of the 2023 ACM SIGSAC Conference on Computer and Communications Security , CCS ’23, page 1437–1451, New York, NY, USA, 2023. Association for Computing Machinery. [11] Louay Bazzi, Mohammad Mahdian, and Daniel A. Spiel-man. The minimum distance of turbo-like codes. IEEE Transactions on Information Theory , 55(1):6–15, 2009. [12] Donald Beaver. Efficient multiparty protocols using circuit randomization. In Joan Feigenbaum, editor, Ad-vances in Cryptology — CRYPTO ’91 , pages 420–432, Berlin, Heidelberg, 1992. Springer Berlin Heidelberg. [13] Fabrice Benhamouda, Caicai Chen, Shai Halevi, Yu-val Ishai, Hugo Krawczyk, Tamer Mour, Tal Rabin, and Alon Rosen. Encrypted matrix-vector products from secret dual codes. In Proceedings of the 2025 ACM SIGSAC Conference on Computer and Communications Security , CCS ’25, page 394–408, New York, NY, USA, 2025. Association for Computing Machinery. 17 [14] Huck Bennett, Karthik Gajulapalli, Alexander Golovnev, and Evelyn Warton. Matrix Multiplication Verification Using Coding Theory. In Amit Kumar and Noga Ron-Zewi, editors, Approximation, Randomization, and Com-binatorial Optimization. Algorithms and Techniques (APPROX/RANDOM 2024) , volume 317 of Leibniz In-ternational Proceedings in Informatics (LIPIcs) , pages 42:1–42:13, Dagstuhl, Germany, 2024. Schloss Dagstuhl – Leibniz-Zentrum für Informatik. [15] Wyatt Benno, Alberto Centelles, Antoine Douchet, and Khalil Gibran. Jolt atlas: Verifiable inference via lookup arguments in zero knowledge, 2026. [16] Avrim Blum, Merrick Furst, Michael Kearns, and Richard J. Lipton. Cryptographic primitives based on hard learning problems. In Douglas R. Stinson, ed-itor, Advances in Cryptology — CRYPTO’ 93 , pages 278–291, Berlin, Heidelberg, 1994. Springer Berlin Hei-delberg. [17] Avrim Blum, Adam Kalai, and Hal Wasserman. Noise-tolerant learning, the parity problem, and the statistical query model. J. ACM , 50(4):506–519, July 2003. [18] J. L. Bordewijk. Inter-reciprocity applied to electrical networks. Applied Scientific Research B: Electrophysics, Acoustics, Optics, Mathematical Methods , 6:1–74, 1956. URL: http://cr.yp.to/bib/entries.html#1956/ bordewijk .[19] Elette Boyle, Geoffroy Couteau, Niv Gilboa, and Yu-val Ishai. Compressing vector ole. In Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security , CCS ’18, page 896–912, New York, NY, USA, 2018. Association for Computing Ma-chinery. [20] Elette Boyle, Geoffroy Couteau, Niv Gilboa, Yuval Ishai, Lisa Kohl, Nicolas Resch, and Peter Scholl. Correlated pseudorandomness from expand-accumulate codes. In 
+
+Advances in Cryptology – CRYPTO 2022: 42nd Annual International Cryptology Conference, CRYPTO 2022, Santa Barbara, CA, USA, August 15–18, 2022, Proceed-ings, Part II , page 603–633, Berlin, Heidelberg, 2022. Springer-Verlag. [21] Elette Boyle, Geoffroy Couteau, Niv Gilboa, Yuval Ishai, Lisa Kohl, and Peter Scholl. Efficient pseudorandom correlation generators: Silent ot extension and more. In Advances in Cryptology – CRYPTO 2019: 39th An-nual International Cryptology Conference, Santa Bar-bara, CA, USA, August 18–22, 2019, Proceedings, Part III , page 489–518, Berlin, Heidelberg, 2019. Springer-Verlag. [22] Elette Boyle, Geoffroy Couteau, Niv Gilboa, Yuval Ishai, Lisa Kohl, and Peter Scholl. Efficient pseudo-random correlation generators from ring-lpn. In Ad-vances in Cryptology – CRYPTO 2020: 40th Annual International Cryptology Conference, CRYPTO 2020, Santa Barbara, CA, USA, August 17–21, 2020, Proceed-ings, Part II , page 387–416, Berlin, Heidelberg, 2020. Springer-Verlag. [23] Mark Braverman and Stephen Newman. Practical se-cure delegated linear algebra with trapdoored matrices. In Theory of Cryptography Conference , pages 97–118. Springer, 2025. [24] Martijn Brehm, Binyi Chen, Ben Fisch, Nicolas Resch, Ron D. Rothblum, and Hadas Zeilberger. Blaze: Fast snarks from interleaved raa codes. In Advances in Cryp-tology – EUROCRYPT 2025: 44th Annual International Conference on the Theory and Applications of Cryp-tographic Techniques, Madrid, Spain, May 4–8, 2025, Proceedings, Part IV , page 123–152, Berlin, Heidelberg, 2025. Springer-Verlag. [25] Ida Bruhns, Sebastian Berndt, Jonas Sander, and Thomas Eisenbarth. Slalom at the carnival: Privacy-preserving inference with masks from public knowledge. IACR Communications in Cryptology , 1(3), 2024. [26] Ignacio Cascudo, Anamaria Costache, Daniele Cozzo, Dario Fiore, Antonio Guimarães, and Eduardo Soria-Vazquez. Verifiable computation for approximate homo-morphic encryption schemes. In Annual International Cryptology Conference , pages 643–677. Springer, 2025. [27] Center for Research on Foundation Models. The foun-dation model transparency index. [28] Sylvain Chatel, Christian Knabenhans, Apostolos Pyrge-lis, Carmela Troncoso, and Jean-Pierre Hubaux. Veritas: Plaintext encoders for practical verifiable homomorphic encryption. In Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security ,CCS ’24, page 2520–2534, New York, NY, USA, 2024. Association for Computing Machinery. [29] Lingjiao Chen, Matei Zaharia, and James Zou. How is chatgpt’s behavior changing over time? arXiv preprint arXiv:2307.09009 , 2023. [30] Jung Hee Cheon and Daehyun Jang. Cryptanalysis on lightweight verifiable homomorphic encryption. In Goichiro Hanaoka and Bo-Yin Yang, editors, Advances in Cryptology – ASIACRYPT 2025 , pages 366–397, Sin-gapore, 2026. Springer Nature Singapore. [31] Jalen Chuang, Alex Seto, Nicolas Berrios, Stephan Van Schaik, Christina Garman, and Daniel Genkin. TEE.Fail: 18 Breaking Trusted Execution Environments via DDR5 Memory Bus Interposition. In 2026 IEEE Symposium on Security and Privacy (SP) , pages 4408–4426. IEEE Computer Society, May 2026. [32] DeepSeek-AI. DeepSeek-V3 technical report, 2024. [33] Design Arena. Kimi K3’s design secret may be in its thinking traces. The Intelligence Company, jul 2026. [34] Jean-Guillaume Dumas and Vincent Zucca. Prover ef-ficient public verification of dense or sparse/structured matrix-vector multiplication. In Josef Pieprzyk and Suri-adi Suriadi, editors, Information Security and Privacy ,pages 115–134, Cham, 2017. Springer International Pub-lishing. [35] duola15. Deploy guide & hardware requirements for Kimi-K3. Hugging Face discussion, 2026. [36] Boyuan Feng, Lianke Qin, Zhenfei Zhang, Yufei Ding, and Shumo Chu. ZEN: An optimizing compiler for verifiable, zero-knowledge neural network inferences. Cryptology ePrint Archive, Paper 2021/087, 2021. [37] Dario Fiore and Rosario Gennaro. Publicly verifiable delegation of large polynomials and matrix computa-tions, with applications. In Proceedings of the 2012 ACM Conference on Computer and Communications Security , CCS ’12, page 501–512, New York, NY, USA, 2012. Association for Computing Machinery. [38] Dario Fiore, Rosario Gennaro, and Valerio Pastro. Ef-ficiently verifiable computation on encrypted data. In 
+
+Proceedings of the 2014 ACM SIGSAC Conference on Computer and Communications Security , CCS ’14, page 844–855, New York, NY, USA, 2014. Association for Computing Machinery. [39] Dario Fiore, Anca Nitulescu, and David Pointcheval. Boosting verifiable computation on encrypted data. In 
+
+Public-Key Cryptography – PKC 2020: 23rd IACR Inter-national Conference on Practice and Theory of Public-Key Cryptography, Edinburgh, UK, May 4–7, 2020, Pro-ceedings, Part II , page 124–154, Berlin, Heidelberg, 2020. Springer-Verlag. [40] Rusins Freivalds. Probabilistic machines can use less running time. In IFIP Congress , 1977. [41] Nicolas Gailly, Ismael Hishon-Rezaizadeh, Tianyi Liu, Nicholas Mainardi, Dimitrios Papadopoulos, Charalam-pos Papamanthou, Christodoulos Pappas, Shravan Srini-vasan, Zack Youell, and Yupeng Zhang. DeepProve: Verifiable end-to-end large language model inference. Cryptology ePrint Archive, Paper 2026/1112, 2026. [42] Zahra Ghodsi, Tianyu Gu, and Siddharth Garg. Safe-tyNets: Verifiable execution of deep neural networks on an untrusted cloud. In Advances in Neural Information Processing Systems (NeurIPS) , 2017. [43] Ran Gilad-Bachrach, Nathan Dowlin, Kim Laine, Kristin Lauter, Michael Naehrig, and John Wernsing. Cryptonets: Applying neural networks to encrypted data with high throughput and accuracy. In Maria Florina Bal-can and Kilian Q. Weinberger, editors, Proceedings of The 33rd International Conference on Machine Learn-ing , volume 48 of Proceedings of Machine Learning Research , pages 201–210, New York, New York, USA, 20–22 Jun 2016. PMLR. [44] Kanav Gupta, Neha Jawalkar, Ananta Mukherjee, Nis-hanth Chandran, Divya Gupta, Ashish Panwar, and Rahul Sharma. SIGMA: Secure GPT inference with function secret sharing. Cryptology ePrint Archive, Pa-per 2023/1269, 2023. [45] Kanav Gupta, Jonathan Katz, and Ian Miers. Private and verifiable outsourcing of open-weight LLM inference. Cryptology ePrint Archive, Paper 2026/1849, 2026. [46] Venkatesan Guruswami, Atri Rudra, and Madhu Sudan. Essential coding theory, 2025. [47] Meng Hao, Hongwei Li, Hanxiao Chen, Pengzhi Xing, Guowen Xu, and Tianwei Zhang. Iron: Private inference on transformers. In Advances in Neural Information Processing Systems (NeurIPS) , volume 35, pages 15718– 15731, 2022. [48] Jiaxing He, Kang Yang, Guofeng Tang, Zhangjie Huang, Li Lin, Changzheng Wei, Ying Yan, and Wei Wang. Rhombus: Fast homomorphic matrix-vector multipli-cation for secure two-party inference. In Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security , CCS ’24, page 2490–2504, New York, NY, USA, 2024. Association for Computing Machinery. [49] Zhicong Huang, Wen jie Lu, Cheng Hong, and Jian-sheng Ding. Cheetah: Lean and fast secure Two-Party deep neural network inference. In 31st USENIX Secu-rity Symposium (USENIX Security 22) , pages 809–826, Boston, MA, August 2022. USENIX Association. [50] Alexandre Graell i Amat and Eirik Rosnes. On the minimum distance properties of weighted nonbinary repeat multiple-accumulate codes. In 2011 Information Theory and Applications Workshop , pages 1–5, 2011. [51] Wen jie Lu, Zhicong Huang, Zhen Gu, Jingyu Li, Jian Liu, Cheng Hong, Kui Ren, Tao Wei, and Wenguang Chen. BumbleBee: Secure two-party inference frame-work for large transformers. In 32nd Annual Network 
+
+19 and Distributed System Security Symposium (NDSS) ,2025. [52] Chiraag Juvekar, Vinod Vaikuntanathan, and Anantha Chandrakasan. GAZELLE: A low latency framework for secure neural network inference. In 27th USENIX Security Symposium (USENIX Security) , pages 1651– 1669, 2018. [53] Andes Y. L. Kei and Sherman S. M. Chow. Shaft: Secure, handy, accurate and fast transformer inference. 
+
+IACR Cryptol. ePrint Arch. , 2025:2324, 2025. [54] Majid Khabbazian. Sharp minimum-distance lower tails for RAA codes. Cryptology ePrint Archive, Pa-per 2026/1075, 2026. [55] Yongsang Kim, Kyungwhoon Cheun, and Hyuntack Lim. Performance of weighted nonbinary repeat-accumulate codes over gf(q) with q-ary orthogonal modulation. IEEE Transactions on Communications ,59(5):1208–1212, 2011. [56] Kimi Team. Kimi K2: Open agentic intelligence, 2025. [57] Jörg Kliewer, Kamil Sh. Zigangirov, Christian Koller, and Daniel J. Costello Jr. Coding theorems for repeat multiple accumulate codes. CoRR , abs/0810.3422, 2008. [58] Kyeongtae Lee, Byeongkyu Han, Jihye Kim, and Hyunok Oh. LAMP: Linear verification of matrix mul-tiplication via proximity testing. Cryptology ePrint Archive, Paper 2026/1571, 2026. [59] Jian Liu, Mika Juuti, Yao Lu, and N. Asokan. Oblivious neural network predictions via minionn transformations. In Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security , CCS ’17, page 619–631, New York, NY, USA, 2017. Association for Computing Machinery. [60] Jing Liu and Liang Feng Zhang. Privacy-preserving and publicly verifiable matrix multiplication. IEEE Transac-tions on Services Computing , 16(3):2059–2071, 2023. [61] Tianyi Liu, Xiang Xie, and Yupeng Zhang. zkCNN: Zero knowledge proofs for convolutional neural net-work predictions and accuracy. In Proceedings of the 2021 ACM SIGSAC Conference on Computer and Com-munications Security (CCS) , pages 2968–2985, 2021. [62] Hidde Lycklama, Alexander Viand, Nikolay Avramov, Nicolas Küchler, and Anwar Hithnawi. Artemis: Effi-cient commit-and-prove SNARKs for zkML. In 34th USENIX Security Symposium , 2025. [63] James Massey. Shift-register synthesis and bch de-coding. IEEE transactions on Information Theory ,15(1):122–127, 1969. [64] Pratyush Mishra, Ryan Lehmkuhl, Akshayaram Srini-vasan, Wenting Zheng, and Raluca Ada Popa. Delphi: A cryptographic inference service for neural networks. In 29th USENIX Security Symposium (USENIX Security 20) , pages 2505–2522. USENIX Association, August 2020. [65] Payman Mohassel and Yupeng Zhang. SecureML: A System for Scalable Privacy-Preserving Machine Learn-ing . In 2017 IEEE Symposium on Security and Privacy (SP) , pages 19–38, Los Alamitos, CA, USA, May 2017. IEEE Computer Society. [66] Qi Pang, Jinhao Zhu, Helen Möllering, Wenting Zheng, and Thomas Schneider. BOLT: Privacy-preserving, ac-curate and efficient inference for transformers. In 2024 IEEE Symposium on Security and Privacy (S&P) , pages 4753–4771, 2024. [67] Kabir Peshawaria, Zeyu Liu, Ben Fisch, and Eran Tromer. Laminate: Succinct SIMD-friendly verifiable FHE. Cryptology ePrint Archive, Paper 2025/2285, 2025. [68] E. Prange. The use of information sets in decoding cyclic codes. IRE Transactions on Information Theory ,8(5):5–9, 1962. [69] Wenjie Qu, Yanpei Guo, Yue Ying, and Jiaheng Zhang. VerfCNN, Optimal Complexity zkSNARK for Convolu-tional Neural Networks . In 2026 IEEE Symposium on Security and Privacy (SP) , pages 515–532, Los Alami-tos, CA, USA, May 2026. IEEE Computer Society. [70] Wenjie Qu, Yijun Sun, Xuanming Liu, Tao Lu, Yanpei Guo, Kai Chen, and Jiaheng Zhang. zkGPT: An efficient non-interactive zero-knowledge proof framework for LLM inference. In 34th USENIX Security Symposium (USENIX Security 25) , pages 2045–2063, 2025. [71] Srinivasan Raghuraman, Peter Rindal, and Titouan Tan-guy. Expand-convolute codes for pseudorandom corre-lation generators from lpn. In Advances in Cryptology – CRYPTO 2023: 43rd Annual International Cryptol-ogy Conference, CRYPTO 2023, Santa Barbara, CA, USA, August 20–24, 2023, Proceedings, Part IV , page 602–632, Berlin, Heidelberg, 2023. Springer-Verlag. [72] Deevashwer Rathee, Mayank Rathee, Nishant Kumar, Nishanth Chandran, Divya Gupta, Aseem Rastogi, and Rahul Sharma. Cryptflow2: Practical 2-party secure inference. In Proceedings of the 2020 ACM SIGSAC Conference on Computer and Communications Security ,CCS ’20, page 325–342, New York, NY, USA, 2020. Association for Computing Machinery. 20 [73] Chiara Ravazzi and Fabio Fagnani. Spectra and min-imum distances of repeat multiple-accumulate codes. 
+
+IEEE Trans. Inf. Theor. , 55(11):4905–4924, November 2009. [74] RedPill AI. Verify real end-to-end private AI. RedPill AI, 2026. Accessed August 3, 2026. [75] Muhammad Husni Santriaji, Jiaqi Xue, Yancheng Zhang, Qian Lou, and Yan Solihin. DataSeal: Ensuring the Verifiability of Private Computation on Encrypted Data . In 2025 IEEE Symposium on Security and Pri-vacy (SP) , pages 2378–2394, Los Alamitos, CA, USA, May 2025. IEEE Computer Society. [76] Haochen Sun, Jason Li, and Hongyang Zhang. zkLLM: Zero knowledge proofs for large language models. In 
+
+Proceedings of the 2024 ACM SIGSAC Conference on Computer and Communications Security (CCS) , pages 4405–4419, 2024. [77] Qwen Team. Qwen3 technical report, 2025. [78] Justin Thaler. Time-optimal interactive proofs for circuit evaluation. CoRR , abs/1304.3812, 2013. [79] Louis Tremblay Thibault, Michael Walter, and Jiapeng Zhang. Practical SNARGs for matrix multiplications over encrypted data. Cryptology ePrint Archive, Paper 2026/027, 2026. [80] Florian Tramer and Dan Boneh. Slalom: Fast, verifi-able and private execution of neural networks in trusted hardware. In International Conference on Learning Representations , 2019. [81] Vinod Vaikuntanathan and Or Zamir. Improving al-gorithmic efficiency using cryptography: Trapdoored matrices and applications. In Proceedings of the 2026 Annual ACM-SIAM Symposium on Discrete Algorithms (SODA) , pages 2554–2574. SIAM, 2026. [82] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems , 30, 2017. [83] Alexander Viand, Christian Knabenhans, and Anwar Hithnawi. Verifiable fully homomorphic encryption. arXiv:2301.07041, 2023. [84] Chenkai Weng, Kang Yang, Jonathan Katz, and Xiao Wang. Wolverine: Fast, scalable, and communication-efficient zero-knowledge proofs for boolean and arith-metic circuits. In 2021 IEEE Symposium on Security and Privacy (S&P) , pages 1074–1091, 2021. [85] Chenkai Weng, Kang Yang, Xiang Xie, Jonathan Katz, and Xiao Wang. Mystique: Efficient conversions for zero-knowledge proofs with applications to ma-chine learning. In 30th USENIX Security Symposium (USENIX Security) , pages 501–518, 2021. [86] Chenkai Weng, Kang Yang, Zhaomin Yang, Xiang Xie, and Xiao Wang. AntMan: Interactive zero-knowledge proofs with sublinear communication. In Proceedings of the 2022 ACM SIGSAC Conference on Computer and Communications Security (CCS) , pages 2901–2914, 2022. [87] Tianshi Xu, Wen-jie Lu, Jiangrui Yu, Yi Chen, Chenqi Lin, Runsheng Wang, and Meng Li. Breaking the layer barrier: remodeling private transformer inference with hybrid ckks and mpc. In Proceedings of the 34th USENIX Conference on Security Symposium , SEC ’25, USA, 2025. USENIX Association. [88] Kang Yang, Pratik Sarkar, Chenkai Weng, and Xiao Wang. QuickSilver: Efficient and affordable zero-knowledge proofs for circuits and polynomials over any field. In Proceedings of the 2021 ACM SIGSAC Confer-ence on Computer and Communications Security (CCS) ,pages 2986–3001, 2021. [89] Kyeongcheol Yang. Weighted nonbinary repeat-accumulate codes. IEEE Transactions on Information Theory , 50(3):527–531, 2004. [90] James Hsin yu Chiang, Sheila Zingg, Kari Kostiainen, and Srdjan Capkun. Mosaic: Masked outsourcing of secure ai computations, 2026. [91] Hadas Zeilberger, Binyi Chen, and Ben Fisch. Base-fold: Efficient field-agnostic polynomial commitment schemes from foldable codes. In Advances in Cryptol-ogy – CRYPTO 2024: 44th Annual International Cryp-tology Conference, Santa Barbara, CA, USA, August 18–22, 2024, Proceedings, Part X , page 138–169, Berlin, Heidelberg, 2024. Springer-Verlag. [92] Jiawen Zhang, Xinpeng Yang, Lipeng He, Kejia Chen, Wen jie Lu, Yinghao Wang, Xiaoyang Hou, Jian Liu, Kui Ren, and Xiaohu Yang. Secure transformer inference made non-interactive. Cryptology ePrint Archive, Paper 2024/136, 2024. [93] Liang Zhang and Reihaneh Safavi-Naini. Protecting data privacy in publicly verifiable delegation of matrix and polynomial functions. Designs, Codes and Cryptog-raphy , 88, 04 2020. [94] Xinxuan Zhang, Ruida Wang, Zeyu Liu, Binwu Xiang, Yi Deng, Ben Fisch, and Xianhui Lu. Phalanx: An fhe-friendly snark for verifiable computation on encrypted 21 data. In Proceedings of the 2025 ACM SIGSAC Confer-ence on Computer and Communications Security , CCS ’25, page 4035–4048, New York, NY, USA, 2025. Asso-ciation for Computing Machinery. 
+
+## A Learning Parity with Noise 
+
+We begin by defining the dual-LPN assumption over a field F
+
+with respect to a distribution of code generators G, dimension 
+
+n, block length N > n, and noise distribution E.
+
+Definition A.1 (Dual-LPN) . The (E, G, F)-dual-LPN as-sumption for dimensions n = n(λ) and N = N(λ) states that 
+
+(G, Ge ) ≈c (G, u)
+
+where G ← G, e ← E, and u ← Fn. Here, G samples code generators G ∈ Fn×N and E samples noise vectors e ∈ FN .Further, we say G is LPN-friendly if this assumption is be-lieved to hold under standard noise distributions E.
+
+Observe that Ge is not a codeword , but is instead a syn-drome of the dual code. As such, the search problem version of dual-LPN is also referred to as syndrome decoding [20]. 
+
+Equivalence to (primal) LPN. The dual-LPN assumption is equivalent to the LPN assumption [16], which informally states that 
+
+(H, Hs + e) ≈c (H, u)
+
+where H ∈ FN×n′
+
+is a parity-check matrix for the code dual to G and s ← Fn′
+
+, e ← E, and u ← FN . Equivalence holds for 
+
+n′ = N − n by solving for G ∈ Fn×N such that GH = 0 via row-reduction. It follows that 
+
+G(Hs + e) = ( GH )s + Ge = Ge 
+
+If dual-LPN holds over a distribution of generators G of a dual code, primal-LPN holds over the corresponding distribution of parity-check matrices H for the primal code. See, e.g., [13, 21] for further details. 
+
+Selecting a noise distribution E. For LPN-based construc-tions, exact noise is typically used [20], where E = ENt is the uniform distribution over the set of t-sparse vectors in FN .However, alternative distributions such as Bernoulli noise or regular noise may be considered. 
+
+Selecting code generators G. A natural question arises of which G are LPN-friendly. The standard LPN assump-tion instantiates G as the uniform distribution over matri-ces in Fn×N . More recently, two separate lines of work in code-based encryption [2, 7] and pseudorandom correlation generators [19–21, 71] have sought to instantiate LPN from families of codes which enable linear or quasilinear encod-ing time. Such code families include quasi-cyclic, Toeplitz, LDPC [4], expand-accumulate (EA) [20], expand-convolute (EC) [71], and repeat-accumulate-accumulate (RAA) [24], and more [13, 22]. In order to test the concrete security of various possibly LPN-friendly codes, [20] introduced the fol-lowing unified framework. 
+
+Security against linear tests. Suppose G is a distribution over code generators G such that the code does not admit an efficient decoding algorithm. For instance, Reed-Solomon codes are highly algebraic and enable fast decoding via the Berlekamp-Massey algorithm [63], which trivially breaks the LPN assumption for these codes. Non-algebraic codes typi-cally do not admit such decoding algorithms. The key observation of [20] is that all known attacks on LPN over such codes reduce to finding a vector v ∈ Fn (or equivalently a linear functional) such that LPN samples have some non-negligible bias with respect to v. This procedure is called a linear test and is done by analyzing v⊤b for 
+
+b = Ge ∈ Fn and e ← E. Linear tests encapsulate information set decoding (ISD) attacks [68], the BKW algorithm [17], Gaussian elimination, and all other existing practical distin-guishing attacks [20]. Then, [20] shows that the codes which are resistant to linear tests are precisely those which have high minimum distance, as this ensures that the inner product v⊤b = ( v⊤G)e has v⊤G
+
+of large Hamming weight and sufficiently high probability of colliding with sparse e. We formally state these ideas below. 
+
+Definition A.2 (Bias of a distribution) . For a nonzero vector 
+
+v ∈ Fn and a distribution D over Fn, the bias of D with respect to v is defined as 
+
+bias v(D) := max  
+
+> c∈F
+
+Pr 
+
+> x←D
+
+h
+
+v⊤x = c
+
+i
+
+− 1
+
+|F| .
+
+The bias of D is defined as 
+
+bias (D) = max  
+
+> v̸=0
+
+bias v(D).
+
+For a noise distribution E ⊂ FN and a code generator G ∈
+
+Fn×N , we let EG ⊂ Fn denote the distribution of Ge where 
+
+e ← E, as in [1]. Then, linear testing corresponds to the search problem where a PPT adversary must output some vector v ∈ Fn such that bias v(EG) > negl (λ). As shown in [20, Lemma 2.6], if the minimum distance of the code generated by G is ≥ d, then bias (EG) = max   
+
+> u∈FN
+> u=v⊤Gfor some v̸=0
+
+bias u(E) ≤ max 
+
+> u∈FN
+> wt (u)≥d
+
+bias u(E).
+
+For E = ENt the uniform distribution over t-sparse vectors in 
+
+FN , the bias for any u ∈ FN with Hamming weight at least d
+
+can be bounded by bias u(ENt ) ≤
+
+
+
+1 − tN
+
+d
+
+< e−td /N = e−δt .
+
+where δ = d/N is the relative distance of the given code [20]. Since the search problem requires finding a suitable vector 22 u ∈ FN , we can attain λ − log 2 N bits of security as in [1, 20] by setting e−δt ≤ 2−λ+log 2 N , or equivalently, 
+
+t ≥ (ln 2 )( λ − log 2 N)
+
+δ
+
+where δ depends on the field F and dimensions n and N. For an asymptotically good code with δ = Θ(1), this justifies the parameter selection of t = Oλ(1).The linear-test framework does not account for when the noise distribution is highly structured and an adversary is given sufficiently many samples, which enables algebraic at-tacks such as Arora-Ge [9]. We ensure that noise is generated via the exact distribution ENt to mitigate this risk 2.
+
+## B Repeat-Accumulate-Accumulate Codes 
+
+We instantiate the dual-LPN assumption with G being a gener-ator for Repeat-Accumulate-Accumulate (RAA) linear codes. We provide a summary of these codes and previous work supporting the conjecture that RAA codes are LPN-friendly. For any field F, dimension n, block length N divisible by n,and constant r = N/n, an RAA code with generator GRAA ∈
+
+Fn×N is constructed via the composition 
+
+GRAA = R · ΠΠΠ1 · V1 · A · ΠΠΠ2 · V2 · A.
+
+Each of the component matrices is sampled and defined as follows: • Repetition matrix R ∈ Fn×N : repeats each entry of the input vector r times, given by 
+
+Ri, j =
+
+(
+
+1 if (i − 1)r < j ≤ ir 
+
+0 otherwise .
+
+• Permutation matrix ΠΠΠ ∈ FN×N : samples and performs a uniformly random permutation π : [N] → [N] to the input vector, given by 
+
+Πi, j =
+
+(
+
+1 if π( j) = i
+
+0 otherwise .
+
+• Randomization matrix V ∈ FN×N : samples a uniformly random nonzero vector v ← (F∗)N along the diagonal of a matrix 
+
+Vi, j =
+
+(
+
+vi if i = j
+
+0 otherwise .
+
+• Accumulation matrix A ∈ FN×N : computes the prefix-sum of the input vector by applying the upper triangular matrix 
+
+Ai, j =
+
+(
+
+1 if i ≤ j
+
+0 otherwise . 
+
+> 2[20] also remarks that when instantiating the linear-test framework over a ring, one must be wary of projection attacks onto ideals. These do not concern our construction since fields do not contain non-trivial ideals.
+
+Linear-time encoding. We observe that the encoding map 
+
+Fn → FN by w 7 → G⊤
+
+> RAA
+
+w can be computed in O(N) field operations. By the transposition principle [18], the syndrome map FN → Fn by v 7 → GRAA v can similarly be computed in 
+
+O(N) field operations. We show that for each component ma-trix of GRAA , matrix–vector multiplication can be computed in time O(N).• Repetition matrix w 7 → R⊤w : requires N copies of field elements—no field operations. • Permutation matrix w 7 → ΠΠΠ⊤w : requires N copies of field elements—no field operations. • Randomization matrix w 7 → V⊤w: requires N field mul-tiplications. • Accumulation matrix w 7 → A⊤w : requires N field addi-tions to compute the prefix-sum. Composing the above operations yields a circuit which com-putes encodings w 7 → G⊤
+
+> RAA
+
+w in at most 4 N field operations. The concrete count for syndromes v 7 → GRAA v sits similarly at 5 N field operations. 
+
+LPN friendliness and asymptotic goodness. RAA codes are non-algebraic due to the accumulation and permutation matrices. As such, it is conjectured that no efficient decoding algorithm exists, and that RAA codes are LPN-friendly [1,13]. To motivate this conjecture, many previous papers have conducted analyses on the minimum distance of RAA codes, from which security against linear tests directly follows. Early analyses focused on asymptotic bounds for the minimum distance of RAA codes and limited their instantiation to binary fields [11,57,73]. Later works [50,54,55,89] showed similarly strong minimum-distance properties and asymptotic goodness for RAA codes over arbitrary prime fields. Since asymptotic analysis is insufficient for instantiating cryptographic protocols with provable guarantees, further work has provided concrete bounds on the minimum dis-tance of RAA codes over various parameters. Binary fields are analyzed in the Blaze SNARK [24] and proven to achieve constant relative distance, while [1] analyzes prime fields for 
+
+n ∈ [24, 210 ] using combinatorial techniques and extrapolates to larger n. More recently, [3] gives a rigorous prime-field analysis proving a constant relative distance which is larger than in the binary case. 
+
+Failure probabilities. Crucially, when considering code gen-erators GRAA sampled from a distribution, guarantees of good minimum distance are probabilistic rather than exact. That is, for a specified dimension n, block length N, rate r = N/n,field F, and relative distance δ, the code has a failure proba-bility that a randomly sampled generator matrix GRAA from this distribution will not have relative distance at least δ. We denote this failure probability by pfail = pfail (G, N, δ). The fo-cus of prior work is to demonstrate that the failure probability can be made arbitrarily small under practical parameters. 23 In particular, [3] and [54] jointly show that for any fixed 
+
+Fq with q > 231 , and for δ = 0.5, the failure probability is 
+
+eO(N2−r)3. Thus, setting r = N/n ≥ 3 ensures that the failure probability decreases polynomially with N. Furthermore, a framework introduced in Blaze [24] enables publicly testing 
+
+the distance of an RAA code in polynomial time O(Nw) for any integer w ∈ N in order to reduce the failure probability to 
+
+eO(N(w+1)( 2−r)) [3]. 
+
+## C Private Matrix Extension 
+
+ΠpvMVMD can be extended to support a client who holds a pri-vate matrix M ∈ Fm×n in addition to a private vector x ∈ Fn,and wishes to delegate Mx without revealing either operand to the compute server. In private LLM inference, this corre-sponds to outsourcing linear-layer computation for a propri-etary model owned by the client. We next formalize its syntax and security. 
+
+Definition C.1 (Private-Matrix pvMVMD) . A private-matrix pvMVMD protocol Π is a tuple of PPT algorithms 
+
+(P REPROCESS ,E NCRYPT ,V ERIFY ,D ECRYPT ) defined by: 
+
+• P REPROCESS (1λ, 1κ, M) → (pp , bM, st M). On input secu-rity parameter λ, statistical parameter κ, and matrix M ∈
+
+Fm×n, outputs public parameters pp , masked matrix bM, and private matrix state st M.
+
+• E NCRYPT (pp , x) → (bx, st x). On input public parameters pp 
+
+and vector x ∈ Fn, outputs ciphertext bx and private vector state st x.
+
+• V ERIFY (pp ,bx,by) → { 0, 1}. On input public parameters 
+
+pp , ciphertext bx ∈ Fn, and server output by ∈ Fm, outputs 1
+
+(accept) or 0 (reject). 
+
+• D ECRYPT (pp , st M, st x,by) → y. On input public parameters 
+
+pp , private states st M, st x, and ciphertext by ∈ Fm, outputs plaintext vector y ∈ Fm.The protocol satisfies: 
+
+• Completeness : For any M ∈ Fm×n and x ∈ Fn,                         
+
+> Pr
+> 
+> y=Mx ∧b=1
+> (pp ,bM,st M)←PREPROCESS (1λ,1κ,M)(bx,st x)←ENCRYPT (pp ,x)
+> by=bMbx
+> b←VERIFY (pp ,bx,by)
+> y←DECRYPT (pp ,st M,st x,by)
+> 
+> =1.
+
+• Soundness : There exists a negligible function negl (·) such that for any M ∈ Fm×n and x ∈ Fn,                              
+
+> Pr
+> 
+> y̸=Mx ∧b=1
+> (pp ,bM,st M)←PREPROCESS (1λ,1κ,M)(bx,st x)←ENCRYPT (pp ,x)
+> by←A(pp ,bM,bx)
+> b←VERIFY (pp ,bx,by)
+> y←DECRYPT (pp ,st M,st x,by)
+> 
+> <negl (κ).
+> 3[54] has later refined this to eO(N1−r)under certain conditions.
+
+• Client privacy : There exists a PPT simulator Sim such that for any M ∈ Fm×n and x ∈ Fn,
+
+Sim (1λ, 1κ, 1m, 1n) ≈c View Π
+
+> Server
+
+(M, x),
+
+where View Π
+
+> Server
+
+(M, x) := ( pp , bM,bx) is generated by 
+
+(pp , bM, st M) ← PREPROCESS (1λ, 1κ, M) and (bx, st x) ←
+
+ENCRYPT (pp , x).
+
+Our construction leverages the notion of a trapdoored ma-trix [23, 81], which is a pseudorandom matrix sampled along-side a trapdoor that enables fast MVMs by that matrix. 
+
+Definition C.2 (Trapdoored matrix [23, 81]) . A trap-doored matrix scheme TDM is a pair of PPT algorithms 
+
+(TDM.G EN , TDM.E VAL ) with the following syntax: 
+
+• TDM.G EN (1λ, 1m, 1n) → (M′, td M′ ) outputs a matrix 
+
+M′ ∈ Fm×n and a trapdoor td M′ .
+
+• TDM.E VAL (td M′ , x) takes trapdoor td M′ and vector x ∈
+
+Fn, and outputs a vector in Fm.
+
+TDM satisfies the following properties: 
+
+• Correctness : For every (M′, td M′ ) output by 
+
+TDM.G EN (1λ, 1m, 1n) and every x ∈ Fn,
+
+TDM.E VAL (td M′ , x) = M′x.
+
+• Pseudorandomness : The distribution of M′ is computation-ally indistinguishable from the uniform distribution over 
+
+Fm×n to any PPT adversary that does not know td M′ .
+
+Braverman and Newman [23] and Vaikuntanathan and Zamir [81] both construct TDMs using recursion, where TDM.E VAL runs in quasilinear time TTDM (m, n) = eO(m+n).Using dual-LPN-friendly linear-time codes, EMVP [13] im-proves the runtime to linear TTDM (m, n) = O(m + n).In our construction, the client masks M by sampling 
+
+(M′, td M′ ) ← TDM.G EN and uploading bM := M + M′ to the server, storing td M′ locally. The preprocessing terms 
+
+P := bMG x and Q := G⊤ 
+
+> y
+
+bM are generated as part of pp . For each query, the client masks x as bx := x + Gxex, and the server computes by := bMbx = ( M + M′)( x + x′). The client checks the claim using V ERIFY and decrypts y := by − Pe x −
+
+TDM.E VAL (td M′ , x). Protocol 4 presents the full protocol. 
+
+Theorem C.3. Suppose that TDM satisfies correctness and pseudorandomness, Gx is a distribution over codes with rel-ative distance at least δx satisfying the (ENx 
+
+> tx
+
+, Gx, F)-dual-LPN assumption for polynomially many independent sam-ples, and the code generated by Gy has relative distance δy.Then ΠprivM pvMVMD satisfies completeness, soundness, and client privacy as defined in Definition C.1 when instantiated with 
+
+|F| ≥ 4, ℓ =
+
+l κ
+
+> log 2(|F|− 1)−1
+
+m
+
+, and t y =
+
+l max (log 2(|F|− 1),κ+1) 
+
+> −log 2(1−δy)
+
+m
+
+.
+
+24 ΠprivM pvMVMD 
+
+Input parameters :• Trapdoored matrix scheme TDM =(TDM.G EN , TDM.E VAL ) for matrices in Fm×n.• Code distributions Gx and Gy, sparsity parameters tx,ty, rep-etition parameter ℓ, and block lengths Nx, Ny as in Protocol 3. • Field oracle F.
+
+PREPROCESS (1λ, 1κ, M) → (pp , bM, st M):• Sample (M′, td M′ ) ← TDM.G EN (1λ, 1m, 1n)
+
+• Compute bM := M + M′ ∈ Fm×n.• Sample Gx ← Gx and Gy ← Gy.• Compute P := bMG x ∈ Fm×Nx .• Compute Q := G⊤ 
+
+> y
+
+bM ∈ FNy×n.• Output pp := ( Gx, Gy, P, Q,tx,ty, ℓ ), bM, and st M := td M′ .
+
+ENCRYPT (pp , x) → (bx, st x):• Sample ex ← ENx 
+
+> tx
+
+and compute x′ := Gxex ∈ Fn.• Output bx := x + x′ and st x := ( ex, x).
+
+VERIFY (pp ,bx,by) → { 0, 1}:• Compute G⊤ 
+
+> y
+
+by ∈ FNy .• Repeat ℓ times: 
+
+– Sample ey ← ENy 
+
+> ty
+
+.
+
+– Compute vL := ( e⊤ 
+
+> y
+
+Q)bx and vR := e⊤ 
+
+> y
+
+(G⊤ 
+
+> y
+
+by).
+
+– If vL̸ = vR, output 0 (reject) and halt. • If all ℓ checks pass, output 1 (accept). 
+
+DECRYPT (pp , st M, st x,by) → y:• Parse st M = td M′ and st x = ( ex, x).• Compute y1 := Pe x and y2 := TDM.E VAL (td M′ , x).• Output y := by − y1 − y2 ∈ Fm.
+
+Protocol 4: Protocol ΠprivM pvMVMD for private-matrix and private-vector delegation. 
+
+Proof. For any vector by, the decrypted output is 
+
+y := by − Pe x − TDM.E VAL (td M′ , x). Using P = bMG x,TDM.E VAL (td M′ , x) = M′x, and bM = M + M′, we derive 
+
+y − Mx = by − bMG xex − M′x − Mx 
+
+= by − bMG xex − (M + M′)x
+
+= by − bM(x + Gxex)= by − bMbx.
+
+Completeness. If the server honestly evaluates by = bMbx, then the identity above yields y = Mx . Further, V ERIFY accepts with probability 1 by Theorem 5.2. 
+
+Soundness. If the server returns an output with y̸ = Mx , the identity above implies by̸ = bMbx. By Theorem 5.2, V ERIFY 
+
+rejects with probability at least 1 − 2−κ for these parameters. 
+
+Client privacy. We prove client privacy via two hybrid steps. In the first hybrid, we replace the trapdoored matrix M′
+
+with a uniformly random matrix UM ← Fm×n, which is com-putationally indistinguishable by the pseudorandomness of TDM. After this replacement, bM = M + UM is uniformly distributed over Fm×n and independent of M. In the sec-ond hybrid, we replace Gxex with an independently sampled uniform vector u ← Fn, which is computationally indistin-guishable under the (ENx 
+
+> tx
+
+, Gx, F)-dual-LPN assumption. Af-ter this replacement, bx = x + u is uniformly distributed over 
+
+Fn and independent of x. The resulting distribution is sim-ulated by a PPT simulator Sim (1λ, 1κ, 1m, 1n) that samples uniform eM ← Fm×n and ex ← Fn, computes fpp from eM, and outputs (fpp , eM,ex) ≈c View Π
+
+> Server
+
+(M, x). Computational indis-tinguishability follows from these two hybrids. 
+
+Efficiency. The online client computes TDM.E VAL in some time TTDM (m, n) and all other E NCRYPT , V ERIFY , and DECRYPT steps in time Oλ,κ(m + n) by Section 6.3. Choos-ing a linear evaluation time TDM (e.g., in [13]) provides asymptotically optimal online time Oλ,κ(m + n). The server performs exactly one field MVM, and preprocessing requires 
+
+O(mn ) field operations to compute P and Q.
+
+Drawback on preprocessing. In the public-matrix setting pvMVMD, preprocessing is transparent and can be com-puted once by the server and published globally for all clients. In contrast, for private-matrix delegation, each client must sample their own independent trapdoor td M′ and mask the matrix bM privately, requiring O(mn ) private preprocessing time. This construction is therefore most attractive when the preprocessing cost can be amortized across many queries. 
+
+## D Soundness Composition 
+
+We show that any private delegation protocol can be made sound by composing with a sound verifiable delegation pro-tocol. This is the same technique we use in constructing 
+
+ΠpvMVMD from ΠvMVMD in Protocol 3, and this demonstrates that a lightweight verification layer can be applied to a private delegation protocol. Let ΠvMVMD be a complete and sound vMVMD protocol, and let ΠpvMVMD be a complete and private but possibly un-sound private delegation protocol. We informally define the protocol Π′ 
+
+> pvMVMD
+
+as follows: • P REPROCESS : run ΠvMVMD .PREPROCESS and 
+
+ΠpvMVMD .PREPROCESS .
+
+• E NCRYPT : run ΠpvMVMD .ENCRYPT .
+
+• V ERIFY : run ΠvMVMD .VERIFY .
+
+• D ECRYPT : run ΠpvMVMD .DECRYPT .
+
+Completeness and client privacy of Π′ 
+
+> pvMVMD
+
+follow from the corresponding properties of ΠvMVMD and ΠpvMVMD .For soundness, suppose the adversary returns by such that 
+
+y̸ = Mx , where y = Π′
+
+> pvMVMD
+
+.DECRYPT (pp , st ,by). By the 25 completeness of ΠpvMVMD , if by = Mbx then y = Mx ; taking the contrapositive, if y̸ = Mx , it must hold that by̸ = Mbx. The VERIFY algorithm of ΠvMVMD is applied to the claim 
+
+by ?
+
+= Mbx.
+
+By soundness of ΠvMVMD , V ERIFY detects this inconsistency except with negligible probability. 
+
+## E Attack on Slalom at the Carnival 
+
+Slalom at the Carnival (S@C) by Bruhns et al. [25] proposes an addition to Slalom [80] which reduces the client online running time required to encrypt and decrypt vectors in a pvMVMD protocol. They claim to achieve client privacy; however, we show a flaw in their approach which breaks client privacy and enables a semi-honest server to uncover projections of the client’s input vectors. 
+
+S@C protocol. Fix a matrix M ∈ Fm×n and a parameter ℓ ≪
+
+n which is dependent on the security parameter. In the S@C preprocessing, the server samples ℓ vectors r1, . . . , rℓ ← Fn
+
+and computes the corresponding projections u1, . . . , uℓ ∈ Fm,where ui = Mr i. These projections are sent to the client. When the client wishes to delegate an MVM for a vector x, they first sample k ← { 0, 1}ℓ, compute the masking term 
+
+x′ :=
+
+> ℓ
+
+# ∑
+
+> i=1
+
+kiri ∈ Fn,
+
+and encrypt bx := x + x′. This is sent to the server, which returns by = Mbx. The client decrypts by subtracting the pro-jections: 
+
+y := by −
+
+> ℓ
+
+# ∑
+
+> i=1
+
+kiui.
+
+The attack. The S@C protocol is efficient only when ℓ < n.However, in this parameter range, the server can use Gaussian elimination to solve for a projection matrix ΠΠΠ ∈ F(n−ℓ)×n
+
+annihilating the vectors r1, . . . , rℓ (i.e., ΠΠΠri = 0 for each i). For a client input bx, the server applies ΠΠΠ and recovers 
+
+ΠΠΠbx = ΠΠΠ x +
+
+> ℓ
+
+# ∑
+
+> i=1
+
+kiri
+
+!
+
+= ΠΠΠx ∈ Fn−ℓ.
+
+This enables the server to distinguish bx from truly random and precludes the existence of a privacy simulator that works for all x.26
