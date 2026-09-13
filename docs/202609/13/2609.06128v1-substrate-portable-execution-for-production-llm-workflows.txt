@@ -1,0 +1,207 @@
+Title: Substrate-Portable Execution for Production LLM Workflows
+
+URL Source: https://arxiv.org/pdf/2609.06128v1
+
+Published Time: Wed, 09 Sep 2026 00:46:34 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# Substrate-Portable Execution for Production LLM Workflows (Industry Track) 
+
+# Atul Kulkarni 
+
+Amazon Seattle, WA, USA atukulka@amazon.com 
+
+# Tarun Gopinath 
+
+Amazon Seattle, WA, USA tarungop@amazon.com 
+
+# Vijay Rajakumar 
+
+Amazon Seattle, WA, USA vijar@amazon.com 
+
+# Shrikar Katti 
+
+Amazon Seattle, WA, USA shrikar@amazon.com 
+
+# Parthasarathy Govindarajen 
+
+Amazon Seattle, WA, USA partgovi@amazon.com 
+
+## Abstract 
+
+Production LLM agents often run the same logic—including tool-calling loops, retrieval chains, and compositional workflows—in sev-eral operational modes. However, execution semantics are usually coupled to one runtime. We encountered this portability problem in Rufus, a conversational AI assistant that integrates a large catalog of tool endpoints and serves millions of Amazon customers [6]. Systems such as Rufus use three execution modes: real-time serv-ing for customer traffic, asynchronous execution for background tasks, and batch execution for high-volume offline workloads such as evaluation and content pre-generation. Each mode has different service-level objectives (SLOs) and typically uses a separate runtime. Reusing orchestration designed for streaming forces asynchronous and batch workloads into a blocking, synchronous execution model. It also prevents these workloads from using batch inference APIs, which offer a 50% discount at published prices [8]. We present a binding-adaptive agent execution platform that separates workflow definition from execution substrate. Developers express a workflow once as a typed dataflow graph. The platform compiles that graph to in-process streaming for real-time serving, durable orchestration with AWS SWF [3] for asynchronous execu-tion, or distributed stream processing with Apache Flink [16] for batch inference. No workflow code changes are required. The cen-tral abstraction represents LLM inference as a suspendable graph node whose semantics depend on the selected substrate: stream-ing delivery online, durable retry in asynchronous execution, and batched submission offline. We validated dozens of production agent configurations across five orchestration patterns: single-inference RAG, iterative ReAct, compositional PreAct, conditional routing, and multi-agent deep research. These patterns represent common synchronous orches-tration structures in production LLM systems. Across all three bindings, we found no detectable difference in output quality. Batch execution also reduced per-query inference cost in line with pub-lished batch API pricing [8] and operated alongside the streaming path at production scale. 
+
+## CCS Concepts 
+
+• Software and its engineering → Cloud computing ; Domain specific languages .
+
+## Keywords 
+
+LLM agents, execution-mode portability, agent evaluation, batch inference, workflow systems, system migration 
+
+## 1 Introduction 
+
+Production agents must support workloads with sharply different requirements. The logic that streams tokens to a customer with sub-second latency may also evaluate hundreds of thousands of queries offline, pre-generate content for frequent requests, and run traffic-driven quality regressions. Existing agent frameworks generally do not adapt a single workflow definition to the distinct execution and optimization requirements of real-time, asynchronous, and batch workloads. We examine this problem in Rufus, a conversa-tional AI assistant used by millions of Amazon customers [6]. Rufus integrates a large catalog of Model Context Protocol (MCP) [10] endpoints for functions such as product search, knowledge retrieval, and price tracking. Its agents use several orchestration patterns, including classifier-based routing, RAG-style retrieval, multi-step ReAct [34], speculative PreAct [18], and multi-agent orchestration. Production conversational AI systems commonly use three ex-ecution modes. The real-time path optimizes for time to first to-ken and supports patterns such as tool-calling loops, RAG, and speculative execution. The asynchronous path handles background tasks that tolerate seconds or minutes of latency, including deep-research pipelines and offline enrichment. The batch path serves high-volume offline workloads such as prompt evaluation, qual-ity regression testing, and content pre-generation. Each mode has distinct SLOs and typically runs on a different runtime: a stream-ing service, a durable workflow engine, or a stream-processing or job-scheduling system. These modes share prompts, tools, and orchestration logic, but their runtimes are heterogeneous. When asynchronous and batch workloads reuse orchestration built for real-time serving, they also inherit its blocking execution model. This coupling prevents the use of batch inference APIs and places offline workloads on in-frastructure provisioned for low-latency serving. Offline inference can represent a material share of total cost, while cloud providers price batch inference below real-time inference [8]. Accessing that batch path requires the architecture to separate orchestration from inference submission. arXiv:2609.06128v1 [cs.AI] 5 Sep 2026 Atul Kulkarni, Tarun Gopinath, Vijay Rajakumar, Shrikar Katti, and Parthasarathy Govindarajen 
+
+Table 1: Rufus inference workloads. All share the same agent logic; they differ in execution requirements. The “Binding” column shows the target substrate in the new platform. 
+
+Workload Infer/inv Latency Target Binding 
+
+Real-time serving 1–5 Sub-second TTFT Local Evaluation 1–5 Hours Flink Regression evaluation 1–5 Hours Flink Cache generation 1–3 Hours Flink Deep research 5–12 Minutes SWF 
+
+Our approach: execution-mode portability. We define agent work-flows once as typed dataflow graphs and compile them to several execution substrates. Declaring inference as a primitive, rather than hiding it inside a function call, lets the platform select a substrate-native mechanism: blocking execution with streaming delivery for real-time serving, asynchronous SWF task execution with durable orchestration, or queued batch submission for offline execution. We validated the platform across most agent configurations in Rufus’s production registry and across all three execution modes. This paper makes three contributions. First, it identifies substrate-opaque inference as the structural barrier to adapting one workflow across real-time, asynchronous, and batch execution (§2). Second, it presents a binding-adaptive architecture, including a typed dataflow DSL, a compilation model, and the rationale for first-class inference (§2). Third, it reports on two unavoidable sources of divergence: time-sensitive tool outputs and substrate-specific infrastructure failures (§4). 
+
+## 2 System Design 
+
+Design challenge. When asynchronous and batch workloads reuse real-time orchestration, they inherit its blocking, synchronous ex-ecution model. Replacing this model with asynchronous batch submission would require changing the shared orchestration loop needed for progressive token streaming. Independent invocations also cannot aggregate inference requests into a common batch. Per-workflow systems such as Temporal [31] and Step Functions [4], and agent frameworks such as LangGraph [21] and Strands [7], treat each LLM call as an opaque blocking operation without substrate awareness. This coupling has broader operational costs: quality evaluation uses infrastructure optimized for time to first token rather than throughput, and features developed for one mode can-not be reused directly in another. 
+
+## 2.1 Key Problems and Architecture 
+
+The design addresses two key problems. First, workflow logic must be decoupled from substrate selection so that one definition can execute in different operational modes. Second, the binding com-piler must control the inference strategy because it varies across substrates. If inference remains hidden inside an opaque function call, every substrate inherits the same blocking execution strategy. Figure 1 shows the resulting architecture. Agent logic written in Java or JavaScript produces a binding-agnostic workflow graph. The binder compiles the graph into substrate-native operations for 
+
+Table 2: Workflow combinators and their intended uses. 
+
+Operator Semantics Typical use 
+
+map Applies a stateless transfor-mation to node output. Prompt assembly, parsing, tool dis-patch 
+
+infer Invokes an LLM using the strategy selected by the binding. Model inference 
+
+iterate Repeats a body until a con-dition or iteration limit is reached. ReAct loops 
+
+compose Delegates execution to an-other registered agent. Multi-agent work-flows, PreAct 
+
+branch ,
+
+parallelBranch 
+
+Performs conditional or par-allel fan-out followed by a typed merge. Routing, specialist fan-out 
+
+Local, SWF, or Flink execution. A shared control plane manages agent configuration, registration, and lifecycle across all bindings. 
+
+## 2.2 Typed Dataflow DSL 
+
+Agent workflows are typed dataflow graphs. The platform provides two equivalent authoring interfaces: a type-safe Java combinator API for production workflows and a hot-reloadable JavaScript DSL on GraalVM for exploration. These interfaces address different development needs: scripting supports rapid iteration, while the Java API provides compile-time checks for production code. We implemented both as frontends to the same combinator model and immutable graph rather than as separate execution paths. The binding system therefore treats their output identically, and the choice of authoring interface does not introduce different execution semantics. 
+
+Listing 1: A ReAct agent defined via the typed Java API. The JavaScript DSL produces the identical graph.                    
+
+> Workflow < AgentInput , AgentOutput > wf =Workflow . source (" react - agent ") .map ( InitState () ) .iterate ( ShouldContinue () , maxIter , step -> step .infer ( ReasoningPrompt () , config ) .map ( ParseResponse () ) .map ( ConditionalToolExec () ) ).map ( BuildOutput () );
+
+Table 2 summarizes the DSL’s combinators, their semantics, and their typical uses. The small combinator set also expresses more complex patterns. Listing 2 shows speculative PreAct: a low-cost model plans tool use before delegating answer composition to a stronger ReAct agent. This example exercises infer , map , and compose . Restricting the interface enables behavioral equivalence across bindings; arbi-trary I/O or runtime graph mutation would make that guarantee infeasible. 
+
+## 2.3 Why Inference is a First-Class Primitive 
+
+Many agent frameworks represent an LLM call like any other func-tion call. The framework sees an operation such as invoke(fn) and Substrate-Portable Execution for Production LLM Workflows (Industry Track)               
+
+> Agent Logic (Java Combinator API /Script DSL — hot-reloadable, same graph) Binding-Agnostic Workflow Graph (ASP): map ·infer ·iterate ·branch ·compose
+> Binding Compiler (one-pass graph walk →substrate-native BoundGraph )
+> Local Binding
+> Streaming token delivery Sub-second TTFT Customer-facing traffic
+> SWF Binding
+> Durable async execution Per-invocation traceability Deep research, reliability
+> Flink Binding
+> Cross-invocation batching Horizontal scaling Eval, cache, analysis
+> Amazon Bedrock Inference (sync Converse API / batch inference API)
+> Control Plane
+> Agent Config
+> Registry Lifecycle MCP Tools
+
+Figure 1: Platform architecture. Agent logic (top) is authored via the typed Java API or the script DSL; both produce the same binding-agnostic workflow graph. The binding compiler translates the graph to substrate-native operations. Each binding targets a distinct operational profile: streaming for live traffic, durable async for traceable execution, batch for scalable offline operations. All bindings share the same Bedrock inference layer. Listing 2: PreAct composition in the JavaScript DSL. The same graph executes on every binding. 
+
+> workflow . source ( Source (" preact - compose ")) . map ( InitState () ) . infer ( PlannerPrompt () , StaticInferenceConfig ({ modelId :" haiku45 " }) ) . map ( ParseResponse () ) . map ( ToolExecution () ) . map ( HandoffPrompt () ) . map ( BuildOutput () ) . map ( OutputAsContext () ) . compose ( Agent (" react - agent "));
+
+blocks until it returns, imposing one execution strategy on every workload. Representing inference as a graph node, through .infer(...) 
+
+rather than an opaque call inside .map(...) , enables binding-specific compilation. Inference has three relevant properties. First, it dominates workflow cost and latency, so its execution strategy largely determines the workflow’s profile. Second, it is a state-less request to a remote service and can therefore be submitted asynchronously and correlated by identifier. Third, requests from independent invocations can be aggregated for batch submission. The Local binding uses streaming delivery, SWF uses asynchro-nous activity-task execution, and Flink batches requests across invocations (§2.4). An opaque function call does not expose these properties to the substrate. 
+
+## 2.4 Binding Compilation 
+
+A Binder traverses the workflow DAG and translates each node into binding-specific operations. The result is a BoundGraph , an executable representation for the target platform. Each binding serves a distinct operational profile. 
+
+Local binding (real-time streaming). Each node becomes a direct call on the invoking thread. Inference runs synchronously and streams tokens to the client. This binding prioritizes latency, time to first token, and progressive rendering. 
+
+SWF binding (deterministic, traceable asynchronous execution). Each node becomes an SWF activity task. A decider schedules activ-ity tasks and applies retry policies. SWF records every decision in an event history that can be inspected, replayed, and audited without additional instrumentation. This binding supports per-invocation traceability, durable state for long-running operations, and moderate-volume asynchronous features. 
+
+Flink binding (scalable batch execution). Each node becomes a DataS-tream operator. Although the workflow DSL presents a synchronous programming model, blocking an operator would stall the Flink pipeline. The binder therefore stores suspended invocation state in Flink keyed state and offloads long-running operations through SQS. An inference service groups queued requests and submits them to the Bedrock batch API; responses are correlated by invoca-tion identifier and resume the suspended state. The binder similarly offloads tool calls marked with @Offloadable to a separate worker pool. We chose this design over Flink’s native asynchronous I/O so that application workers retain control over tool timeouts and re-tries, while the platform manages only suspension and resumption. This design enables cross-invocation batching, which per-workflow systems cannot provide, without changing workflow code or block-ing operator threads. The binding prioritizes throughput and cost efficiency for evaluation and content-generation workloads. 
+
+## 3 Evaluation 
+
+We evaluate whether identical workflows produce statistically in-distinguishable output quality across the Local, SWF, and Flink bindings. We then compare the cost and operational profiles of the three execution modes. 
+
+## 3.1 Experimental Setup 
+
+To isolate the platform from any specific production configuration, we use publicly available Anthropic Claude models on Amazon Bedrock: Opus, Sonnet, and Haiku. We evaluate five orchestration patterns that collectively exercise the DSL’s combinators: (i) RAG ,Atul Kulkarni, Tarun Gopinath, Vijay Rajakumar, Shrikar Katti, and Parthasarathy Govindarajen 
+
+a single inference over a large context without tool use (Opus); (ii) ReAct , an iterative tool-calling loop with 2–5 iterations (Son-net); (iii) Routing , in which a classifier dispatches requests to specialist agents by intent (Haiku + Sonnet); (iv) PreAct , in which a lower-cost planner selects tools speculatively and a stronger model composes the result (Haiku + Sonnet); and (v) Deep Research ,in which a planner creates tasks, specialists run in parallel, and a synthesizer composes the result (Sonnet, 5–12 inference calls). These patterns include single- and multi-model configurations as well as single- and multi-agent configurations. The evaluation set contains more than 500 expert-authored and synthetic prompts per pattern and covers the query types targeted by the platform. The same benchmark is used to evaluate all produc-tion releases before deployment. We run all three bindings against the same Bedrock endpoints in one AWS region: Local on ECS Fargate, an SWF decider and activity workers on ECS, and Flink on Amazon Managed Flink with a horizontally scaled TaskMan-ager cluster. We measure cross-binding equivalence using position-swapped pairwise preferences and a Bradley-Terry model (§3.2). We also measure per-query cost and end-to-end latency. 
+
+## 3.2 Cross-Binding Quality Equivalence 
+
+Each agent runs on the same dataset under Local streaming, SWF asynchronous execution, and Flink batch execution. We define quality equivalence as statistically indistinguishable outputs across these bindings. 
+
+Quality equivalence. We follow Chatbot Arena’s pairwise evalua-tion method [17, 37] and control for position bias [24, 30]. Each pair is judged in both orders. We declare a winner only if the same out-put wins in both orders, and call the resulting measure the decisive rate . We fit a Bradley-Terry model [14] to these preferences, which assigns each binding a strength 𝛽 on a log-odds scale such that the difference between two bindings’ strengths gives the log-odds that one is preferred over the other. We fix 𝛽 Stream = 0 as the reference, so a binding’s ˆ𝛽 measures its preference relative to Stream: 𝛽 = 0denotes equal preference and larger |𝛽 | a stronger systematic pref-erence. A 95% bootstrap confidence interval over 1000 rounds that contains zero indicates no reliable preference. Table 3 reports the results. 
+
+Findings. Every reported 95% Bradley-Terry confidence interval includes zero. We therefore find no statistically detectable qual-ity preference for any binding. ReAct and Deep Research produce fewer decisive comparisons, resulting in wider confidence inter-vals. Routing and PreAct produce more decisive comparisons and narrower intervals. 
+
+Binding overhead. Table 4 reports mean end-to-end latency nor-malized to the Stream baseline. SWF adds one decision-task round trip per iteration and takes 1 .1–3 .4× as long as Stream. Flink takes 33–152 × as long, primarily because of provider-side batch schedul-ing rather than binding overhead. Deep Research has the smallest Flink multiplier because all bindings execute specialist fan-out in parallel. Each fan-out stage completes when its slowest inference completes, rather than accumulating the latency of every special-ist call, so latency is better amortized across the concurrent calls. ReAct also benefits from caching its static system prompt and tool definitions after the first iteration, reducing its batch multiplier relative to Routing and PreAct. 
+
+Implication. The Flink batch binding can run quality evaluations at a cost reduction consistent with published batch API pricing [8]. In our experiments, it still detected operationally relevant changes such as model downgrades and prompt regressions. Because the selected binding did not mask these quality differences, batch eval-uation can replace more expensive streaming evaluation for the tested agent architectures. 
+
+## 3.3 Cost Structure 
+
+Given the observed quality equivalence, binding selection depends on cost, latency requirements, and operational characteristics rather than output quality. 
+
+Token cost dominates. For a representative Sonnet ReAct agent with three iterations and tens of thousands of input and output tokens per iteration, tokens account for approximately 100% of per-query cost in every binding. Compute, orchestration, messaging, and other infrastructure collectively account for less than 0.5%. Pub-lished batch inference pricing [8] is therefore the primary workflow-level cost lever. Stream and SWF use the same real-time API and have the same per-token cost. SWF instead provides persistent event history, fault-tolerant resumption, and durable coordination across long waits. Its per-step scheduling latency, however, makes it unsuitable for traffic sensitive to time to first token. Flink separates offline batch requests from customer-facing real-time requests at the platform boundary. At low utilization, fixed Managed Flink costs increase per-query infrastructure overhead by roughly an or-der of magnitude, although it remains a low single-digit percentage of total cost. 
+
+## 4 Limits of Portability 
+
+Although successful executions show behavioral equivalence (§3.2), validation across the three substrates identified limits to that guar-antee. The platform provides functional portability: for the same input, workflows produce statistically indistinguishable outputs across substrates. It does not make latency, failures, or other opera-tional behavior identical across bindings. 
+
+Time-sensitive tool outputs. Tools that return wall-clock-dependent data, such as current prices or availability windows, may produce different results when batch execution occurs hours later. These results can change the continuation predicate. This divergence is a property of the tool rather than the binding. 
+
+Substrate-specific failures. Each substrate has distinct failures, so failure handling is not fully portable. In synchronous execution, a completed tool call returns directly to the agent. Asynchronous and batch execution instead depend on a correlated response from an external worker or batch job. A correlation timeout can terminate the workflow before the LLM can handle the error. Batch execution also introduces collective failures, including partial results, aggre-gate token limits, and longer completion windows. These risks are acceptable for offline workloads without strict latency SLOs. 
+
+Portability boundary. During migration, the restricted combi-nator set required workflows to isolate side effects in tool calls Substrate-Portable Execution for Production LLM Workflows (Industry Track) 
+
+Table 3: Quality equivalence (Bradley-Terry). Cross-bind decisive%: fraction of position-swapped comparisons where one binding wins in both orderings (maximum across the 3 binding pairs). ˆ𝛽 : BT strength relative to Stream ( 𝛽 Stream ≡ 0) with 95% CI; CI containing zero = no detectable preference.                                             
+
+> Pattern Model(s) Cross-bind ˆ𝛽 SWF [CI] ˆ𝛽 Batch [CI]
+> decisive%
+> RAG (single-infer) Opus 0.0% ≈0≈0Routing (branch) Haiku + Sonnet 21.5% +0.11 [− 0.26 ,+0.50 ]+0.02 [− 0.38 ,+0.39 ]
+> ReAct (tool-calling) Sonnet 12.9% +0.14 [− 0.59 ,+0.93 ]−0.43 [− 1.42 ,+0.53 ]
+> PreAct (composition) Haiku + Sonnet 40.4% +0.25 [− 0.05 ,+0.57 ]−0.13 [− 0.45 ,+0.21 ]
+> Deep Research Sonnet 12.1% −0.30 [− 1.15 ,+0.49 ]+0.34 [− 0.64 ,+1.44 ]
+
+Table 4: Mean end-to-end latency normalized to the Stream baseline ( 1.0×) for each pattern. SWF overhead reflects per-iteration decision-task round-trips. Flink latency is domi-nated by batch job scheduling at the provider, not binding overhead.                   
+
+> Pattern Stream SWF Flink
+> RAG (single-infer) 1.0×1.5×79 ×
+> Routing (branch) 1.0×1.8×152 ×
+> ReAct (tool-calling) 1.0×3.4×96 ×
+> PreAct (composition) 1.0×1.8×116 ×
+> Deep Research 1.0×1.1×33 ×
+
+and separate orchestration from execution concerns. Workflows that cannot be expressed in the DSL depend on execution context, such as the timing of streamed tokens for user-interface behav-ior. These dependencies mark the boundary between portable and binding-specific logic. 
+
+## 5 Related Work 
+
+Table 5 compares our work with agent frameworks, durable-execution middleware, and cross-substrate compilers. The comparison reflects differences in design emphasis rather than deficiencies, and the cited systems continue to evolve. Apache Beam [2, 12] introduced a “define once, execute any-where” model for data pipelines. Its runners provide equivalent backends under a common correctness model. In contrast, our bind-ings intentionally target substrates with different latency, cost, and failure semantics: streaming, durable asynchronous execution, and batch processing. Agent frameworks such as LangGraph [21, 22], Strands [7, 9], and AutoGen [27, 33] represent LLM calls as function invocations and emphasize API-level composability. We expose in-ference as a graph node so that a compiler can select its execution strategy for each substrate. DSPy [19] compiles what to say rather than how to execute and is complementary to this work. Temporal [31, 32] and Azure Durable Functions [15] focus on durable asynchronous execution [36, 38]. Cross-invocation batching and streaming token delivery are outside their primary design goals. Flink Stateful Functions [11, 13] supports stateful serverless work-flows, while our work operates at the agent-programming layer through a typed DSL and first-class inference. Inference-serving systems such as vLLM [20], Orca [35], Sarathi [1], and FlexGen [29], 
+
+Table 5: Capability comparison of design emphasis across related systems. ✓ = native, ∼ = partial or supported via ex-tension, – = not a primary design focus. Assessments reflect each system’s publicly available documentation as of August 2026; these ecosystems evolve rapidly.                                    
+
+> System Str. Batch Durable X-inv. Port.
+> LangGraph [21, 22] ✓–∼––Strands/AutoGen [7, 9, 27, 33] ✓–∼––Temporal [31, 32] ––✓–∼
+> Beam [2, 12] ∼✓–✓✓
+> Flink SF [11, 13] ∼–✓∼–
+> This work ✓✓✓✓✓
+
+as well as speculative decoding [23], optimize GPU use below the workflow layer and are also complementary. Evaluation frameworks such as HELM [25] and AgentBench [26] separate evaluation from production execution. Our platform in-stead reuses the production workflow definition to reduce behav-ioral drift. Cloud batch inference APIs, including Bedrock [5] and OpenAI [28], target single-turn inference and do not directly exe-cute tool-calling or multi-turn workflows. Batch execution of these workflows therefore requires separating inference submission from orchestration, as our binding compiler does. 
+
+## 6 Conclusion 
+
+We presented a binding-adaptive execution platform based on more than two years of operating Rufus across heterogeneous real-time, asynchronous, and batch runtimes. The platform represents infer-ence as a first-class operation in a typed dataflow DSL and compiles one workflow definition to each runtime. Tests across dozens of production agent configurations and five orchestration patterns found no detectable binding-specific difference in output quality. These results cover Amazon Bedrock and conversational shopping; providers or domains with different response characteristics may exhibit different cross-binding behavior. The batch binding also provides access to batch inference pricing and separates offline workloads from real-time serving. More broadly, execution-mode differences can be handled at the runtime layer when the workflow interface is restricted enough to preserve equivalence. Atul Kulkarni, Tarun Gopinath, Vijay Rajakumar, Shrikar Katti, and Parthasarathy Govindarajen 
+
+## References 
+
+[1] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav S. Gulavani, Alexey Tumanov, and Ramachandran Ramjee. 2024. Sarathi-Serve: CDF-Aware Scheduling for Efficient LLM Inference. In arXiv preprint arXiv:2308.16369 .[2] Tyler Akidau, Robert Bradshaw, Craig Chambers, Slava Chernyak, Rafael J. Fernández-Moctezuma, Reuven Lax, Sam McVeety, Daniel Mills, Frances Perry, Eric Schmidt, and Sam Whittle. 2015. The Dataflow Model: A Practical Approach to Balancing Correctness, Latency, and Cost in Massive-Scale, Unbounded, Out-of-Order Data Processing. In Proceedings of the VLDB Endowment , Vol. 8. [3] Amazon Web Services. 2012. Amazon Simple Workflow Service. https://aws. amazon.com/swf/. [4] Amazon Web Services. 2016. AWS Step Functions. https://aws.amazon.com/step-functions/. [5] Amazon Web Services. 2024. Amazon Bedrock Batch Inference. https://docs.aws. amazon.com/bedrock/latest/userguide/batch-inference.html. [6] Amazon Web Services. 2025. How Rufus scales conversational shopping experiences to millions of Amazon customers with Amazon Bedrock. https://aws.amazon.com/blogs/machine-learning/how-rufus-scales-conversational-shopping-experiences-to-millions-of-amazon-customers-with-amazon-bedrock/. [7] Amazon Web Services. 2025. Strands Agents: An Open Source AI Agents Frame-work. https://strandsagents.com. [8] Amazon Web Services. 2026. Amazon Bedrock Pricing. https://aws.amazon.com/ bedrock/pricing/. Accessed August 2026. [9] Amazon Web Services. 2026. Strands Agents Documentation. https:// strandsagents.com. Accessed August 2026. [10] Anthropic. 2024. Model Context Protocol. https://modelcontextprotocol.io. [11] Apache Software Foundation. 2020. Stateful Functions: A Platform for Compos-ing Asynchronous Distributed Applications. https://flink.apache.org/what-is-stateful-functions/. [12] Apache Software Foundation. 2026. Apache Beam Documentation. https://beam. apache.org/documentation/. Accessed August 2026. [13] Apache Software Foundation. 2026. Apache Flink Stateful Functions Documen-tation. https://nightlies.apache.org/flink/flink-statefun-docs-stable/. Accessed August 2026. [14] Ralph Allan Bradley and Milton E. Terry. 1952. Rank Analysis of Incomplete Block Designs: I. The Method of Paired Comparisons. Biometrika 39, 3/4 (1952), 324–345. [15] Sebastian Burckhardt, Chris Gillum, David Justo, Konstantinos Kannan, Con-nor McMahon, and Christopher Schiefer. 2021. Durable Functions: Semantics for Stateful Serverless. In Proceedings of the ACM on Programming Languages (OOPSLA) , Vol. 5. ACM. [16] Paris Carbone, Asterios Katsifodimos, Stephan Ewen, Volker Markl, Seif Haridi, and Kostas Tzoumas. 2015. Apache Flink: Stream and Batch Processing in a Single Engine. In Bulletin of the IEEE Computer Society Technical Committee on Data Engineering , Vol. 38. [17] Wei-Lin Chiang, Lianmin Zheng, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zhuohan Li, Dacheng Li, Eric P. Xing, Hao Zhang, Joseph E. Gonzalez, and Ion Stoica. 2024. Chatbot Arena: An Open Platform for Evaluating LLMs by Human Preference. In Proceedings of the 41st International Conference on Machine Learning (ICML) .[18] Dayuan Fu, Jianzhao Huang, Siyuan Lu, Guanting Dong, Yejie Wang, Keqing He, and Weiran Xu. 2025. PreAct: Prediction Enhances Agent’s Planning Abil-ity. In Proceedings of the International Conference on Computational Linguistics (COLING) .[19] Omar Khattab, Arnav Singhvi, Paridhi Maheshwari, Zhiyuan Zhang, Keshav San-thanam, Sri Vardhamanan, Saiful Haq, Ashutosh Sharma, Thomas T. Joshi, Hanna Mober, et al. 2024. DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines. In International Conference on Learning Representations (ICLR) .[20] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient Memory Management for Large Language Model Serving with PagedAtten-tion. In Proceedings of the 29th ACM Symposium on Operating Systems Principles (SOSP) .[21] LangChain. 2024. LangGraph: Building Stateful, Multi-Actor Applications with LLMs. https://langchain-ai.github.io/langgraph/. [22] LangChain. 2026. LangGraph Documentation. https://langchain-ai.github.io/ langgraph/. Accessed August 2026. [23] Yaniv Leviathan, Matan Kalman, and Yossi Matias. 2023. Fast Inference from Transformers via Speculative Decoding. In Proceedings of the 40th International Conference on Machine Learning (ICML) .[24] Tianle Li, Wei-Lin Chiang, Evan Frick, Lisa Dunlap, Tianhao Wu, Banghua Zhu, Joseph E. Gonzalez, and Ion Stoica. 2024. From Crowdsourced Data to High-Quality Benchmarks: Arena-Hard and BenchBuilder Pipeline. arXiv preprint arXiv:2406.11939. [25] Percy Liang, Rishi Bommasani, Tony Lee, Dimitris Tsipras, Dilara Soylu, Michi-hiro Yasunaga, Yian Zhang, Deepak Narang, et al. 2023. Holistic Evaluation of Language Models. In Transactions on Machine Learning Research .[26] Xiao Liu, Hao Yu, Hanchen Zhang, Yifan Xu, Xuanyu Lei, Hanyu Lai, Yu Gu, Hangliang Ding, Kaiwen Men, Kejuan Yang, et al. 2024. AgentBench: Evaluating LLMs as Agents. In International Conference on Learning Representations (ICLR) .[27] Microsoft. 2026. AutoGen Documentation. https://microsoft.github.io/autogen/. Accessed August 2026. [28] OpenAI. 2024. OpenAI Batch API. https://platform.openai.com/docs/guides/ batch. [29] Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max Ryabinin, Beidi Chen, Percy Liang, Christopher Ré, Ion Stoica, and Ce Zhang. 2023. FlexGen: High-Throughput Generative Inference of Large Language Models with a Single GPU. In Proceedings of the 40th International Conference on Machine Learning (ICML) .[30] Ber Shi, Nikitha Saravanan, Xiang Lorraine Lin, Shivkumar Ranjit, Vidhisha Srinivasan, and Gaurav Jain. 2025. Judging the Judges: Evaluating Alignment and Vulnerabilities in LLMs-as-Judges. In Proceedings of the 5th Conference of the Asia-Pacific Chapter of the Association for Computational Linguistics (AACL) .[31] Temporal Technologies. 2023. Temporal: Open Source Durable Execution. https: //temporal.io. [32] Temporal Technologies. 2026. Temporal Documentation. https://docs.temporal.io. Accessed August 2026. [33] Qingyun Wu, Gagan Bansal, Jieyu Zhang, Yiran Wu, Beibin Li, Erkang Zhu, Li Jiang, Xiaoyun Zhang, Shaokun Zhang, Jale Liu, Ahmed Hassan Awadal-lah, Ryen W. White, Doug Burger, and Chi Wang. 2023. AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation. In arXiv preprint arXiv:2308.08155 .[34] Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. 2023. ReAct: Synergizing Reasoning and Acting in Language Models. In International Conference on Learning Representations (ICLR) .[35] Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and Byung-Gon Chun. 2022. Orca: A Distributed Serving System for Transformer-Based Generative Models. In Proceedings of the 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI) .[36] Haoran Zhang, Adney Cardoza, Peter Baile Chen, Sebastian Angel, and Vincent Liu. 2020. Beldi: An Application-Level Exactly-Once Library for Serverless Workflows. In Proceedings of the 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI) .[37] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric P. Xing, Hao Zhang, Joseph E. Gonzalez, and Ion Stoica. 2023. Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. In Advances in Neural Information Processing Systems (NeurIPS) .[38] Zihao Zhuang, Yanan Bao, Juncheng Gu, Yingjun Low, Shenggui Lu, Hao Cui, and Yang You. 2023. ExoFlow: A Universal Workflow System for Exactly-Once Semantics. In Proceedings of the 17th USENIX Symposium on Operating Systems Design and Implementation (OSDI) .

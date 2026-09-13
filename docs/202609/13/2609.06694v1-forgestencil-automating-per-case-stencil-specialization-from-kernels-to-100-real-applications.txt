@@ -1,0 +1,564 @@
+Title: ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications
+
+URL Source: https://arxiv.org/pdf/2609.06694v1
+
+Published Time: Wed, 09 Sep 2026 01:26:19 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications 
+
+Yaojian Chen 
+
+Tsinghua University Beijing, China 
+
+Yuxuan Li 
+
+Tsinghua University Beijing, China 
+
+Wubing Wan 
+
+Tsinghua University Beijing, China 
+
+Lin Gan 
+
+Tsinghua University Beijing, China 
+
+Guangwen Yang 
+
+Tsinghua University Beijing, China 
+
+Zhiyuan Liu 
+
+Tsinghua University Beijing, China 
+
+Abstract 
+
+On modern GPUs the fastest stencil kernel depends on the stencil’s shape, precision, and host application, and a kernel tuned for one case is rarely fastest for another. Stencil DSLs, code generators, and autotuners instead pursued general-ity: a single human-authored method reused across cases and validated mainly on microbenchmarks, because per-case specialization was too costly to scale. ForgeStencil starts from the opposite assumption. Code-synthesis agents have reduced that cost enough to build a fresh solution for each case and deploy it end-to-end in real software. A Kernel Agent synthesizes CUDA and forges a per-configuration matrix of specialized operators that matches or exceeds the strongest publicly available state-of-the-art (SOTA) baseline for each case. An App Agent extends the principle to whole applications: it locates hotspots, rewrites application structure, and validates and integrates each change across 100+ real industrial and scientific codes. Most of the measured speedup comes from structural and host-side rewrites, with pure stencil replace-ment in the minority; the gain also correlates negatively with how well the baseline was already tuned, consistent with gains coming from specialization rather than generic reuse. Every result is checked by a measurement-integrity harness that turns an overstated speedup into a system-level error. The forged kernels reach a same-precision f32 geometric mean of 2.35 × against the per-case SOTA baselines (fp16 gains, 1.95 ×, disclosed separately; A100), and the end-to-end application median is 1.41 × across 100 codes, all against same-architecture GPU baselines with program-provided validation and timing. Of 116 candidates, every one that failed the correctness, measurement, or speedup criteria was recorded as rejected or downgraded instead of written up as a speedup. 
+
+CCS Concepts: • Computing methodologies → Parallel programming languages ; • General and reference →
+
+Empirical studies .
+
+Keywords: stencil computation, GPU, code synthesis, LLM agents, auto-research, performance engineering, measure-ment integrity 
+
+1 Introduction 
+
+Stencil computation, repeated updates of a grid from a fixed neighborhood of its elements, underlies a large fraction of industrial and scientific computing, from computational fluid dynamics to climate codes. These kernels are memory-bound, and approaching the hardware limit is among the most expert-intensive tasks in high-performance computing: the optimization that reaches peak performance changes qualitatively with the exact stencil, grid shape, precision, and target architecture. The dominant response over two decades has been to build 
+
+general methods that cover many stencils, shapes, and appli-cations from one human-authored recipe: stencil DSLs [17, 25, 30], polyhedral and GPU code generators [13, 20, 27, 35], temporal-blocking frameworks [22, 32, 34], and auto-tuners [1, 6, 36]. Such systems do emit a per-case kernel, by compiling a schedule or searching a parameter space, but the recipe and the space it can reach are fixed in advance by a hu-man, and peak stencil performance is per-case: the optimal kernel structure changes qualitatively across grid shapes, and an application’s bottleneck is typically a structural flaw in that application rather than a generically slow opera-tor. Generic frameworks stayed in place on cost: writing a specialized solution from scratch was too expensive. That concession is now less compelling: code-synthesis agents produce a correct, specialized implementation from scratch at a marginal cost that is no longer prohibitive [9, 15, 24], so one can forge a fresh solution per case rather than reuse a general one, removing, case by case, the generality tax the generic method incurred. We call this paradigm Forge Engineering ; the ForgeTrain line of work develops the same paradigm for deep-learning training frameworks [23]. ForgeStencil automates per-case forging at two levels. A Kernel Agent synthesizes concrete CUDA to forge a per-configuration matrix of specialized operators, each kept only if a harness measures it faster and correct against per-case public-SOTA upper bounds. An App Agent extends 
+
+> 1arXiv:2609.06694v1 [cs.DC] 6 Sep 2026 Chen et al.
+
+the same principle to whole applications: it locates the performance-critical region, forges a per-app optimization (usually a structural rewrite), and validates and integrates it against the application’s own tests and timing across 100+ real industrial and scientific codes. Both levels are checked by a measurement-integrity harness, and their evidence stays strictly separate: operator-level claims rest only on kernel microbenchmarks, application-level claims only on the application harness, and neither endorses the other. The contribution is the automation of specialization: we develop and demonstrate Forge Engineering on stencil computation and propose no new stencil algorithm. Forge Engineering has no workload-level admission test: the same hypothesis–measure–revise loop applies wherever specialization can pay off in high-performance computing. We choose stencil as the demonstration domain because its instances are clearly specified, per-case SOTA baselines are abundant, correctness is easy to check, and performance can be measured separately at the kernel and application levels. The dual-agent architecture itself is general: its collaboration mirrors a standard high-performance-computing engineer-ing workflow. The agents form a hypothesis, implement an optimization, measure the result, and iterate on the feedback. Applying the architecture to FFT, SpMV, tensor contraction, or GEMM fusion requires only modest adaptation of the domain knowledge and operator space. 
+
+Contributions. We make three contributions: an operator-level matrix with knowledge reuse, a two-stage application-level forging workflow, and a measurement-integrity harness that verifies the results at both levels separately. 
+
+• Operator-level forging. We design a configuration-indexed matrix of specialized operators and use val-idated cells as a knowledge base: application-level forging first attempts a match and invokes the Ker-nel Agent only when no cell applies. Across main-stream stencil types, shapes, and f16/f32/f64 preci-sions, the matrix reaches or exceeds per-case public-SOTA upper bounds (same-precision f32 geometric mean 2.35 × on A100). 
+
+• Application-level forging. We design a staged work-flow that performs framework-level optimization be-fore operator-level forging: it first rewrites scheduling, fusion, and host–device traffic, then reuses or creates a hot-operator cell, and finally validates and integrates the change. The workflow covers 100+ real industrial and scientific codes and achieves an end-to-end me-dian speedup of 1.41 × against same-architecture GPU baselines. 
+
+• A measurement-integrity harness. Separate oper-ator and application harnesses verify the two levels through executable checks on agent-read-only mea-surement surfaces, making an overstated speedup a system-level error and retracting the framework’s own numbers when required. 
+
+2 Background & Motivation 
+
+2.1 Stencils, their variety, and the bandwidth limit 
+
+A stencil computation repeatedly updates each element of a regular grid from a fixed set of neighboring elements. Let 𝑢 𝑡 
+
+be the grid state at time step 𝑡 over a 𝑑 -dimensional index domain Ω ⊆ Z𝑑 . A stencil is fixed by a finite offset set 𝑆 =
+
+{𝛿 1, . . . , 𝛿 𝑘 } ⊂ Z𝑑 , the pattern of neighbors each point reads, together with an update rule 
+
+𝑢 𝑡 +1 (𝑥 ) = Φ { 𝑢 𝑡 (𝑥 + 𝛿 ) : 𝛿 ∈ 𝑆 } , 𝑥 ∈ Ω,
+
+applied to every point of the grid and iterated over 𝑡 . In the common linear, constant-coefficient case Φ collapses to a weighted sum 𝑢 𝑡 +1 (𝑥 ) = Í𝛿 ∈𝑆 𝑐 𝛿 𝑢 𝑡 (𝑥 + 𝛿 ), so a stencil is, concretely, the pair (offset geometry 𝑆 , coefficients 𝑐 𝛿 )driving a time-stepped sweep. It is the core of a large class of scientific and industrial codes: fluid dynamics, seismic and electromagnetic modeling, climate and weather, molecular dynamics, and the discretized PDE solvers embedded in many simulation tools. Instances of this pattern differ mainly in stencil type and run shape, both of which directly affect the optimal imple-mentation. The stencil’s type is the geometry of 𝑆 : a star 
+
+pattern reads only along the axes, a box pattern the full sur-rounding cube; the order 𝑟 = max 𝛿 ∈𝑆 ∥𝛿 ∥∞ and dimension 𝑑 
+
+set the neighbor count (hence the arithmetic per point) and the extent that must stay resident for reuse, and constant versus spatially varying 𝑐 𝛿 decides whether coefficients fold into registers or stream from memory. The run’s shape is the extent and aspect ratio of Ω together with the working pre-cision (f16/f32/f64). None of this is cosmetic: 𝑆 fixes the data-reuse structure and hence which tiling and register blocking pay off, shape fixes which blocking-versus-occupancy trade wins once a tile must fit in shared memory and registers, and precision scales the byte traffic per point directly. Stencils are arithmetic-light, so nearly all sit in the bandwidth-limited region of the roofline model, and peak performance is a question of memory traffic: minimizing redundant loads, maximizing reuse across registers and shared memory, coalescing access, and keeping occupancy high enough to hide latency. These levers interact through type and shape. The seven-point star stencil ( star_1 ) pro-vides a controlled comparison in which only shape changes: with stencil type, precision, and architecture fixed, cubes and anisotropic slabs route to different fp16 kernels and launch geometries. Shape alone can therefore change which implementation performs best. The kernel hand-tuned to the hardware limit for one (𝑆, shape , precision , architecture )
+
+point rarely stays optimal for the next. 
+
+> 2ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications
+
+2.2 Generic stencil methods and the generality tax 
+
+The field answered this per-case pressure with general 
+
+methods along three routes. Parallelizing compilers and code generators derive the blocked kernel from a high-level form: compilation frameworks (Pochoir [30], PATUS [5], Ph-ysis [19], YASK [33]), the polyhedral generators AN5D [20] and Bricks [35], and single-lever generators for on-chip reuse and register pressure (Overtile [13], StencilGen [27], register-level optimization [26], Lift [11]). These compilers can only combine predefined transformations; they cannot explore cross-kernel fusion or memory layouts rebuilt for a specific setting. These structures produce much of the per-case specialization gain. Autotuning and tensor compilers hand the decision to measurement instead: stencil autotuning [6], configuration search [1], and schedule search under a learned cost model in TVM [2] and Ansor [36]. TVM is the standing precedent that per-case specialized schedules beat generic library calls, but the space searched stays human-templated, so search returns a better parameter setting for a given form rather than the best form for a given problem. Hand-optimized implementations and DSLs are the stencil counterpart of the vendor-library route: Halide [25] and Devito [17] separate schedule from algorithm to lower the authoring bar, and hand-optimized lines set the standard per family, temporal blocking (time skewing and its 3.5-D refinement [22], EBISU [34], DRStencil [32]) and matrix-unit remapping (ConvStencil [4], FlashFFTStencil [12]). One implementation plus built-in variants and runtime dispatch serves many call sites, structurally forfeiting specialization beyond the covered shapes and interface boundaries. The three ceilings differ, but they leave the same problem unsolved: automating specialization. All three routes share one economic premise, that implementations are expensive and must therefore be reused: compilers reuse transforma-tion rules, autotuners reuse search templates, libraries and DSLs reuse the implementation itself. The generality tax fol-lows structurally from that premise: the abstraction layer, the configuration surface, and the code paths written for other cases exist so that one artifact can span many, so thinning them narrows coverage rather than removing the cost. Gen-erality cannot certify itself either: this lineage is validated almost exclusively on microbenchmarks, each system beat-ing the defaults in its own paper and almost never compared head-to-head. The prior lineage complements Forge Engineering : any of these systems can serve as a per-case baseline inside the SOTA upper bound we measure against, and several do. The aim is different. Existing systems set out to generate or opti-mize stencil implementations; ForgeStencil sets out to make an agent research, validate, and deploy specialization. Stencil is our demonstration domain because it offers clearly defined instances, strong per-case baselines, and a demanding setting for controlled measurement. 
+
+2.3 The LLM opening and Forge Engineering 
+
+The generality tax above follows from an economic premise: implementations are too expensive to build per case and must therefore be reused. Recent work changes that economics through program search for faster low-level algorithms [3, 8, 18, 21, 28], autonomous-agent loop machinery [14, 16, 29, 31], and, closest to our setting, agentic synthesis of performance-critical GPU code itself [9, 15, 24]. Together, they make fresh specialized implementations cheap enough to produce per case. Reuse is no longer the rational default, so the cross-case abstractions, configuration surfaces, and irrelevant code paths that create the tax need not be carried. Per-case forging can remove the tax at its source rather than optimize within its constraints. Cheap synthesis alone, however, is not performance engi-neering. Performance engineering is iterative: form a hypoth-esis, implement it, measure correctness and speed, and revise from the feedback. Recent LLM-driven operator optimizers already couple synthesis to hardware feedback or iterative coding agents [7, 9, 15], matching this workflow. Their nat-ural form is therefore agentic. Loop engineering supplies the persistent state, measurement feedback, and control flow that repeat the workflow until a candidate passes its gates. Three gaps keep existing work from realizing this open-ing. First, it has barely reached stencil: kernel synthesis fo-cuses on GEMM, attention, and scheduling, while the little stencil-specific work trains on a corpus of existing implemen-tations [7] and inherits that dependence. Second, it treats each kernel as a one-off artifact rather than specialization as a repeatable engineering practice. Third, trust remains unre-solved: reward hacking is documented, and removing con-taminated tasks drops the reported KernelBench aggregate from 3 .13 × to 1 .49 × [15], so a result is only as trustworthy as the harness that measures it. 
+
+Forge Engineering , or Forge Engineering, closes these gaps by changing the default from reusing a general method to forging a fresh solution for the case at hand. Forging is nei-ther template generation nor parameter search: its agentic loop directly synthesizes implementation structures, mea-sures them, and revises them against an independent har-ness. The durable asset is the framework itself: the loop, the harness, and the domain knowledge. The loop is also domain-independent: the same forge-measure-revise process applies wherever specialization pays, while the domain knowledge changes with the target. We develop it on stencil; the For-geTrain line applies the same paradigm to deep-learning training frameworks [23]. 
+
+3 System Overview 
+
+ForgeStencil realizes Forge Engineering for stencil computa-tion through two cooperating agents that forge specialized solutions at two levels, both checked by a single shared   
+
+> 3Chen et al.
+> Plan Code Profile
+> next round
+> Kernel Agent
+> Framework-level optimization Operator-level forging
+> App Agent
+> invokes
+> Operator harness Application harness
+> verdict verdict
+
+Figure 1. ForgeStencil: two agents, framework-first appli-cation forging, and separate operator/application harnesses. The App Agent invokes the Kernel Agent only when no ma-trix cell matches; Section 5 expands its internal process into explicit milestones. measurement harness (Figure 1). This section gives the ar-chitecture and the mechanism common to both levels. The two agents operate at different granularities. The Ker-nel Agent builds and validates specialized operator-matrix cells, while the App Agent first optimizes application struc-ture and then reuses or requests a matching operator cell. Figure 1 shows these responsibilities rather than their execu-tion sequence; Section 5 defines the App Agent’s milestones, exit states, and admission gates. Both agents only propose changes: the appropriate harness independently measures correctness and speed on real hardware and decides what is admitted. The App Agent may invoke the Kernel Agent, but the dependency is one-way and the two harnesses keep their verdicts separate. 
+
+4 Kernel Agent: Forging Specialized Operators 
+
+The Kernel Agent is the operator-level instance of Forge En-gineering : for each concrete combination of stencil type, grid shape, and precision, it synthesizes a specialized CUDA ker-nel and keeps it only if measured faster and correct. This section describes the loop, then the two-layer memory the loop builds up in the operator matrix, and finally the struc-tures it forges, shown through contrasting kernels that also make clear why this is code synthesis rather than autotuning or template generation. 
+
+4.1 The code-synthesis autoloop One round. The Kernel Agent runs an autonomous loop with no human inside a round. A round opens by reading five inputs: the rulebook, the performance log, the idea log, the persisted baseline, and the last few commit subjects. The first four carry what the loop has learned; the commit sub-jects only tell the round where it stands in the sequence of accepted changes. The agent proposes one change, edits 
+
+Figure 2. The operator matrix indexes dominant structures by stencil, shape, and precision. Validated cells seed adapta-tion and profiling; uncovered cells trigger a new forge. only the CUDA kernel source and its Python entry point, and measures the affected case then the whole matrix; the operator harness applies its two gates (correctness against an independent oracle, no regression against the accepted cases) and the change is committed if both pass, reverted otherwise. The agent then records the outcome in the performance log, writes the next concrete idea into the idea log, and stops; it is told explicitly that no user is present, so asking a question spends a round without producing a measurement. 
+
+Context management. Each round starts from an empty context: the agent is a fresh process, and nothing survives from the previous round except what was written to disk, so a round’s starting state is the source tree itself. Carrying hundreds of rounds of history would inflate the context until attention no longer stays on the case at hand, and most of that history is redundant, since the kernel source already describes where the search has arrived. The tree has one blind spot: a reverted change leaves no trace, so the code cannot show what was already tried and failed; the logs cover exactly that gap, which is why a round opens by reading them. Log entries must stay factual, tying a change to its measurement and a claim to its profile, because every later round reads the log and would take an unsupported opinion for an established result. 
+
+One change per round. The one-change rule keeps a round’s outcome readable: when the matrix regresses, the 
+
+> 4ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications
+
+cause is that round’s single edit, which is reverted without any later bisection, and the log entry names one specific structure precisely enough for a later round to act on. 
+
+Branching. Some structures need several rounds to get right and would otherwise be abandoned at their first failure. Disruptive rewrites (e.g., a wholesale fusion or a tensor-core mapping) and single-shape kernels are built on their own branches; after five rounds without progress a branch is measured against the main line, merged if faster, and dropped otherwise. Every accepted round is a commit, so dropping a branch costs nothing that was already working. 
+
+4.2 The matrix as the loop’s memory The matrix. The forged kernels form an operator matrix. Each cell carries the winning lever and concrete code, making the matrix both a map of the generality tax and the loop’s memory between rounds. 
+
+Positive layer. The source tree is a library of worked examples: each cell couples a bottleneck diagnosis to code that cleared the gate. A new case borrows and adapts a nearby structure, then re-profiles it and keeps it only if it passes. 
+
+Negative layer. Logs record each rejected direction with its loss, profile-backed cause, and stopping condition. For example, a register micro-tile lost 1 .4% on a star_1 slab because wave quantization, not memory-level parallelism, limited the scheduler; the log therefore rules out fewer, fatter blocks and points the next round toward thinner ones. 
+
+Control. Repeated dead ends become rules constraining later rounds; after three consecutive non-improving rounds the loop must search outside its history. Both layers are plain flat files reread at each round’s start; there is no retrieval index. 
+
+4.3 How forging removes the generality tax The mechanism. The background argued that the gener-ality tax is structural; the forged library makes that argu-ment concrete. The levers the loop pulls are the standard bandwidth-bound repertoire, register coarsening, vectorized loads, shared-memory tiling, occupancy tuning; the reper-toire is generic, and what is specialized is the choice: the loop profiles a case, finds the binding bottleneck, and pulls only the levers that pay off for it. 
+
+Opposite decisions. Two bandwidth-bound kernels make the point: the same coarse diagnosis drives them to opposite decisions. star_1 (7-point) already runs near the DRAM roofline, so the loop pushes the only levers left: an fp16 register micro-tile, vectorized loads, maximal occupancy, and a launch geometry split in two, one variant for cubes and one for slabs. box_1 (27-point) is bandwidth-bound too, but under register pressure the loop lowers 
+
+occupancy on purpose, spending registers on a 𝑗 -blocked micro-tile and leaning on instruction-level parallelism instead. One “bandwidth-bound” diagnosis, two opposite occupancy decisions: a generic recipe must commit to one 
+
+Table 1. Per-case public-SOTA baseline ownership across 37 cases.         
+
+> Halide Devito EBISU fp16 ( 𝑛 =24) 21 30fp32 ( 𝑛 =13) 373
+
+policy and pay the tax on whichever kernel it guessed wrong, while the loop forges for each kernel the strategy its bottleneck demands. 
+
+Real baselines. No generic baseline wins across the full matrix: the per-case winners are split among Halide, Devito, and EBISU. Table 1 summarizes the 37 cases with a public-SOTA baseline; the complete per-case mapping is in the supplementary material. 
+
+A shifting axis. In the next two cases the bottleneck itself moves, so the optimization axis changes; no retuning of a bandwidth-axis recipe reaches them. box_2 (125-point) is the library’s one compute-bound corner: the lever shifts to cutting computation with a warp-level shfl reduction, and a tensor-core mapping the loop also forged was measured and rejected. The diamond temporal-blocking family moves the axis the other way, to temporal depth: several time steps fuse into one launch, keeping intermediate time planes on-chip so register and shared-memory reuse replaces per-step DRAM streaming, and measurement merged the 4- and 8-step variants into a single fused kernel, where blind per-configuration generation would have multiplied them. The same fusion idea extends to 13 kernels that fuse a stencil with the application’s physics into one launch; no lever is applied uniformly, and each appears only where a measurement justified it. 
+
+Beyond a fixed template. Numeric sweeps are peeled off into deterministic scripts (Rule 18); the Kernel Agent instead synthesizes the concrete CUDA structure . An equal-compute ablation separates synthesis, search, and one-shot generation empirically. 
+
+5 App Agent: Extending Specialization to Whole Applications 
+
+The App Agent carries Forge Engineering from the operator level to whole applications. For each real codebase it forges an optimization specialized to that application, validates it with the program’s own tests and timing, and integrates it. The central finding of this section is that these application-level wins are, with few exceptions, per-application struc-tural solutions (fusing launches, removing host-device round-trips, fixing a layout that defeats coalescing, simplifying an arithmetic formulation). Drop-in replacement of a stencil kernel accounts for a small minority, so specialization has to be forged per application instead of built once and reused everywhere. 
+
+> 5Chen et al.
+
+5.1 States, milestones, and the Amdahl ceiling 
+
+> M1 baseline M2a framework M2b operator M3 validate M4 integrate M2b: match matrix cell or invoke Kernel Agent
+
+Figure 3. Application forging proceeds from baseline to framework optimization, operator matching or re-forging, validation, and integration. Application-level work is tracked by an explicit state ma-chine, because an integration attempt has several honest out-comes besides success and each should be recorded. Every candidate starts in PENDING and leaves it only by reaching one of five terminal states: OUT_OF_SCOPE (no stencil-shaped hotspot, outside Forge Engineering ’s premise), BLOCKED (no fair baseline can be established, e.g., the application’s own GPU baseline is unavailable), RESEARCH (a real opportunity exists but a validated integration is out of reach this pass), 
+
+DROPPED (forging and validation ran but nothing cleared the gates), or INTEGRATED (a change passed the correctness and timing gates and was merged). The non-success states are first-class outcomes; recording them, rather than forc-ing every candidate into an INTEGRATED number, keeps the reported coverage honest. The states are assigned at five milestones, which turn each integration into a staged process that can be stopped and clas-sified at a well-defined point. M1 locates the performance-critical region and establishes the application’s own GPU baseline (where OUT_OF_SCOPE and BLOCKED exit); M2a per-forms framework-level optimization; M2b then matches an existing operator-matrix cell or invokes the Kernel Agent to forge a new hot operator; M3 validates it against the program’s built-in correctness check and timing; M4 inte-grates the accepted change. The baseline these gates measure against is the application’s own GPU implementation, and correctness and speed are independent gates enforced by the adversary-resistant application harness. What is achievable end to end is bounded by Amdahl’s law. If the targeted region takes a fraction 𝑓 of end-to-end run-time and is accelerated by a factor 𝑆 , the whole-application speedup cannot exceed 1 /( 1− 𝑓 + 𝑓 /𝑆 ). Two consequences re-cur through the results. First, when the stencil fraction 𝑓 stencil 
+
+is small it caps the achievable end-to-end gain however fast the operator becomes, so chasing operator speed alone is often the wrong target. Second, the largest end-to-end wins tend to come from raising 𝑓 structurally, by removing redun-dant launches, host-device traffic, or recomputation, rather than from shrinking a single kernel’s time. This ceiling also sets the order in which M2a and M2b forge. 
+
+5.2 Two-layer forging, framework before operators 
+
+M2 consists of two sequential milestones, in a fixed order: M2a performs framework-level optimization first, then operator-level optimization. Framework-level optimization targets the structure around the kernels, mainly schedul-ing, operator fusion, and removing redundant launches, host-device round-trips, and recomputation. Operator-level optimization targets the hot kernel itself and is carried out by the Kernel Agent, the same forge loop, now invoked inside a real application. The operator layer begins with a match decision. The App Agent checks whether the application’s hot operator matches an existing cell of the forged matrix. If it matches, that cell is adapted and integrated directly. If not, the App Agent writes a fresh forging target and invokes the Kernel Agent, which runs a new forge for this application. Four conditions send a case down that path: the region needs a single fused operator rather than the separate ones the library holds, the application uses a non-standard primitive no cell covers, the matching cell exists only at another shape or precision, or a transplanted kernel fails on the application’s own data. The non-standard primitive is the most common of the four across our candidates. The call runs one way. The App Agent invokes the Kernel Agent; the Kernel Agent never invokes an application. The order is deliberate, for two reasons. First, where a sten-cil is fused with neighboring operators, the framework-level fusion is a prerequisite for operator forging, since the opera-tor’s boundary is not fixed until the fusion sets it. Second, operator forging’s end-to-end effect is bounded by Amdahl’s law through the operator’s fraction 𝑓 ; doing framework work first freezes 𝑓 , so the operator speedup is measured against a stable fraction and its end-to-end ceiling is shown cleanly. The operator layer reaches a little wider than stencils. The Kernel Agent’s rules contain no stencil-specific domain knowledge (that lives only in its knowledge base), so the loop is a general optimizer that can forge simple non-stencil operators too. This matters because of the Amdahl ceiling: once the stencil region is much faster, its complement 1 − 𝑓 
+
+becomes the bottleneck, a non-stencil operator can become the new hotspot, and the same Kernel Agent takes it on. The experiments report these cases. 
+
+6 Measurement-Integrity Harness 
+
+6.1 Positioning 
+
+Because an agent that produces a speedup can also overstate it, Forge Engineering checks every claim with separate opera-tor and application harnesses whose verdicts never mix. Both require a fair comparison, an independent correctness oracle, and honest aggregation and provenance. Each requirement is an executable check on a measurement surface the agent cannot edit, making an overstated speedup a system-level 
+
+> 6ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications
+
+Table 2. The requirements a trustworthy speedup must sat-isfy and the fraud each precludes.               
+
+> Requirement Fraud precluded Real upstream program (no proxy) Synthetic or proxy benchmark as end-to-end GPU-version-first baseline CPU straw-man comparison Program’s own dataset Cherry-picked stencil-heavy input Single switch, byte-identical
+> orig
+> Asymmetric variants; weak-ened baseline Program’s own correctness check Self-written oracle; “wrong but faster” Program’s own timing, inter-leaved median Favorable windows; setup/IO in baseline All-dataset geometric mean Single-dataset cherry-pick Enforced REAL provenance Proxy or cross-architecture pass-off
+
+error rather than a question of trust. We present the applica-tion requirements according to the fraud each blocks, so the protocol itself is testable. 
+
+6.2 The operator harness 
+
+Every Kernel Agent round must clear a double gate on a surface it does not control. The correctness gate uses an inde-pendent oracle and a scale-invariant, per-precision relative error whose tolerance cannot be loosened case by case. The 
+
+zero-regression gate covers every accepted case with a per-sisted prior-best baseline that advances only on acceptance; this baseline is the loop’s own history, distinct from the ex-ternal SOTA used for final evaluation. Both gates read an idle-GPU canonical re-measurement instead of noisy in-loop timing. The agent edits only kernel source; the driver, timer, and oracle remain outside its reach. Concrete thresholds are reported with the experiments. 
+
+6.3 The application harness 
+
+A reported application speedup is admitted only if it satisfies the requirements of Table 2, each of which blocks a specific way to fabricate a favorable number. These fall on the three fronts above: the comparison rows force two variants of the 
+
+same real program , on the program’s own inputs and against the baseline it ships, differing by a single switch and timed fairly; the correctness row hands the verdict to the program itself; and the last two rows keep the reported number honest. Correctness is settled by the application through one of three manifest modes: builtin consumes its valida-tion verdict through a result pattern with an explicit failure pattern, same_program_output_diff compares both variants’ numerical outputs on the same input, and 
+
+cross_variant_stdout compares their matched output. Thus the oracle always comes from the program itself, making the verdict adversary-resistant. Reporting follows two rules. Multi-dataset applications report the all-dataset geometric mean (R-I16), and REAL re-quires a same-architecture GPU measurement. Proxies are disallowed and cross-architecture candidates remain out-side the headline; all 100 validated applications are therefore 
+
+REAL .Each rule is enforced in code before execution. A schema-checked manifest declares the baseline, datasets, switch, cor-rectness mode, and provenance. A missing real-program block is rejected, so an operator proxy cannot pass as end-to-end; provenance is parsed rather than trusted; and both real-program variants must build and run before timing. The App Agent edits only the candidate and its switch, while the driver, timer, oracle, byte-identical orig branch, and mani-fest remain outside its reach. 
+
+7 Experiments 
+
+We evaluate Forge Engineering at both levels it operates on, keeping the two bodies of evidence strictly separate: the op-erator library is validated only by kernel microbenchmarks (§7.2) and the 100 applications only through the application harness (§7.3), with neither endorsing the other; §7.4 shows the harness overturning our own numbers. 
+
+7.1 Setup 
+
+Headline numbers are taken on a single NVIDIA A100; the operator library is additionally measured, and selectively re-forged, on an H100 and a B200, where public baselines were rebuilt on H100 only, so SOTA comparisons span A100 and H100 while B200 carries transfer results. Operator cases are compared against the strongest public system per case: Halide [25] and Devito [17] across all types, plus EBISU [34], ConvStencil [4], FlashFFTStencil [12], and DRStencil [32] on the types each supports (temporal-blocking baselines only against our TB operators), with speedups reported split by precision so fp16 traffic savings cannot inflate an apples-to-apples headline. The operator gate admits a case only below a scale-invariant relative error of 10 −4 (f32/f64) or 10 −2 (fp16, within 5 × of the numerical floor, E4) and within a 2% zero-regression band, both read from the seven-pass idle-GPU canonical measurement ( robust_canonical.json ). Appli-cations are compared against their own GPU implementa-tions; we lead with the median speedup, since the geometric mean is lifted by a few large outliers, and multi-dataset ap-plications report the all-dataset geometric mean (R-I16). All timings use the seven-pass interleaved canonical protocol; the raw variance analysis is provided in the supplementary material. 
+
+> 7Chen et al.
+
+7.2 Operator-Level Forging 7.2.1 Breadth of differentiation. The forged library’s breadth is the direct counter to the objection that this is just code generation: it contains 81 distinct __global__ ker-nels spanning nine stencil types, multiple grid shapes, and f16/f32/f64 precisions, of which the 41 benchmarked config-urations trigger 15 (the full dispatch view is in the supple-mentary material); we keep the two counts distinct through-out. The specialization is genuine: within an operator the code path branches by shape ( box_2 dispatches three struc-turally distinct kernels across cubes and slabs; star_1 routes cubes and anisotropic slabs to different fp16 kernels), and across operators the mechanism differs too, along the com-pute, memory-layout, and time-depth axes. The diamond 
+
+family adds the sharpest counter to per-configuration gen-eration: across roughly sixteen generated candidates the harness selected a consolidation, one fused kernel serving the 4- and 8-step depths with a separate single-step ker-nel, where blind per-configuration generation would have emitted one kernel per configuration. Each branch is admit-ted only through the operator harness’s double gate (E5; 
+
+csrc/stencil_kernel.cu ). 
+
+7.2.2 Library vs. per-case SOTA upper bounds. 
+
+Against same-precision f32-vs-f32 baselines ( 𝑛 =13), the library reaches a geometric-mean speedup of 2.35 × (median 2.83 ×), the conservative headline, with a bootstrap 95% confidence interval of [1.86, 2.92] over the seven-pass clean measurements ( 𝑛 =12: one diamond_ts4 cell carries no baseline in the robust set). Against mixed-precision fp16-vs-f32 baselines ( 𝑛 =24) it reaches 1.95 × (median 1.67 ×), disclosed separately. Across all 37 cases the combined geometric mean is 2.08 ×, 37 wins and 0 losses (Figure 4, E3). The memory-bound operators run at 74–85% of peak HBM bandwidth (median 76.6%). This also explains the narrower variable-coefficient margin (1.34 ×, 1 .27–1 .51 ×,
+
+𝑛 =5): Halide and Devito are themselves near that ceiling there, so a narrow gain shows both sides near peak, not a weak operator. Every committed fp16 kernel sits at the fp16 numerical floor, so the fp16 gains cost no accuracy (E4). Tiny grids, where launch overhead dominates wall-clock, are arbitrated on pure kernel time via ncu (e.g., star_1 
+
+128 3: 0.87 × wall-clock, 1.63 × arbitrated; full detail in the supplementary material). 
+
+7.2.3 A refuted tensor-core mapping: forging a neg-ative result. The library’s one compute-bound operator, 
+
+box_2 (SM 86%, DRAM 33%), is where a tensor-core (TC) mapping looks most tempting: recent SOTA libraries cast such kernels onto matrix units via im2col /Toeplitz packing (ConvStencil [4], FlashFFTStencil [12]). The forge loop tried that path and the harness rejected it. Table 3 traces the cam-paign: a naive im2col runs 67 × slower than the winning CUDA-core branch, an 𝑁 -batched Toeplitz mapping closes 
+
+Table 3. The box_2 tensor-core campaign against the win-ning CUDA-core branch (A100 f32, 512 3; ncu ).                      
+
+> Variant Runtime vs. warp16 TC util
+> ko2i_warp16 (CUDA core) 1.251 ms 1.0 ×—naive im2col (TC) 84.3 ms 67 ×2.1% Toeplitz, 𝑁 -batched (TC) 7.81 ms 6.2 ×8.9%
+> +bank-conflict fix (TC) 6.42 ms 5.1 ×10.8%
+
+it to 6 .2×, and a bank-conflict fix to 5 .1×, but tensor-pipe utilization never rises above 11%. The three variants con-verge on the same conclusion: engineering removes staging overhead without feeding the tensor cores, so the ceiling is structural rather than an implementation defect. An analytical model confirms the wall: dense packing of a sparse stencil pays a density penalty 𝐷 ≈ 6.4 that puts the shared-memory operand-feed floor above warp16’s mea-sured runtime while raw MAC throughput sits far below it, so no bank-conflict or occupancy lever can break through it (full model in the supplementary material). The claim is scoped: A100-specific (the operand-feed floor is set by this architecture’s shared-memory bandwidth and MMA shapes) and bounded (we do not claim no TC for-mulation can ever win); it sharpens the concurrent roofline-regime model of Gu et al. [10], with the full scoping argument in the supplementary material. 
+
+7.2.4 Synthesis beats search: an equal-compute abla-tion. A three-arm, equal-compute ablation isolates the three ways to reach a fast kernel: an autotuner sweeping launch configurations over a fixed naive kernel, a one-shot LLM generating once with no measurement feedback, and the forge loop synthesizing iteratively against the harness. The autotuner buys almost nothing (1.06 ×–1.28 ×) and the one-shot LLM is slower than naive (0.85 ×–0.87 ×), while forge reaches 2.29 ×–2.73 × despite being charged overheads the other arms are not, confirming the gain comes from the measure →feedback →re-synthesize loop rather than from search or one-shot generation alone. Full methodology and the per-stencil table are in the supplementary material. 
+
+7.2.5 The generality tax has an architectural axis: A100 →H100 →B200. The generality tax has a second axis: a kernel forged for one architecture is itself a generic artifact relative to the next, and the performance it leaves on the table there is the same tax in a different guise. Taking the A100-forged production kernels unchanged onto a real H100, the library transfers at a 1.81 × geometric mean, tracking the HBM3-over-HBM2 bandwidth ratio, while the specialization lead over Halide and EBISU holds and slightly widens. Re-forging recovers additional headroom only where the new hardware moves a kernel off its binding constraint (e.g., an occupancy retune on the one compute-bound operator); that is a config-level change on H100 and a structural rewrite on a 
+
+> 8
+
+ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications varcoeff_star_1 1024x128x128 varcoeff_star_1 256³ star_1 2048x2048x8 varcoeff_star_1 1024³ star_1 2048x64x64 varcoeff_star_1 1024x1024x32 varcoeff_star_1 512³ star_2 2048x64x64 star_1 1024x128x128 star_2 1024x128x128 star_1 256³ star_1 128³ star_2 256³ star_2 1024x1024x32 star_1 1024³ star_1 1024x1024x32 star_1 768³ star_1 512³ star_2 2048x2048x8 star_2 1024³ star_2 512³ box_2 512³ box_2 1024x1024x32 box_2 1024³ diamond_ts8 256³ diamond_ts4 256³ diamond_ts 256³ diamond_1 256³ box_1 256³ box_1 1024x1024x32 box_1 1024³ box_1 768³ diamond_ts 1024³ diamond_1 1024³ diamond_ts 512³ box_1 512³ diamond_1 512³ 01234567speedup vs.\ per-case best public SOTA 
+
+> fp32 (n=13, geomean 2.35×) fp16 (n=24, geomean 1.95×)
+
+Figure 4. Library vs. per-case public-SOTA upper bounds, split by precision (blue f32, orange fp16; dashed line is parity). A100, microbenchmark scope (E3). B200, where the same library transfers at 1.51 × across 41 cells once the memory-bound majority falls off the roofline. One rule covers both transitions: re-forging pays exactly where the bottleneck moved, and the cost of capturing the gain depends on whether the freed resource is a configuration knob or demands a rewrite. The full round-by-round walk-through, including the H100 box_2 decomposition and the B200 re-forge campaign, is in the supplementary material. The matrix also generalizes beyond benchmarked shapes: the cubic and edge-shape geometric means are 4.11 × and 4.04 ×, respectively; per-operator details are provided in the supplementary material. 
+
+7.3 Application-Level Forging: The Specialization–Generality Trade-off 
+
+Two findings make the specialization–generality trade-off concrete across 100 real applications: the observed speedups arise from per-app specialized solutions rather than from a uniformly faster generic operator, and the realized gain anti-correlates with the generic baseline’s quality. 
+
+7.3.1 Speedup distribution. Across the 100 validated ap-plications the end-to-end speedup has a median of 1.41 × and a geometric mean of 2.05 × (representative cases, including the outliers that lift the mean, are tabulated in the supple-mentary material). The distribution is broad (11 applications below 1 .05 ×, 46 in 1 .05–1 .5×, 22 in 1 .5–3 ×, 14 in 3–10 ×, 7 at ≥ 10 ×; Figure 5) and spans domains, with roughly 42% drawn from industrial codes. Gains from a single generic ac-celerator would cluster; these span two orders of magnitude. The eleven applications below 1 .05 × cleared the R-I13 floor (≥ 0.98 ×, no slower than baseline) and the program’s own correctness check; they remain in the count. 
+
+7.3.2 The wins come from forging. Classifying the 100 wins by how the speedup was produced yields the single most direct evidence for the paradigm (Figure 5). Fifty of the hundred came from a forged, bespoke stencil kernel (32 writ-ten for the application’s shape and precision, plus 18 fusing the stencil with the application’s physics into a single ker-nel); 33 from a forged non-stencil kernel; 17 from a pure host or structural rewrite with no new device kernel; and none from dropping in an off-the-shelf generic-library operator unchanged. In practice, accelerating a real GPU application is rarely a matter of calling a faster generic stencil. A fair reading separates two kinds of win. Some of the largest factors repair a naive upstream implementation (e.g., 
+
+haccmk at 36 .2×, bspline_vgh at 58 .39 ×); their value is that the pipeline finds and fixes them automatically, at scale, and under an enforced gate, across all 116 candidates. The case for the paradigm does not rest on these outliers: the headline median 1.41 × is insensitive to them by construction, and on the 46 applications whose baseline was already hand-tuned, the forged solution still wins on all 46 (median 1.33 ×,geometric mean 1.59 ×, minimum 1 .002 ×). Each real code presents shapes and domains the operators were never tuned for, and no generic-library operator was reused, so the end-to-end median is itself a measurement of generalization. 
+
+7.3.3 The generality tax is measurable: speedup vs. baseline quality. The second finding explains the distribu-tion’s shape: realized speedup is inversely correlated with the quality of the application’s existing GPU baseline (Fig-ure 6), recovering a large factor where upstream shipped a naive implementation and landing near parity where up-stream was already well tuned. This is the generality tax made measurable. The recoverable gain is set by that applica-tion’s own baseline rather than by any property of a shared operator, so no single generic trick could capture it. 
+
+9Chen et al. 10 −4 10 −2 10 0 10 2 10 4 10 6
+
+> baseline (orig) e2e time (s) 10 −4
+> 10 −2
+> 10 0
+> 10 2
+> 10 4
+> 10 6
+> ours e2e time (s)
+> stencil-forged (n=50) nonstencil-forged (n=33) host-structural (n=17) parity (speedup = 1)
+
+Figure 5. End-to-end runtime for all 100 validated applica-tions, colored by what was forged; below parity is a win (E2). 10 20 30 40 50 baseline DRAM bandwidth (\% of peak) → 10 0
+
+> 2 × 10 0
+> 3 × 10 0
+> 4 × 10 0
+> 6 × 10 0
+> our speedup vs.\ SOTA (log)
+
+Figure 6. Speedup vs. baseline quality: operator-level Pear-son −0.60 ( 𝑛 =37) and application-level Spearman −0.70 (𝑛 =43). 
+
+7.4 The Measurement Protocol in Action 
+
+The harness is credible only if it changes numbers we would otherwise report. We show it overturning our own results and, by ablation, show that removing any requirement dis-torts a real measurement. 
+
+7.4.1 The protocol retracts single-dataset cherry-picks. The protocol is enforced in practice. Requiring the all-dataset geometric mean (R-I16) exposes both upward and downward single-dataset distortions (Table 4); each application’s headline field now stores that value. The retraction is executed in the data. The same discipline 
+
+Table 4. Single-dataset results vs. the all-dataset values stored in the ledger. 
+
+Case Single-dataset All-dataset geomean convolution3D 2.08 × 1.358 ×
+
+sw4lite 1.003 × 0.998 ×
+
+cholla 1.294 × 1.021 ×
+
+laplace3d 1.628 × 2.241 ×
+
+minisweep 3.16 × 5.775 ×
+
+Table 5. Measurement-protocol ablation on real cases (E7). 
+
+Mechanism removed Distortion on real cases All-dataset geometric mean (R-I16) picks drift both ways, up to +53%; one parity case becomes a fake win (Ta-ble 4). Real upstream pro-gram synthetic loop: 2 .03 ×; true e2e: 1 .04 ×
+
+(vpic FDTD, 𝑓 =6.8%), 1 .96 × inflation. Symmetric-variant timing (byte-identical switch) star_1 128 3: symmetric 1.63 × vs asym-metric 0.87 ×, 1 .87 × distortion. Program’s own cor-rectness box_2 512 3: honest 6 .23 × vs wrong-but-faster 13 .2× (floor 27 .6×). Robust interleaved tim-ing star_1 768 3: robust 1 .94 × vs contami-nated 0 .80 × (2 .4× swing). 
+
+rejected or downgraded 16 further applications rather than force each into an INTEGRATED number (supplementary material). R-I16 itself only applies where an application ships more than one dataset, exactly 5 of the 100; the other 95 are labeled as genuine single-dataset applications, and broadening that coverage is noted as future work. 
+
+7.4.2 Measurement-protocol ablation. Every ablated requirement distorts a real measurement, showing that none is redundant (Table 5); most sharply, a wrong-answer box_2 
+
+reports 13 .2× versus an honest 6 .23 ×.
+
+8 Conclusion 
+
+The speedups reported here come from specialized solutions forged for concrete cases rather than from any single generic method. ForgeStencil makes this practical with LLM-era syn-thesis: the Kernel Agent produces a configuration-indexed kernel matrix that meets or exceeds per-case public-SOTA upper bounds, while the App Agent extends specialization to 100+ real applications, where every win is a bespoke kernel or structural rewrite rather than a generic operator swap. These results rest on an agent-independent harness that enforces correctness, fair measurement, and honest report-ing, and that retracts even our own favorable numbers when they fail. The results also show that specialized structure transfers while its binding resource remains fixed, and that re-forging pays when a hardware change moves that limit. 
+
+10 ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications 
+
+Testing this rule beyond stencil and broadening multi-dataset coverage are the next steps. 
+
+References 
+
+[1] Jason Ansel, Shoaib Kamil, Kalyan Veeramachaneni, Jonathan Ragan-Kelley, Jeffrey Bosboom, Una-May O’Reilly, and Saman Amarasinghe. 2014. OpenTuner: An Extensible Framework for Program Autotuning. In Proceedings of the 23rd International Conference on Parallel Archi-tectures and Compilation (PACT) . ACM, New York, NY, USA, 303–316. doi: 10.1145/2628071.2628092 
+
+[2] Tianqi Chen, Thierry Moreau, Ziheng Jiang, Lianmin Zheng, Eddie Yan, Meghan Cowan, Haichen Shen, Leyuan Wang, Yuwei Hu, Luis Ceze, Carlos Guestrin, and Arvind Krishnamurthy. 2018. TVM: An Au-tomated End-to-End Optimizing Compiler for Deep Learning. In Pro-ceedings of the 13th USENIX Symposium on Operating Systems Design and Implementation (OSDI) . USENIX Association, Carlsbad, CA, USA, 578–594. https://www.usenix.org/conference/osdi18/presentation/ chen 
+
+[3] Xiangning Chen, Chen Liang, Da Huang, Esteban Real, Kaiyuan Wang, Yao Liu, Hieu Pham, Xuanyi Dong, Thang Luong, Cho-Jui Hsieh, Yifeng Lu, and Quoc V. Le. 2023. Symbolic Discovery of Optimization Algorithms. In Advances in Neural Information Processing Systems 36 (NeurIPS) . doi: 10.52202/075280-2140 
+
+[4] Yuetao Chen, Kun Xie, Zhaoyu Wang, Chenhao Yang, Xin Ma, Yang Yang, Huanqi Cui, Hailong Chen, Ting Cao, and Mao Yang. 2024. ConvStencil: Transform Stencil Computation to Matrix Multiplication on Tensor Cores. In Proceedings of the 29th ACM SIGPLAN Annual Symposium on Principles and Practice of Parallel Programming (PPoPP) .ACM, New York, NY, USA, 333–347. doi: 10.1145/3627535.3638476 
+
+[5] Matthias Christen, Olaf Schenk, and Helmar Burkhart. 2011. PA-TUS: A Code Generation and Autotuning Framework for Parallel Iterative Stencil Computations on Modern Microarchitectures. In 
+
+Proceedings of the 2011 IEEE International Parallel and Distributed Processing Symposium (IPDPS) . IEEE, Anchorage, AK, USA, 676–687. doi: 10.1109/IPDPS.2011.70 
+
+[6] Kaushik Datta, Mark Murphy, Vasily Volkov, Samuel Williams, Jonathan Carter, Leonid Oliker, David Patterson, John Shalf, and Katherine Yelick. 2008. Stencil Computation Optimization and Auto-Tuning on State-of-the-Art Multicore Architectures. In Proceedings of the 2008 ACM/IEEE Conference on Supercomputing (SC) . IEEE, Austin, TX, USA, 1–12. doi: 10.1109/SC.2008.5222004 
+
+[7] Quan Deng, Lin Gan, Hongkun Yu, Wenlai Zhao, and Guangwen Yang. 2025. Auto-Stencil: Performance-Driven Stencil Optimization with Hardware Feedback for LLMs. In Proceedings of the 54th International Conference on Parallel Processing (ICPP) . ACM. doi: 10.1145/3754598. 3754604 
+
+[8] Alhussein Fawzi, Matej Balog, Aja Huang, Thomas Hubert, Bernardino Romera-Paredes, Mohammadamin Barekatain, Alexander Novikov, Francisco J. R. Ruiz, Julian Schrittwieser, Grzegorz Swirszcz, David Silver, Demis Hassabis, and Pushmeet Kohli. 2022. Discovering Faster Matrix Multiplication Algorithms with Reinforcement Learning. Na-ture 610, 7930 (2022), 47–53. doi: 10.1038/s41586-022-05172-4 
+
+[9] Google DeepMind. 2025. AlphaEvolve: A Gemini-Powered Coding Agent for Designing Advanced Algorithms . White Paper. Google DeepMind. 
+
+https://arxiv.org/abs/2506.13131 
+
+[10] Qiqi Gu, Chenpeng Wu, Heng Shi, Jianguo Yao, and Haibing Guan. 2026. Do We Need Tensor Cores for Stencil Computations? arXiv:2603.00477 [cs.DC] https://arxiv.org/abs/2603.00477 
+
+[11] Bastian Hagedorn, Larisa Stoltzfus, Michel Steuwer, Sergei Gorlatch, and Christophe Dubach. 2018. High Performance Stencil Code Gener-ation with Lift. In Proceedings of the 2018 International Symposium on Code Generation and Optimization (CGO) . ACM, New York, NY, USA, 100–112. doi: 10.1145/3179541.3168824 
+
+[12] Haozhi Han, Kun Xie, Yuetao Chen, Chenhao Yang, Xin Ma, Yang Yang, Ting Cao, and Mao Yang. 2025. FlashFFTStencil: Bridging Fast Fourier Transforms to Memory-Efficient Stencil Computations on Tensor Core Units. In Proceedings of the 30th ACM SIGPLAN Annual Symposium on Principles and Practice of Parallel Programming (PPoPP) .ACM, New York, NY, USA, 355–368. doi: 10.1145/3710848.3710897 
+
+[13] Justin Holewinski, Louis-Noël Pouchet, and P. Sadayappan. 2012. High-Performance Code Generation for Stencil Computations on GPU Architectures. In Proceedings of the 26th ACM International Confer-ence on Supercomputing (ICS) . ACM, New York, NY, USA, 311–320. doi: 10.1145/2304576.2304619 
+
+[14] Carlos E. Jimenez, John Yang, Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press, and Karthik Narasimhan. 2024. SWE-bench: Can Language Models Resolve Real-World GitHub Issues?. In The Twelfth International Conference on Learning Representations (ICLR) . https: //openreview.net/forum?id=VTF8yNQM66 
+
+[15] Robert Tjarko Lange, Qi Sun, Aaditya Prasad, Maxence Faldor, Yu-jin Tang, and David Ha. 2025. Towards Robust Agentic CUDA Ker-nel Benchmarking, Verification, and Optimization. arXiv:2509.14279. 
+
+https://arxiv.org/abs/2509.14279 Sakana AI CUDA Engineer technical report. [16] Chris Lu, Cong Lu, Robert Tjarko Lange, Jakob Foerster, Jeff Clune, and David Ha. 2024. The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery. arXiv preprint arXiv:2408.06292 (2024). 
+
+https://arxiv.org/abs/2408.06292 
+
+[17] Fabio Luporini, Mathias Louboutin, Michael Lange, Navjot Kukreja, Philipp Witte, Jan Hückelheim, Charles Yount, Paul H. J. Kelly, Felix J. Herrmann, and Gerard J. Gorman. 2020. Architecture and Performance of Devito, a System for Automated Stencil Computation. ACM Trans. Math. Software 46, 1 (2020), 1–28. doi: 10.1145/3374916 
+
+[18] Daniel J. Mankowitz, Andrea Michi, Anton Zhernov, Marco Gelmi, Marco Selvi, Cosmin Paduraru, Edouard Leurent, Shariq Iqbal, Jean-Baptiste Lespiau, Alex Ahern, Thomas Köppe, Kevin Millikin, Stephen Gaffney, Sophie Elster, Jackson Broshear, Chris Gamble, Kieran Mi-lan, Robert Tung, Minjae Hwang, Taylan Cemgil, Mohammadamin Barekatain, Yujia Li, Amol Mandhane, Thomas Hubert, Julian Schrit-twieser, Demis Hassabis, Pushmeet Kohli, Martin Riedmiller, Oriol Vinyals, and David Silver. 2023. Faster Sorting Algorithms Discovered Using Deep Reinforcement Learning. Nature 618, 7964 (2023), 257–263. doi: 10.1038/s41586-023-06004-9 
+
+[19] Naoya Maruyama, Tatsuo Nomura, Kento Sato, and Satoshi Matsuoka. 2011. Physis: An Implicitly Parallel Programming Model for Sten-cil Computations on Large-Scale GPU-Accelerated Supercomputers. In Proceedings of 2011 International Conference for High Performance Computing, Networking, Storage and Analysis (SC) . ACM, New York, NY, USA, Article 11, 12 pages. doi: 10.1145/2063384.2063398 
+
+[20] Kazuaki Matsumura, Hamid Reza Zohouri, Mohamed Wahib, Toshio Endo, and Satoshi Matsuoka. 2020. AN5D: Automated Stencil Frame-work for High-Degree Temporal Blocking on GPUs. In Proceed-ings of the 18th ACM/IEEE International Symposium on Code Gen-eration and Optimization (CGO) . ACM, New York, NY, USA, 199–211. doi: 10.1145/3368826.3377904 
+
+[21] Azalia Mirhoseini, Anna Goldie, Mustafa Yazgan, Joe Wenjie Jiang, Ebrahim Songhori, Shen Wang, Young-Joon Lee, Eric Johnson, Omkar Pathak, Azade Nova, Jiwoo Pak, Andy Tong, Kavya Srinivasa, William Hang, Emre Tuncer, Quoc V. Le, James Laudon, Richard Ho, Roger Carpenter, and Jeff Dean. 2021. A Graph Placement Methodology for Fast Chip Design. Nature 594, 7862 (2021), 207–212. doi: 10.1038/s41586-021-03544-w 
+
+[22] Anthony Nguyen, Nadathur Satish, Jatin Chhugani, Changkyu Kim, and Pradeep Dubey. 2010. 3.5-D Blocking Optimization for Stencil Computations on Modern CPUs and GPUs. In Proceedings of the 2010 ACM/IEEE International Conference for High Performance Computing, Networking, Storage and Analysis (SC) . IEEE, New Orleans, LA, USA, 11 Chen et al. 
+
+1–13. doi: 10.1109/SC.2010.2 
+
+[23] OpenBMB. 2026. ForgeTrain: An LLM Pretraining Framework Built End-to-End by an Autonomous Agent Loop . https://github.com/OpenBMB/ ForgeTrain 
+
+[24] Anne Ouyang, Simon Guo, Simran Arora, Alex L. Zhang, William Hu, Christopher Ré, and Azalia Mirhoseini. 2025. KernelBench: Can LLMs Write Efficient GPU Kernels?. In Proceedings of the 42nd International Conference on Machine Learning (ICML) . https://proceedings.mlr. press/v267/ouyang25a.html 
+
+[25] Jonathan Ragan-Kelley, Connelly Barnes, Andrew Adams, Sylvain Paris, Frédo Durand, and Saman Amarasinghe. 2013. Halide: A Lan-guage and Compiler for Optimizing Parallelism, Locality, and Re-computation in Image Processing Pipelines. In Proceedings of the 34th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI) . ACM, New York, NY, USA, 519–530. doi: 10.1145/2491956.2462176 
+
+[26] Prashant Singh Rawat, Fabrice Rastello, Aravind Sukumaran-Rajam, Louis-Noël Pouchet, Atanas Rountev, and P. Sadayappan. 2018. Reg-ister Optimizations for Stencils on GPUs. In Proceedings of the 23rd ACM SIGPLAN Symposium on Principles and Practice of Parallel Pro-gramming (PPoPP) . ACM, New York, NY, USA, 168–182. doi: 10.1145/ 3178487.3178500 
+
+[27] Prashant Singh Rawat, Miheer Vaidya, Aravind Sukumaran-Rajam, Mahesh Ravishankar, Vinod Grover, Atanas Rountev, Louis-Noël Pouchet, and P. Sadayappan. 2018. Domain-Specific Optimization and Generation of High-Performance GPU Code for Stencil Computations. 
+
+Proc. IEEE 106, 11 (2018), 1902–1920. doi: 10.1109/JPROC.2018.2862896 
+
+[28] Esteban Real, Chen Liang, David R. So, and Quoc V. Le. 2020. AutoML-Zero: Evolving Machine Learning Algorithms from Scratch. In Proceed-ings of the 37th International Conference on Machine Learning (ICML) .
+
+https://proceedings.mlr.press/v119/real20a.html 
+
+[29] Noah Shinn, Federico Cassano, Edward Berman, Ashwin Gopinath, Karthik Narasimhan, and Shunyu Yao. 2023. Reflexion: Language Agents with Verbal Reinforcement Learning. In Advances in Neural Information Processing Systems 36 (NeurIPS) . https://openreview.net/ forum?id=vAElhFcKW6 
+
+[30] Yuan Tang, Rezaul Alam Chowdhury, Bradley C. Kuszmaul, Chi-Keung Luk, and Charles E. Leiserson. 2011. The Pochoir Stencil Compiler. In Proceedings of the 23rd Annual ACM Symposium on Parallelism in Algorithms and Architectures (SPAA) . ACM, New York, NY, USA, 117–128. doi: 10.1145/1989493.1989508 
+
+[31] Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. 2023. ReAct: Synergizing Reasoning and Acting in Language Models. In The Eleventh International Conference on Learning Representations (ICLR) . https://openreview.net/forum? id=WE_vT-CiY3s 
+
+[32] Hao You, Xuejun Yang, Linghao Jiang, Ziqi Luan, and Depei Qian. 2021. DRStencil: Exploiting Data Reuse within Low-order Sten-cil on GPU. In 2021 IEEE 23rd Int Conf on High Performance Com-puting & Communications (HPCC/DSS/SmartCity/DependSys) . IEEE, Haikou, Hainan, China, 63–70. doi: 10.1109/HPCC-DSS-SmartCity-DependSys53884.2021.00036 
+
+[33] Charles Yount, Josh Tobin, Alexander Breuer, and Alejandro Duran. 2016. YASK—Yet Another Stencil Kernel: A Framework for HPC Stencil Code-Generation and Tuning. In Proceedings of the Sixth International Workshop on Domain-Specific Languages and High-Level Frameworks for High Performance Computing (WOLFHPC) . IEEE, Salt Lake City, UT, USA, 30–39. doi: 10.1109/WOLFHPC.2016.08 
+
+[34] Lingqi Zhang, Mohamed Wahib, Peng Chen, Jintao Meng, Xiao Wang, Toshio Endo, and Satoshi Matsuoka. 2023. Revisiting Temporal Block-ing Stencil Optimizations. In Proceedings of the 37th International Con-ference on Supercomputing (ICS) . ACM, New York, NY, USA, 251–263. doi: 10.1145/3577193.3593716 
+
+[35] Tuowen Zhao, Protonu Basu, Samuel Williams, Mary Hall, and Hans Johansen. 2019. Exploiting Reuse and Vectorization in Blocked Stencil Computations on CPUs and GPUs. In Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC) . ACM, New York, NY, USA, Article 52, 44 pages. doi: 10. 1145/3295500.3356210 
+
+[36] Lianmin Zheng, Chengfan Jia, Minmin Sun, Zhao Wu, Cody Hao Yu, Ameer Haj-Ali, Yida Wang, Jun Yang, Danyang Zhuo, Koushik Sen, Joseph E. Gonzalez, and Ion Stoica. 2020. Ansor: Generating High-Performance Tensor Programs for Deep Learning. In Proceedings of the 14th USENIX Symposium on Operating Systems Design and Imple-mentation (OSDI) . USENIX Association, Berkeley, CA, USA, 863–879. 
+
+https://www.usenix.org/conference/osdi20/presentation/zheng 
+
+A Extended Operator-Level Results 
+
+A.1 Pure-kernel arbitration 
+
+Wall-clock speedup can be distorted on very small grids, where fixed launch and timing overheads dominate the ker-nel itself. For star_1 at 128 3 the wall-clock ratio is 0.87 ×, a tiny-grid timing artifact; arbitrating with Nsight Compute (ncu ) on pure kernel time instead yields a 1.63 × win. We report the ncu -arbitrated figure for such cases and flag them, which is itself an operator-level instance of the main paper’s measurement discipline. This is not a self-serving choice of the favorable number: this exact case reappears in the main paper’s measurement-protocol ablation as the symmetric-variant timing row, where the same 0.87 × is shown to be the 
+
+distortion (the number an attacker gets by letting one variant pipeline launches while the other pays a per-call sync), and the symmetric ncu 1.63 × is the honest measurement. Report-ing 1.63 × here and calling 0.87 × a fabrication there are two sides of the same claim. 
+
+A.2 Dispatch breadth 
+
+Figure 7 gives the dispatch view behind the main paper’s breadth counts. 128x128x128 256x256x256 512x512x512 768x768x768 1024x1024x1024 1024x128x128 1024x1024x32 2048x64x64 2048x2048x8                                 
+
+> star_1 star_2 box_1 box_2 diamond_1 diamond_ts diamond_ts4 diamond_ts8 varcoeff_star_1
+> star_1_f16 star_1_f16 star_1_f16 star_1_f16 star_1_f16 star_1_f16_opt_rect star_1_f16_opt_rect star_1_f16_opt_rect star_1_f16_opt_rect star_2_f16_j2 star_2_f16_j2 star_2_f16_j2 star_2_f16_j2_rect star_2_f16_j2_rect star_2_f16_j2_rect star_2_f16_j2_rect box_1_f32_j2 box_1_f32_j2 box_1_f32_j2 box_1_f32_j2 box_1_f32_opt_rect_efl box_2_f16_ko2i box_2_f16_ko2i_warp16 box_2_f16_ko2i_rect diamond_1_f32_j2 diamond_1_f32_j2 diamond_1_f32_j2 diamond_ts_f32_j2 diamond_ts_f32_j2 diamond_ts_f32_j2 diamond_ts4_mw12·f diamond_ts4_mw12·f diamond_ts4_mw12·f diamond_ts4_mw12·f diamond_ts4_mw12·f diamond_ts4_mw12·f varcoeff_star_1_f16_opt varcoeff_star_1_f16_opt varcoeff_star_1_f16_opt varcoeff_star_1_f16_opt_rect varcoeff_star_1_f16_opt_rect
+
+Figure 7. Specialization breadth as a dispatch view: each benchmarked configuration (type × shape × precision) is colored by the distinct kernel branch it dispatches to; no cell reuses a shelf-general kernel. A100. 
+
+A.3 Per-case public-SOTA baseline identity 
+
+The main paper’s baseline methodology takes, for each case, the strongest public system rather than one fixed competitor. Figure 8 gives the full per-cell mapping behind the main paper’s precision-split tally of which system that was. 
+
+12 ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications 128x128x128 256x256x256 512x512x512 768x768x768 1024x1024x1024 1024x128x128 1024x1024x32 2048x64x64 2048x2048x8                                 
+
+> star_1 star_2 box_1 box_2 diamond_1 diamond_ts diamond_ts4 diamond_ts8 varcoeff_star_1
+> Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Halide Devito Devito Devito Halide Devito Devito Devito Halide Devito Devito EBISU Devito Devito EBISU no SOTA no SOTA
+> EBISU no SOTA no SOTA
+> Halide Halide Halide Halide Halide
+> generalist (Halide, Devito) specialist (EBISU) no public baseline
+
+Figure 8. Identity of the per-case public-SOTA baseline, same (stencil, shape) axes as the main paper’s dispatch-breadth figure: Halide and Devito (generalist, compared across all types) split the matrix, with neither dominating; EBISU (specialist) wins only the temporal-blocking cells it targets; hatched cells have no public baseline at all. A100. 
+
+A.4 Tensor-core scope and relation to concurrent work 
+
+Why the main paper’s tensor-core ceiling is structural: a dense TC unit doing a sparse computation pays a density penalty 𝐷 ≈ 6.4, the dense MACs it must issue per useful out-put over the useful MACs (a naive 𝑁 -waste packing is worse, 
+
+𝐷 ≈ 16). Two analytical floors scale with 𝐷 and order the wrong way for the tensor cores: the raw MAC-throughput floor is only ≈ 0.71 ms, below the winning warp16 branch, so compute is not the binding resource; the binding floor is operand feed, streaming 𝐴 /𝐵 fragments out of shared mem-ory, which lands at ≈ 1.4–2 .8 ms once WMMA bank-conflict alignment is accounted for, already above warp16’s mea-sured 1 .251 ms. Bank-conflict and occupancy levers can only close the gap to this floor, not pierce it: warp16 keeps the stencil’s reuse in registers at near-unbounded bandwidth, while any TC mapping must materialize that reuse through shared memory, and 𝐷 inflates that feed traffic into a wall. The main paper’s tensor-core refutation is bounded. The 
+
+im2col /Toeplitz route we forged is provably at its floor re-gardless of further polish, and the SOTA TC library built for this packing regime, ConvStencil, still loses to warp16 by 1.39 ×, but we do not claim no TC formulation can ever win, since the theoretical minimum 𝐷 for this box is 2–3 against a 2 ×-win threshold of 𝐷 < 2.86, and we have not refuted a packing at that edge. This sharpens rather than contradicts the concurrent roofline-regime model of Gu et al., who find TC wins only where deep temporal fusion or large radius pushes a kernel into a genuinely compute-bound region [10]; our box_2 is compute-bound for the opposite reason, an ir-reducible scalar reduction, so packing it densely inflates 𝐷 
+
+into the same operand-feed wall. TC amenability therefore depends on the source of the compute bound, not merely its presence, and the harness established that boundary by measurement rather than by a prior model. 
+
+A.5 Synthesis-vs-search ablation 
+
+Forging concrete code is different in kind from searching a parameter space or generating from a template. We test that claim directly with a three-arm, equal-compute ablation that isolates the three ways to reach a fast kernel, all measured under the same CUDA-event timer and correctness gate on A100 (f32; notes/ablation_synth_vs_search.py ). The arms are: an autotuner that sweeps launch configurations over a fixed naive kernel; a one-shot LLM that generates a kernel once with no measurement feedback; and the forge 
+
+loop that synthesizes iteratively against the harness (Table 6). 
+
+Table 6. Synthesis vs. search, equal-compute, f32 at 512 3,speedup over the naive kernel. The forge arm is charged full dispatch +H2D overhead while the other arms are timed on kernel launch alone, so its lead is a conservative lower bound. 
+
+Stencil (512 3) Autotuner One-shot LLM Forge box_1 1.06 × 0.87 × 2.29 ×
+
+diamond_1 1.28 × 0.85 × 2.73 ×
+
+Three findings follow. The autotuner reaches only 1.06 ×–1.28 ×: searching launch configurations over a fixed structure buys almost nothing. The one-shot LLM is slower than naive (0.85 ×–0.87 ×): generating once with no feedback does not yield an optimized kernel, so the gain comes from the measure →feedback →re-synthesize loop. Forge reaches 2.29 ×–2.73 ×, and this understates it, since the forge arm pays full dispatch and host-to-device overhead while the other arms are timed on kernel launch alone (steady-state pure-kernel figures are higher, e.g., 2 .83 × for box_1 at 512 3), consistent with the main paper’s independent SOTA comparison. 
+
+A.6 Cross-architecture transfer (A100 →H100 →B200) 
+
+We measure the architectural axis of the generality tax di-rectly by taking the A100-forged production kernels (un-changed, correctness-gated) and running them on a real H100 ( sm_90 , via a cctl devspace). Running the loop on another generation is itself a configuration change: the GPU model, compute capability, peak bandwidth, correctness ora-cle, and timer come from a backend description rather than from the loop’s instructions. Whether to re-forge a given kernel there is a measured decision. The loop re-forges only where profiling shows bandwidth headroom, occupancy that can be raised without spilling registers, and an SM not al-ready saturated by instruction-level parallelism, and it leaves a kernel already bound at its roofline alone. Across 26 cubic cells the A100-forged library carries to H100 at a 1.81 × geometric-mean speedup (1.57 ×–2.11 ×), tracking the HBM3-over-HBM2 bandwidth ratio: the memory-bound kernels already saturate the faster bus, so the forged structure transfers near-optimally. Re-running the three-arm harness on H100 exposes where it does not 
+
+transfer for free. The forge arm’s speedup over naive shrinks :
+
+13 Chen et al. 
+
+box_1 2.29 ×→ 2.06 ×, diamond_1 2.73 ×→ 2.15 ×, because the A100-forged structure is no longer the optimal one on H100: it leaves recoverable headroom, which is exactly the architectural generality tax made measurable. The autotuner, by contrast, stays pinned near parity on H100 as it was on A100, and its best launch block drifts (star_1 128 → 160): searching a fixed kernel’s configuration space hits its low ceiling on either architecture, so the tax is not something a parameter search recovers. Recovering it is a re-forge, which is cheap here (a routing/occupancy config change) and, on hardware that relaxes a different bottleneck, can require a structural rewrite. What such a re-forge actually buys has to be checked in both directions: the box_2 re-forge on H100 bundles two changes, re-selecting a warp-level kernel and retuning oc-cupancy, that read as a 7% win combined but come apart when measured on both architectures, since the warp-level kernel is also faster on A100 (1 .09 × there, 1 .03 × on H100, an option the A100 campaign had missed rather than an H100 specialization) and only the occupancy retune is architecture-specific ( +5.5% on H100 against +0.6% on A100). We report the decomposition instead of the combined number because the gate that produced it is the one the rest of the paper rests on. Crucially, the specialization advantage does not evaporate across the generation: against Halide the forged kernels’ edge holds and slightly widens (geometric mean 2.16 ×→ 2.38 ×
+
+overall), and against EBISU, the strongest temporal-blocking SOTA, our eight-step fused diamond_ts8 still wins 1.03 ×–1.08 × at 256 3/512 3 and completes correctly at 1024 3 where EBISU fails to launch. Taken over every H100 cell that carries a per-case public baseline, the forged kernels hold a 2.16 ×
+
+geometric mean across 17 cells with no losses. The next generation inverts the picture. Carrying the same forged kernels from H100 to a B200 gives a geometric mean of 1.51 × across 41 cells, all clearing the correctness gate, against an HBM ratio of 2.39 ×; the kernels are no longer rid-ing the bus, since structures tuned to saturate HBM3 under-fill HBM3e and the binding constraint moves from bandwidth to latency and memory-level parallelism. Re-forge room re-opens, and here the capture is structural rather than a con-figuration knob: over 18 gated rounds the loop produced one win, a deeper L2-prefetch sliding window for box_1 worth 
+
++7.0% at 512 3, alongside several recorded failures (e.g., two 
+
+cp.async formulations losing to barrier overhead). Every B200 change is architecture- and shape-gated, so the A100 and H100 paths stay byte-identical. One rule covers both transitions: re-forging pays where the new hardware moves a kernel off its previous binding constraint, and the cost of capturing the gain tracks whether the freed resource is exposed by a configuration knob or demands a structural rewrite. H100 relaxed compute while barely moving bandwidth, so the memory-bound majority transferred at the bandwidth ratio and only the one compute-bound operator had anything to recover, at config level; B200 widened bandwidth past what these kernels can issue against, so the memory-bound majority fell off the roofline and re-covery meant restructuring how loads are kept in flight. One scope limit applies: the public baselines were rebuilt on H100 but not on B200, so the B200 numbers are transfer and re-forge measurements rather than a claim against SOTA on that generation. 
+
+A.7 How the specialization emerges 
+
+Specialization emerges incrementally: tracing the loop’s tra-jectory across its rounds (the canonical run spans R1–R321) shows early rounds establishing a working kernel and later rounds forking it into shape-specific branches as the harness rewards each divergence, including disruptive refactors that run slower for several rounds before paying off (Rule 14), a move a greedy, single-step search would never make. This is a lightweight characterization of autonomy, not a causal attribution study ( perf_log.md , E8). 
+
+A.8 Generalization within the library: unseen shapes 
+
+A natural objection is that the forged operators might be overfit to exactly the shapes they were benchmarked on. They are not. Holding the operator identity fixed, we com-pare each operator’s speedup on the well-exercised cubic shapes against its speedup on edge shapes: long slabs and thin rectangular domains that the tuning did not target. Ag-gregated across operators, the cubic geometric mean is 4.11 ×
+
+and the edge geometric mean is 4.04 ×, a ratio of 0.98: the un-seen shapes do not collapse. Even the weakest case, box_1 on thin slabs, still beats SOTA at 2 .70 × (versus 3 .42 × on cubes). Because a single operator’s shape branches are selected by the harness and not hand-fit to a benchmark, the specializa-tion generalizes across shape rather than memorizing the measured points. 
+
+B Applications the Framework Rejected or Downgraded 
+
+Alongside the 100 validated integrations, the framework as-signed a non-success state to 16 further candidates rather than force each into an INTEGRATED number: RESEARCH 6(promising leads not yet integrable), OUT_OF_SCOPE 5 (e.g., PolyBench dense linear algebra, retracted as outside the sten-cil premise), DROPPED 3 (abandoned after evaluation), and 
+
+BLOCKED 2 (e.g., a refused Devito stand-in). The ledger thus records 100 integrated plus 16 non-validated candidates (116 total). We include this as backing detail for the main paper’s retraction discussion, not as a staged self-trial. 
+
+C Representative Benchmark Cases 
+
+Table 7 lists representative applications with the lever behind each win. The large factors are launch-fusion and 
+
+> 14
+
+ForgeStencil: Automating Per-Case Stencil Specialization from Kernels to 100+ Real Applications 
+
+occupancy wins (e.g., bspline_vgh /QMCPACK at 58 .39 ×,
+
+haccmk /HACC at 36 .2×), not operator substitutions; pure stencil replacement sits at the modest end ( fdtd_em /gprMax at 2 .474 ×). Values are the registry’s all-dataset geometric means where an application ships multiple datasets; only minisweep in this table does. 
+
+Table 7. Benchmark applications with win_source . Large speedups come from naive baselines and structural or launch-level rewrites, not from a faster generic stencil. 
+
+Application (registry name) win_source Speedup QMCPACK ( bspline_vgh ) launch-fusion 58.39 ×
+
+HACC ( haccmk ) occupancy fix 36.2 ×
+
+minisweep ( minisweep ) structural 5.775 ×
+
+hypre ( hypre ) memory coalescing 3.857 ×
+
+gprMax ( fdtd_em ) true stencil replacement 2.474 ×
+
+FHd ( fhd ) structural 2.452 ×
+
+QuantLib ( bonds ) structural (host-wrapper) 1.82 ×
+
+RTM ( rtm_iso ) stencil injection 1.808 ×
+
+HPCG ( hpcg ) matrix-free SYMGS (bandwidth) 1.712 ×
+
+D Experiment Manifest 
+
+Table 8. Experiment manifest: claim, support, and source. 
+
+# Supports Source / status E1 app taxonomy /headline registry (median 1.41 × / ge-omean 2.05 ×)E2 app taxonomy registry win_source /decision 
+
+E3 operator library robust_canonical.json 
+
+E4 harness + operators revalidate_fp16_full.py 
+
+(HEAD all PASS) E5 operator library (main defense) 
+
+custom_stencil.py /
+
+stencil_kernel.cu (to compile )E6 harness + taxon-omy 5 retraction cases (registry) E7 harness measurement-protocol ablation (5 rows, measured) E8 operator library (main paper’s au-tonomy discussion) 
+
+perf_log.md (optional) 
+
+E Evidence Map 
+
+Table 9. Which result is validated by which harness. The strict rule: no cross-endorsement between kernel mi-crobenchmarks and the app harness. 
+
+Result Validated by Scope Operator-level forg-ing Kernel mi-crobenchmark A100/H100, per-case SOTA Application-level forging App harness 100 real apps Speedup-source tax-onomy App harness 100 real apps Measurement in-tegrity Protocol (both levels) harness enforce-ment 
+
+15

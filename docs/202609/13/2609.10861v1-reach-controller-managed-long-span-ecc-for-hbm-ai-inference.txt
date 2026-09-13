@@ -1,0 +1,461 @@
+Title: REACH: Controller-Managed Long-Span ECC for HBM AI Inference
+
+URL Source: https://arxiv.org/pdf/2609.10861v1
+
+Published Time: Fri, 11 Sep 2026 00:18:17 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+> 1
+
+# REACH: Controller-Managed Long-Span ECC for HBM AI Inference 
+
+Rui Xie , Yunhua Fang , Asad Ul Haq , Linsen Ma , Sanchari Sen , Swagath Venkataramani , Liu Liu ,Tong Zhang 
+
+Abstract —High-Bandwidth Memory (HBM) cost motivates stronger controller protection that can support a wider range of device error rates. Long-span error-correcting codes provide stronger protection at a comparable code rate, but a direct implementation couples small accesses to span-wide state and requires costly decoding at HBM bandwidth. Read-dominated LLM decode offers a favorable setting: sequential reads support span aggregation, while sparse writes limit parity-update traffic. This paper presents REACH, a controller microarchitecture that uses established inner codes to correct common errors and iden-tify unresolved chunks, reserving a long outer code for known-erasure repair. Differential parity bounds write traffic, and a co-designed endpoint preserves 32 B transactions without an extra data burst. Ramulator2 sustains 1.88 TB/s of application traffic at the highest error stress, while separate full-interface sizing supports a 2.69 TB/s application target using ASAP7-synthesized kernels. At this analytical target, REACH’s nominal composition uses 55.8% less controller area and 57.7% less modeled power than the evaluated mean-work direct-long design, showing the benefit of reserving long-span recovery for exceptional requests. 
+
+Index Terms —High-bandwidth memory (HBM), error-correcting code (ECC), memory controller microarchitecture, Reed–Solomon codes, concatenated coding, erasure decoding, reliability, AI inference. 
+
+I. I NTRODUCTION 
+
+High-Bandwidth Memory (HBM) has become indispensable to modern AI inference because its multi-terabyte-per-second bandwidth sustains model-weight and key-value-state move-ment within a practical energy budget. HBM also remains 5–10 × more expensive than conventional dynamic random-access memory (DRAM) in $/GB [1], making capacity a first-order system cost. The emergence of NVHBM makes HBM base dies and interfaces explicit co-design points for custom AI accelerators, creating a timely opportunity to revisit how reliability work is divided between the endpoint and controller [2]. NAND storage provides a precedent for using stronger controller coding and selective recovery as device reliability changes [3]. This motivates stronger HBM controller protection that preserves accelerator-visible service across a wider range of device error rates. HBM requests are fine grained. Transfer-local protection fits this interface because each request can be resolved indepen-dently, but its correction strength is limited by the redundancy carried with that request. Adding more local redundancy 
+
+Rui Xie, Yunhua Fang, Asad Ul Haq, Linsen Ma, Liu Liu, and Tong Zhang are with Rensselaer Polytechnic Institute, Troy, NY 12180 USA. Sanchari Sen and Swagath Venkataramani are with IBM T.J. Watson Research Center, Yorktown Heights, NY 10598 USA. 
+
+consumes capacity and transport resources on every access. A longer codeword can pool the same protection budget across many requests and provide substantially stronger correction. Autoregressive LLM decode creates favorable conditions for using this larger span. It repeatedly streams weights and reads a large key-value cache while appending much less new state. Its traffic is therefore read dominated, highly sequential, and governed by sustained memory service. Contiguous requests can share span work, while detected exceptions can be handled away from ordinary demand service without relaxing correct-ness. These properties make long-span ECC a natural strong-protection baseline. Ideal coalescing aggregates sequential re-quests into protected spans and reduces traffic. Sparse accesses still touch span-wide parity state. The controller must check every admitted span and provision long-code recovery for the fraction that fails this check. $/GB ( 𝐶 )Raw BER target Strict Relaxed (design target) Feasible design space    
+
+> Relaxing constraints cannot increase $/GB
+> Economic intuition Reliability filter
+> Protection strength  Pass Fail
+> Long ECC (2KB) Short ECC (32B)
+> ØWrite amp.
+> ØDecoder complexity
+> Implementation gap
+> Errors at high BER
+
+Fig. 1. Why controller-managed long-span ECC for AI inference. Left: 
+
+HBM cost pressure motivates exploring less restrictive device-reliability tar-gets. Middle: Long-span protection supplies the correction strength required as device errors increase. Right: A direct implementation must handle sparse-write span traffic and provision long-code checking and error-dependent recovery at HBM bandwidth. 
+
+Fig. 1 connects the device opportunity to the controller problem. The left region motivates a broader device design space. The middle region shows why that opportunity re-quires stronger protection. The right region identifies the traffic and hardware costs of applying a long code directly at the controller. Sequential requests can share complete-span traffic, while sparse writes still expose the 64-to-1 granularity difference and every protected span still requires long-code processing. Even with ideal 2 KB coalescing, a 3.35 TB/s data stream presents up to 1.64 × 10 9 protected spans/s before outer-parity traffic. Each span must be checked, and corrupted spans must pass through the complete recovery pipeline. Faster arithmetic reduces the cost of individual operations, but HBM arXiv:2609.10861v1 [cs.AR] 9 Sep 2026 2
+
+bandwidth still demands extensive replication of that pipeline. Section II-C quantifies the decoder work that creates this pressure. The controller can change this scaling by changing the infor-mation delivered to long-span recovery. If an earlier 32 B stage reports that a request is unresolved, the request address already identifies the affected region of the outer codeword. The long code can then recover a declared erasure after rejection, while ordinary requests complete without entering the outer path. This organization reduces both the work required by each outer invocation and the rate at which outer hardware is invoked. This leads naturally to a systems question: can a controller preserve 32 B common-case service while reserving a long code for detected exceptions? REACH (Reliability Extension Architecture for Controller-managed HBM) uses established inner and outer coding to correct common errors locally and explicitly reject unresolved chunks. A rejected chunk becomes an address-derived erasure in a single monolithic outer codeword, which is invoked only on the exceptional path. Differential parity bounds write traffic, while accepted and corrected requests retain 32 B completion. We evaluate this workflow with a public-model-based traf-fic model, Ramulator2 command simulation, and ASAP7-synthesized kernels. Ramulator2 sustains 70% HBM offered load (2.35 TB/s total), including 1.88 TB/s of application band-width at the highest traffic stress. At the separate analytical 2.69 TB/s application target, REACH’s nominal composition uses 55.8% less controller area and 57.7% less modeled power than the mean-work direct-long design. Full-radius direct-long provisioning is reported separately as a hardware and activity sensitivity. This paper makes 3 contributions: 
+
+• HBM feasibility diagnosis. We quantify the span-rate checking and error-dependent recovery resources that direct long-code protection requires even with ideal span aggrega-tion. 
+
+• Controller workflow and microarchitecture. We organize established coding primitives into a 32 B inner decision, ex-ceptional known-erasure repair, and differential-parity work-flow with explicit state, ordering, completion, and endpoint contracts. 
+
+• HBM-scale feasibility evidence. Reliability analysis, model-derived LLM-decode traffic, finite-queue service, Ra-mulator2 command simulation, and synthesized critical kernels quantify the workflow at HBM service rates. II. B ACKGROUND , O PPORTUNITY , AND REQUIREMENTS 
+
+A. HBM and LLM Decode Context 
+
+HBM combines a 32 B accelerator-visible demand trans-action with multi-TB/s aggregate bandwidth [4], [5]. The memory controller resides on the accelerator and connects the L2 cache or network-on-chip to the HBM scheduler and physical interface. Any controller-managed protection must preserve the address, ordering, and completion semantics of this path. LLM decode repeatedly streams model weights and key-value state while appending a much smaller amount of new state. Contiguous accesses within tensors and key-value blocks allow aligned requests to share span work. We therefore give the direct-long baseline ideal coalescing within these runs and separately evaluate random requests and sparse writes. Public HBM specifications do not expose a common on-die parity matrix or protected word. We therefore model a vendor-neutral 32 B on-die-ECC control that corrects at most 1 affected 16-bit group as a separate comparison. REACH mode bypasses conventional on-die correction and moves active ECC to the accelerator-side controller. Throughout the paper, 
+
+pb denotes the modeled HBM output bit error rate (BER), the probability that a bit returned by the co-designed endpoint differs from its intended value before controller correction. The errors originate in the HBM device and are observed at the controller. Public sources do not provide a common mapping from cell-level errors through sensing, remapping, and interface transfer to this output BER. 
+
+B. Long-Span Coding Opportunity 
+
+The comparison uses shortened Reed–Solomon (RS) codes over Galois fields (GF). 10 3 10 4 10 5            
+
+> HBM output BER
+> 10 15
+> 10 12
+> 10 9
+> 10 6
+> 10 3
+> Decoding failure probability
+> 3.0 × 10 3
+> 1.8 × 10 5
+> 2.1 × 10 8
+> 3.4 × 10 14
+> 32 B: RS(36,32) 512 B: RS(286,256) 1 KB: RS(570,512) 2 KB: RS(1138,1024)
+> Fig. 2. Analytical decoding failure probability for monolithic RS codewords from 32 B to 2 KB under the representative near-0.9 target-rate rule. The horizontal axis runs from the highest evaluated HBM output BER at left toward lower values. Filled markers report each value at pb= 10 −3. The 32 B fixed-rate reference uses GF (2 8), while larger spans use GF (2 16 ). The 2 KB point is the evaluated outer RS(1138,1024).
+
+Fig. 2 shows the coding opportunity behind a longer pro-tection span. Each code follows the same target-rate rule as closely as its symbol count allows. The 32 B reference is RS(36,32) over GF (2 8) and is separate from the evaluated REACH inner code. The 512 B, 1 KB, and 2 KB points use RS(286,256), RS(570,512), and RS(1138,1024) over GF (2 16 ).At pb = 10 −3, their analytical failure probabilities are 
+
+3.0×10 −3, 1.8×10 −5, 2.1×10 −8, and 3.4×10 −14 . Under the shared rate rule, increasing the span from 32 B to 2 KB reduces analytical failure by approximately 11 orders of magnitude. 
+
+C. Why Direct Long ECC Does Not Fit 
+
+The conventional direct-long baseline protects each aligned 2 KB data span with the same monolithic outer code evaluated for REACH. It receives ideal coalescing within contiguous tensor and key-value runs. A sparse 32 B update still changes parity shared by 64 native requests, so the controller must 3
+
+obtain old data and span parity beyond the new payload. Se-quential aggregation reduces this traffic cost without changing the decoder that processes each span. A conventional Reed–Solomon decoder begins by comput-ing syndromes to determine whether a codeword is valid. A nonzero syndrome invokes key-equation solving, searches the codeword for unknown error positions, computes correction magnitudes, applies the corrections, and checks the residual syndrome. A longer codeword expands the search domain and the associated arithmetic. Serving HBM aggregate bandwidth then requires deeper pipelines, wider datapaths, or more repli-cated decoders. 010 20 30 40 32 128 256 512 1024 2048 Key-equation solve + Position locate Syndrome + Correction Normalized decoder complexity RS code size (B) 
+
+> Fig. 3. Normalized analytical operator demand of a conventional RS decoder. Syndromes check each codeword. Key-equation solving, position location, and correction handle nonzero syndromes. The plotted categories group syndrome with correction and key-equation solving with position location. Values are normalized to the 32 B code.
+
+Fig. 3 groups the arithmetic into syndrome/correction and key-equation/position-location costs. These groups illustrate code-length scaling rather than invocation frequency: syn-drome checking runs for every span, while recovery follows a nonzero syndrome. Table V applies these different invocation rates in a concrete comparison based on mapped kernels. This analysis yields 4 design requirements: 32 B common service, explicit locations for exceptional long-span recovery, parity updates that preserve unchanged data, and request ownership through completion or detected failure. Together, they connect coding strength to traffic, hardware demand, and controller correctness. A stronger local code addresses only the 32 B common-service requirement because its correction strength remains bounded by the metadata carried with each transfer. A faster direct-long decoder reduces latency or replication but still discovers error positions within every corrupted span. Satisfy-ing all 4 requirements calls for a controller organization that corrects common errors locally, reports unresolved locations explicitly, and invokes long-span recovery only after rejection. III. REACH C ONTROLLER WORKFLOW AND 
+
+MICROARCHITECTURE 
+
+REACH organizes established coding primitives for HBM service. A short inner code classifies each returned 32 B chunk 
+
+as accepted, corrected, or rejected. The request address maps a rejected chunk to its fixed position within a 64-chunk, 2 KB protected span . The controller can therefore present the unresolved chunk as a known outer-code erasure and invoke long-span recovery only after rejection. For data chunk j, where 0 ≤ j < 64 , rejection identifies outer symbols 16 j through 16 j + 15 . The same address rule locates every data record fetched for repair. Each full parity record maps to 16 parity-symbol positions, and the final parity beat contributes only 2 valid symbols. These mappings construct the erasure mask before outer decoding and remove long-code position search from the exceptional path. 
+
+A. Placement and Interfaces 
+
+REACH is added to the distributed HBM memory-controller partitions already present on the accelerator die. It is not a separate ASIC. The upstream L2, network-on-chip (NoC), or memory fabric sends ordinary memory requests to these partitions. REACH schedules application, repair, and parity requests before the existing HBM command scheduler and physical interface (PHY). Returned records cross the channel interface as 32 B of data and 6 B of inner metadata. Host I/O     
+
+> L2 / NoC
+> REACH HBM scheduler PHY
+> Accelerator package Accelerator die
+> Compute
+> HBM controller HBM stack
+> Base die
+> Silicon interposer
+> Fig. 4. System placement of REACH. REACH extends each accelerator-die HBM controller partition between the upstream L2/NoC and the existing HBM scheduler and PHY. It reaches the co-packaged HBM stacks through the native in-package memory path. Host I/O remains outside this path.
+
+Fig. 4 places REACH within the existing accelerator mem-ory path. Compute requests pass through the L2/NoC to the HBM controller, where REACH classifies and schedules ap-plication, repair, and parity traffic before the existing scheduler and PHY. Each controller partition reaches a co-packaged HBM stack through the native package interconnect, while through-silicon vias connect the stack’s base die and DRAM dies. External host interfaces terminate at the accelerator I/O complex and do not carry ordinary accelerator-to-HBM requests. REACH therefore uses the same wide in-package path that provides the 3.35 TB/s aggregate bandwidth.      
+
+> TABLE I CO-DESIGNED ENDPOINT CONTRACT .
+> Requirement Contract
+> Accelerator interface 32 B demand transaction with unchanged address, ordering, and completion BL8 record 4 byte-wise bus-inversion indicators and 2 ECC/severity I/Os carry 6 metadata bits beside 32 data bits in each unit interval Endpoint storage Co-indexed data and metadata arrays selected by the same row and column command Mode lifecycle Quiescent boot-time entry, standard inversion and on-die cor-rection disabled, retraining, and no mixed runtime semantics
+
+The mode is selected at boot while the channel is quiescent. HBM3 associates 4 byte-wise bus-inversion indicators and 2 ECC/severity I/Os with each 32-bit pseudo-channel [5]. REACH disables those functions and, in BL8 unit interval 4
+
+t, uses the 6 bidirectional signals for metadata bits 6t through 
+
+6t + 5 . Eight intervals transfer all 48 metadata bits beside the 256 data bits with the original command, burst, and strobes. Co-indexed arrays on the DRAM dies store data and metadata, while the base die aggregates their atomic 32 B plus 6 B record. This widens internal record movement by 18.75% and requires endpoint storage, datapath, mode, and training changes, but adds no external command, DQ burst, or package pin. At the evaluated code rates, 71.11 GB of protected demand capacity occupies 95 GB of physical endpoint storage. Section IV-C gives the corresponding break-even condition. The design does not assume an unmodified commodity HBM device. 
+
+B. Coding and Storage Organization 
+
+Each chunk uses a systematic inner RS(38,32) code over GF (2 8) with 32 data bytes and 6 parity bytes. The outer tier uses 1 shortened systematic RS(1138,1024) codeword over GF (2 16 ). Its 1024 2-byte data symbols represent the 64 data chunks, and 114 parity symbols provide the outer protection. The 228 B of logical parity occupies 8 physical 32 B beats, with only 2 valid symbols in the final beat. A rejected data chunk declares 16 erasures, so the outer code can recover up to 7 full-chunk-equivalent erasures. All data and parity symbols remain in the same monolithic codeword. 
+
+Design-point rationale. The 6 B endpoint budget fixes the evaluated inner code. We use a radius-2 decoder to correct common outcomes and explicitly reject unresolved chunks. The 2 KB outer span covers 64 native requests, tolerates 7 full-chunk-equivalent erasures, and bounds the amount of repair traffic. These choices define the representative design point used throughout the paper. The systematic layout preserves the address order of all 64 data chunks. A request address directly yields the span identifier and chunk index, while the span identifier selects the associated physical parity record. Padding in the final parity beat does not enter the codeword. The controller therefore derives every data and parity erasure position from the request address or repair-read index without an additional metadata lookup. Fig. 5(a) shows the 64 data chunks, their inner parity, and the physical outer-parity beats in 1 outer codeword. Fig. 5(b) follows a request through HBM and the inner decoder. Ac-cepted and corrected chunks complete locally. A rejected chunk enters repair with its address-derived erasure position. The paths share the channel interface and inner decoders, but only repair stores the span identifier, repair-read bitmap, staged payloads, and erasure mask. 
+
+C. Common Read Workflow 
+
+The read path begins when the channel interface places a returned 32 B payload and its 6 B metadata in the bounded return queue. An inner decoder processes the 38 byte symbols. Accepted data retain the returned payload, while corrected data use the decoder output. Both enter the completion merge ,which preserves the request identifier and returns a single terminal result. A rejected target instead allocates a repair buffer. The controller records its outer-code position and … …  
+
+> Data chunks Outer parity One outer codeword 32B inner RS data chunk inner RS parity 32B outer RS parity chunk
+> Host
+> GPU / xPU
+> Inner code check (per 32B)
+> Local decision boundary
+> Local path
+> Diff-parity writes Chunk-local work
+> Repair path
+> Outer long code Erasure-only repair Data return Accept (common case) Unsolved (rare) DRAM die DRAM die DRAM die DRAM die
+> HBM stack
+> High raw BER device
+> 32B fixed HBM PHY
+> (a) (b) REACH controller
+> 6B
+> Fig. 5. REACH coding and controller organization. (a) Each 32 B data chunk carries 6 B of inner parity, while 64 chunks and 114 outer parity symbols form a single monolithic outer codeword. (b) Accepted and corrected chunks follow the local path. Rejected chunks follow the exceptional known-erasure repair path.
+
+inserts a 16-symbol erased placeholder at that position. It then issues 71 repair reads , comprising the remaining 63 data chunks and 8 physical parity beats. Each repair read supplies either a resolved payload or a declared erasure for rebuilding the outer codeword. Read requested chunks Inner RS Rejected? Read entire codeword Outer RS decoding  
+
+> Read request
+> Y
+> Fig. 6. Common read and repair. The requested 32 B chunk and its 6 B metadata cross the inner decoder. Accepted and corrected targets complete immediately. A rejected target becomes a local erasure, and 63 data reads plus 8 physical parity reads complete the outer codeword for repair.
+
+Fig. 6 follows the target to local completion or repair. Accepted and corrected targets leave through the completion merge without outer state. Rejection retains the target as an erasure and derives 63 data and 8 parity addresses from the span base. These 71 records receive the same inner classification as the target and contribute resolved payloads or address-derived erasures. The target is not reread. 
+
+D. Write and Differential-Parity Workflow 
+
+A write checks the span’s poison state and acquires an exclusive span-ordering lock. The lock waits for older requests to the same span and holds newer reads, writes, and repairs until parity commit or poison. This ordering prevents data from one generation from being paired with parity from another. The controller resolves the touched old data through the same inner decision used by reads. If the old target is rejected, the controller assembles the outer codeword and recovers that target before continuing. The parity state then supplies the active outer parity and its dirty, commit, and poison status to the differential-parity engine . For sparse vectors containing only the touched chunks, RS linearity gives 
+
+Pnew = Pold ⊕ RS( Dnew ) ⊕ RS( Dold ). (1) Once the old target is resolved, the differential update reads no unchanged demand data and does not rewrite unchanged 5
+
+chunks. A 32 B write moves 320 B on a parity-cache hit and 576 B on a miss, corresponding to 10 × and 18 × amplification. The direct-outer control moves 81 × the payload for the same random-write case. Before device issue, the inner encoder generates 6 B of metadata for the new target and each modified parity beat. The write-commit block commits the coded target before the coded parity. A detected uncorrectable error (DUE) before data issue aborts the request, while a parity failure after data completion poisons the span until scrub or reinitialization. Read touched units and outer parity Inner RS rejected? Differential encoding Partial writes to HBM 
+
+> Random write request
+> NRead full codeword and update data Inner/Outer RS encoding Write full codeword to HBM Low write amplification High write amplification Y
+> 38B
+
+Fig. 7. Differential write workflow. Exclusive span ordering covers old-data resolution, parity-state acquisition, differential encoding, metadata generation, and data-before-parity commit. A rejected old target is recovered from the outer codeword before the controller writes the new target and updated parity. Unchanged data are not rewritten. 
+
+Fig. 7 begins when span-ordering control locks the target span. Old data and parity-fill returns cross the inner decoder. A rejected old target is first recovered from the outer codeword. A parity-cache hit supplies the 256 B parity record, while a miss fetches and classifies its 8 beats. The differential engine combines resolved old data, new data, and parity state to generate 114 updated parity symbols. Write commit protects every changed record, completes coded data before coded parity, records poison on a terminal parity failure, and releases the lock. Complete-span recovery never implies complete-span writeback. 
+
+E. Rejected-Target Repair Workflow 
+
+The repair buffer stores the request and span identifiers, target position, repair-read completion bitmap, erasure masks, and terminal status. The outer-codeword buffer stages the target placeholder and the 71 returned positions. Every repair read crosses the inner decoder. Accepted and corrected records contribute resolved payloads, while rejected records contribute known erasures. A full data or parity beat contributes 16 outer symbols. The final parity beat contributes only 2, and its padding does not enter the erasure budget. All OK? Start: Inner RS ( 𝑞 chunks) Local fast path (Diff-parity) Yes No Outer Engine   
+
+> (Decode on ℇ)ℇ ≤ 𝐶?
+> Fail (Uncorrectable) Commit (Update) Yes No
+
+Fig. 8. Known-erasure repair. A local target erasure and 71 inner-decoded repair reads assemble the complete outer codeword. At most 114 declared symbol erasures enter the outer repair engine. A successful read repair returns the reconstructed target, while a successful write repair resumes the differential update. More than 114 erasures or a failed residual check returns DUE. 
+
+Fig. 8 follows the target erasure and 71 classified records into the outer buffer. A target plus 6 full rejected repair reads consumes 112 erasures, and the final 2-symbol parity tail can consume the remaining budget. A 7th full rejected repair read raises the count to 128 and returns DUE. Otherwise, the outer engine uses the assembled erasure mask to compute syndromes, magnitudes, corrections, and a residual check without a 1138-symbol Chien search. A read returns only the reconstructed 32 B target. A write uses the recovered old target to resume its differential update. 
+
+F. Controller State, Backpressure, and Completion 
+
+The block organization assigns a unique owner to each request. Chunk-local state holds the target payload, inner outcome, request identifier, and completion state. A repair buffer owns a rejected request while its 71 repair reads arrive. After the final read, the syndromes, erasure mask, request identity, and target position move into the post-reassembly and erasure-decoder queues, releasing the repair buffer. The outer-codeword buffer holds repair data, while the completion merge returns a local or repaired result. Host    
+
+> GPU / xPU
+> Completion merge Channel interface HBM PHY
+> Diff-parity engine
+> Parity state
+> Span parity
+> Write commit
+> Data-before-parity
+> Unresolved chunk select
+> Repair req state
+> Span ID + mask
+> Outer CW buffer
+> Repair staging
+> Outer repair engine
+> Erasure-only
+> Positions Corrected chunks Commit Repaired chunks Write delta Parity Δ
+> Span data
+> Logic State / SRAM Local path Repair path
+> Span-ordering control
+> Chunk-local state Inner-code lane array
+> 32 B local decision boundary 32B+6B
+
+Fig. 9. Block-level REACH microarchitecture. The channel interface sends every 32 B plus 6 B return through the inner-code lane array. Chunk-local state and the completion merge serve accepted and corrected requests. Repair-request state, the outer-codeword buffer, and the erasure-only outer engine serve rejected requests. Parity state, differential encoding, span ordering, and coded-record write commit implement data-before-parity updates. The device command scheduler and PHY remain outside the evaluated boundary. 
+
+Fig. 9 is read from the HBM return path toward the host. The channel interface sends data and metadata to the inner lanes. Accepted and corrected targets enter chunk-local state and the completion merge. Rejected targets acquire a repair buffer, issue reads through the same interface, and place resolved payloads in the outer-codeword buffer. The span identifier and erasure mask drive outer repair, whose result rejoins the completion merge with the original request identifier. On writes, parity state feeds the differential engine, while write commit generates inner metadata and enforces data-before-parity completion under span ordering. Finite ready-valid queues preserve request ownership and propagate backpressure. A repair buffer owns a rejected target until all 71 reads are classified, then transfers the syndrome, erasure mask, target position, and identifier to the post-reassembly and erasure-decoder queues. The buffer is released 6
+
+only after this transfer succeeds. Completion occurs after a local result, a repaired target with zero residual, or DUE becomes final. A parity failure after data commit records a poisoned span. Thus, no admitted request is discarded or completed from partial repair state. 
+
+G. Decoupled Service Domains 
+
+The HBM-side domain classifies returned targets and repair reads and stages completed repair contexts. A separate repair domain performs syndrome processing and erasure decoding through finite ready-valid queues. Inner decoders scale with HBM returns, while outer resources scale with rejection rate. Section IV sizes both domains and tests repair bursts. IV. E VALUATION 
+
+The evaluation tests reliability, structured errors, LLM-decode traffic, HBM command service, and hardware cost. It combines 8 × 10 6 binary-channel samples, deterministic fault patterns, 3 public-model workloads, 10-seed Ramulator2 simulation, finite-queue stress, and 8 ASAP7-synthesized ker-nels. Every main result uses RS(38,32) inner codes and the monolithic 2 KB RS(1138,1024) outer codeword. An accepted incorrect payload is silent data corruption (SDC), while a detected uncorrectable error (DUE) terminates the request. The highest HBM output BER pb is used only for controller traffic and hardware stress. 
+
+A. Local Reliability Boundary 
+
+The main model treats HBM output errors as a binary symmetric channel (BSC), where 0-to-1 and 1-to-0 flips occur independently with probability pb. Each 304-bit inner code-word contains the 32 B payload and its 6 B metadata, so the model covers corruption in either field. The radius-2 inner decoder corrects at most 2 byte symbols and rejects every 3- and 4-symbol pattern. For traffic and hardware sizing, we conservatively treat at least 3 erroneous byte symbols as a repair: 
+
+pub esc = Pr[Binomial(38 , 1 − (1 − pb)8) ≥ 3] . (2) The q-ary analytical estimate uses an alphabet of q = 2 8
+
+byte values and assumes uniformly distributed nonzero symbol differences. RS(38,32) has minimum distance 7. With radius 2, at most 4 erroneous bytes cannot cause miscorrection because 2 codewords would then be within distance 6. We therefore obtain a conservative result with no symbol-value model by treating at least 5 erroneous bytes as potentially silent. Under independent and identically distributed (IID) bit flips, pbyte =1−(1 −pb)8, yielding Pr[Binomial(38 , p byte ) ≥ 5] . This result remains dependent on the IID bit-location assumption. The BSC experiment runs the complete radius-2 decoder on the all-zero codeword, which suffices by code linearity. For each total K from 5 through 12 bit flips, it samples 
+
+10 6 patterns across 10 fixed seeds. We weight each sampled miscorrection fraction by the binomial probability of its flip count. Bonferroni-adjusted, one-sided Clopper–Pearson limits provide at least 95% simultaneous coverage across these strata under repeated sampling. Adding the exact probability of more than 12 flips gives a conservative total-SDC confidence limit, and 10,000 random codewords check translation invariance. Conditioned on target rejection, the 63 remaining data records and 7 full parity records each contribute 16 erasures when rejected. The final parity beat contains 2 logical symbols. The target, 6 full rejected repair reads, and the final tail consume all 114 available erasures. A target plus 7 full rejected repair reads exceeds the budget and causes DUE. The conservative repair probability therefore applies to the target and the 70 full repair-read groups: 
+
+P ub overflow ,32 B = pub esc Pr[Binomial(70 , p ub esc ) ≥ 7] (3) This expression counts a rejected target followed by at least 7 rejected full repair-read groups. With correct accepted repair reads and at most 114 declared erasures, the outer decoder reconstructs the target or reports DUE after the residual check. The conservative read-path accounting has 3 components: the simultaneous one-sided 95% confidence limit for an accepted-incorrect target, the corresponding confidence limit across 71 repair reads weighted by the repair probability, and the upper bound on more than 114 erasures. The first 2 terms form the read-path SDC confidence limit shown in Fig. 10(b). Correct local or repaired payloads complete successfully, while an accepted incorrect payload is SDC. Too many erasures or a nonzero residual returns DUE. A parity failure after data commit poisons the span and is outside this read-path probability. Let u95 BSC denote the simultaneous one-sided confidence limit for an accepted-incorrect inner result. A union bound gives the complete read-path error limit 
+
+P 95 read ,bad ≤ u95 BSC 
+
+ 1 + 71 pub esc 
+
+ + P ub overflow ,32 B . (4) The first term covers the requested record. The factor of 71 covers accepted-incorrect repair reads when repair is invoked. The last term covers a declared-erasure count beyond the outer-code budget. Counting every accepted-incorrect repair read as adverse covers both errors detected by the residual check and errors that remain silent. Fig. 10 separates repair frequency, adverse read outcomes, and the sensitivity of inner SDC to erroneous byte values. All 3 subfigures use the same HBM output BER values. Table II separates the low-error example from the 10 −3
+
+hardware stress. For Qwen at pb = 10 −4, a union bound projects the BSC read-path SDC confidence limit to 2.14 ×
+
+10 −6 per token. This aggregation does not require independent requests. The result is a statistical upper limit, not an estimated field-event rate or qualification result. At pb = 10 −3, radius-3 local decoding reduces rejection from 3.47 × 10 −3 to 2.40 × 10 −4 but raises the local q-ary SDC reference from 1.64 × 10 −12 to 8.82 × 10 −8. REACH uses radius 2 because code distance then forces every 3- and 4-symbol error to reject. The vendor-neutral 32 B control has residual probability 2.93 × 10 −2 under its idealized 1-group rule. Fig. 10(c) compares error-value assumptions and sampling uncertainty. The sampled BSC contribution contains 1 miscor-rection across 8 × 10 6 cases and, after flip-count weighting, 710 4 3×10 4 10 3                               
+
+> HBM output BER (a) Repair probability
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> Probability / 32 B
+> 4.2 × 10 6
+> 1.1 × 10 4
+> 3.5 × 10 3
+> Traffic stress
+> 10 43×10 410 3
+> HBM output BER (b) Adverse outcomes
+> 10 22
+> 10 19
+> 10 16
+> 10 13
+> 10 10
+> Probability / 32 B
+> DUE < 10 22
+> SDC, 95% limit DUE, erasure overflow
+> 10 43×10 410 3
+> HBM output BER (c) Sensitivity to symbol values
+> 10 22
+> 10 18
+> 10 14
+> 10 10
+> 10 6
+> Inner SDC / 32 B
+> < 10 22
+> q-ary analytical estimate BSC confidence limit (95%) BSC sampled estimate No symbol-value model
+
+Fig. 10. Repair frequency and read outcomes per 32 B request. (a) Conservative repair probability. (b) Read-path SDC confidence limit and erasure-overflow DUE upper bound. The SDC limit covers the target and repair reads. Downward markers denote values below 10 −22 . (c) Q-ary reference, sampled BSC contribution from 5–12 bit flips, total BSC confidence limit, and the conservative result with no symbol-value model. Confidence limits are simultaneous and one-sided at 95%. 
+
+gives 7.79 × 10 −22 at pb = 10 −3. The unsampled tail has probability 1.79 × 10 −17 and enters the total-SDC confidence limit of 8.29 ×10 −11 , not the sampled contribution. Assigning no distribution to erroneous byte values gives the conservative 
+
+1.30 × 10 −5 result. Radius 2 therefore favors explicit rejection over the lower repair rate and higher q-ary SDC reference of radius-3 local decoding. All 48 endpoint metadata bits are used by the RS(38,32) parity. Adding a separate checksum under the same transport budget would require trading correction distance for detection rather than adding a free check. We retain the representative code and expose its error-value sensitivity in Fig. 10(c). 
+
+TABLE II ROLE OF THE EVALUATED HBM OUTPUT BER POINTS .                                    
+
+> Evaluation role pb
+> Repair prob. per 32 B Application BW at 3.35 TB/s BSC read SDC 95% limit Overflow DUE upper bound Low-error example 10 −44.23 ×10 −63.35 TB/s 1.04 ×10 −15 1.22 ×10 −34
+> Intermediate sensitivity 3×10 −41.09 ×10 −43.32 TB/s 2.41 ×10 −13 2.40 ×10 −23
+> Hardware stress 10 −33.47 ×10 −32.69 TB/s 1.03 ×10 −10 2.08 ×10 −11
+
+The BSC column combines accepted-incorrect targets and repair reads under the simultaneous 95% confidence limit. Overflow DUE bounds only declared erasures beyond the outer repair budget, per 32 B request. No row is a device qualification point. 
+
+B. Structured and Clustered Errors 
+
+Fig. 11 shows deterministic outcomes for nonuniform errors and then holds the mean reject count fixed while increasing within-span clustering. 1 7 8 16         
+
+> Affected 32 B chunks (a) Repairable fault patterns
+> 123458
+> Faulty byte symbols per affected chunk
+> Inner corrects 1-2 symbols Outer repairs 3-4 symbols Overflow DUE 8+ chunks Value-dependent 5+ symbols
+> Independent 0.001 0.05
+> Within-span correlation (b) Clustered-error sensitivity
+> 10 11
+> 10 9
+> 10 7
+> 10 5
+> 10 3
+> Probability of more than 7 rejected groups
+> 1.84e-10 1.92e-08 4.51e-03
+> Same mean rejection
+> Not field-fitted
+
+Fig. 11. Structured and clustered errors. (a) Deterministic outcome by affected chunks and faulty byte symbols per chunk. Black lines separate the transitions after 2 and 4 faulty symbols and after 7 affected chunks. (b) Span-level probability of more than 7 rejected groups at the same mean reject count and pb = 10 −3. Correlation is a sensitivity setting, not a field-fitted parameter. 
+
+Each coordinate in Fig. 11(a) is a deterministic pattern rather than a probability. The horizontal coordinate counts affected 32 B chunks in 1 outer span, while the vertical coordinate counts faulty byte symbols in each affected chunk. With at most 2 faulty symbols, each inner decoder corrects its chunk. With 3 or 4, each inner decoder rejects and exposes the chunk position to the outer code. The outer code repairs up to 7 rejected chunks and returns DUE from 8 onward. With at least 5 faulty symbols, the inner outcome depends on error values, as quantified in Fig. 10(c). The black lines separate these integer thresholds. Fig. 11(b) draws a span-specific reject probability from a Beta distribution and then draws outcomes for 64 data and 7 full-parity groups. The 2-symbol tail is separate and cannot change the full-group threshold. This Beta-Binomial construction preserves the mean count of 0.246 while in-creasing pairwise correlation. The span-level tail rises from 
+
+1.84 ×10 −10 under independence to 1.92 ×10 −8 at correlation 0.001 and 4.51 × 10 −3 at 0.05. This unconditional span sensitivity differs from the target-triggered per-request bound in Eq. (3). For mean reject probability p and plotted correlation ρ > 0,the sweep uses α = p(ρ−1 − 1) and β = (1 − p)( ρ−1 − 1) .Drawing a span probability from Beta( α, β ) and then drawing 71 Bernoulli outcomes preserves E[E] = 71 p. The point ρ = 0 
+
+is the independent binomial limit. This construction changes only within-span concentration, so the horizontal axis does not imply a measured spatial fault process. Each rejected data or full-parity group consumes 16 outer symbols, while the final parity beat contributes 2. These 2 tests expose the exact C = 7 boundary without claiming a fitted row, bank, or lane fault distribution. 
+
+C. Memory-Traffic-Limited Decode Rate 
+
+We use an analytical traffic model derived from public configurations for deterministic LLM decode [6]–[9]. Each generated token reads the active bfloat16 (BF16) weights and the 8K-context key-value (KV) state, then appends 1 KV entry per layer. Qwen3-32B represents grouped-query atten-tion (GQA). GLM-4.7-Flash and DeepSeek-V2-Lite represent 8
+
+compressed multi-head latent attention (MLA) with sparse experts. Table III reports the resulting traffic and controller-addressable capacity.                        
+
+> TABLE III PUBLIC -CONFIGURATION BF16 WORKLOAD TRAFFIC AT 8K CONTEXT .
+> Model Attn. Params total/active All weights Active weights KV read/write Addressed total Qwen3-32B GQA 32.76/31.98B 65.50 GB 63.97 GB 2.15 GB/262 KB 76.10 GB GLM-4.7-Flash MLA 31.25/3.58B 62.50 GB 7.16 GB 0.44 GB/54 KB 70.81 GB DeepSeek-V2-Lite MLA 15.70/2.45B 31.40 GB 4.90 GB 0.26 GB/31 KB 35.61 GB
+
+The 80 GB controller-addressable budget allocates 71.11 GB to protected demand data and 8.89 GB to the outer sidecar. The 6 B metadata stored with each 32 B endpoint record adds 15 GB outside that address space. The resulting 95 GB physical footprint gives a 74.85% protected-demand storage rate. For a storage-cost comparison normalized to 1 conventional demand byte, let f denote relative endpoint cost per physical byte. REACH’s protected-byte storage cost is f / 0.7485 , so break-even requires a device-side reduction greater than 25.15%. For example, a hypothetical 30% reduction yields 0.70 /0.7485 = 0.935 , or 6.5% lower storage cost per protected byte. Endpoint metadata is accounted for here, separately from controller logic and power. Weight traffic equals element size times active parameters. GQA KV traffic follows the layer count, KV-head count, head dimension, context length, and element size. MLA uses its compressed KV-latent and rotary-key dimensions. KV state is organized into 16-token PagedAttention blocks [10], [11]. Re-quests within a tensor or KV block form contiguous 32 B runs, while physical blocks may be discontinuous. KV append bytes determine the write fraction, and consecutive appends reuse a 64-entry parity cache. Activations remain in accelerator-local storage. The model uses the public H100 SXM peak HBM band-width of 3.35 TB/s and an 80 GB controller-addressable capac-ity budget [12]. At pb = 10 −3, the analytical budget assigns 0.66 TB/s to repair reads and 2.69 TB/s to application requests, defining the hardware-provisioning point. Ramulator2 sepa-rately sustains 2.35 TB/s total and 1.88 TB/s of application traffic. Figs. 12 and 13 use the simulated point, while Fig. 14 and Table V use the analytical point. A 900 BF16-TFLOP/s compute roof leaves all 3 models memory-bandwidth bound. Each local decision uses pub esc , and each rejected request adds 71 repair reads. The radius-3 local control uses the same 6 B metadata without outer repair. Direct-long uses the same monolithic outer code with ideal span coalescing. The vendor-neutral 32 B control completes native transactions without con-troller repair. These controls compare transfer-local protection, conventional long-code processing, and REACH’s rejection-conditioned repair. Qwen3-32B is the capacity-limiting case at 76.10 GB after outer-sidecar allocation. The other models exercise lower active-weight traffic and compressed MLA state. Supplemen-tary sweeps cover 2K to 32K contexts, KV blocks of 8 to 32 tokens, lower-precision weights, and 1 to 8 routed experts. The 32 B control partitions its hypothetical access word into 17 groups of 16 bits. Its residual probability is the binomial probability that at least 2 groups are affected. Public HBM sources do not disclose a common on-die parity matrix, so this separate control represents a capability boundary rather than a vendor implementation. The radius-3 local and 32 B controls add no outer repair traffic. Direct-long checks every coalesced 2 KB codeword and invokes unknown-error recovery on nonzero syndromes. Fig. 12 shows how repair reads affect analytical LLM-decode throughput before any policy handles terminal DUE. Error-free 10 4 10 3               
+
+> (a) Throughput after repair reads
+> 80 85 90 95 100
+> Throughput retained (%)
+> 99.97%
+> 80.2%
+> Error-free = 100%
+> Qwen GLM DeepSeek
+> (b) At HBM output BER 10 4
+> 0100 200 300 400 500
+> Traffic-limited tokens/s
+> 35 308 455 32 274 404
+> REACH Direct-long
+> Fig. 12. Analytical LLM-decode throughput after repair traffic. (a) Percentage of the error-free REACH token rate retained after repair reads. All 3 workloads share this curve. (b) Absolute traffic-limited rates at HBM output BER pb= 10 −4for the 3 public-configuration BF16 workloads at 8K context. Direct-long receives ideal span coalescing. The compared designs do not have equal residual reliability.
+
+Fig. 12(a) shows that REACH retains 99.97% of its error-free traffic-limited rate at pb = 10 −4 and 80.2% at the 
+
+pb = 10 −3 traffic stress. The latter sizes traffic and hardware and does not define a deployment target. Under independent request outcomes, the erasure-overflow DUE upper bound projects to 4.21% per Qwen token. At pb = 10 −4, Fig. 12(b) gives REACH 35.5, 308.4, and 454.5 tokens/s for the 3 workloads, versus 31.5, 274.2, and 404.1 for direct-long. At zero error, direct-long reaches 88.9% of REACH’s traffic-limited rate because every ideally coalesced codeword carries outer parity. These values measure traffic capacity before system recovery from terminal DUE. Ramulator2 models 5 HBM3 stacks, 80 channels, 2 pseudo-channels per channel, per-bank refresh, and HBM3-6400 tim-ing scaled to 5234 Mb/s per pin [13]. Balanced traffic stripes 64 data records across channels and rotates 8 parity records over the unused channels, giving every channel 8 data and 1 parity record per 10 spans. The controller uses a 1024-entry repair-read queue, a 512-entry return queue, 80 repair buffers, and 16 repair-read admissions per 2.0 GHz cycle. At pb = 10 −3, offered traffic is the application plus repair-read bandwidth divided by 3.35 TB/s. The 70% point is 2.35 TB/s total, including 1.88 TB/s of application requests. This offered-load percentage describes HBM command traffic and is unrelated to the 70% controller-resource target intro-duced later. The selected point uses 4096 measured repairs for each of 10 seeds. The 85% and 100% overload diagnostics use 128 repairs for each of 2 seeds. This balanced command simulation is not workload replay or causal fault injection. The table reports issued read-command bandwidth divided by offered traffic, the 99th-percentile time from a repair trigger 9
+
+to the last of its 71 reads, and the peak number of simultaneous repairs awaiting those reads. Warm-up commands crossing the fixed-interval boundary can produce 100.2%, which equals 2.348 TB/s and remains below 3.35 TB/s. A point keeps up only when complete drain produces no dropped repair, admis-sion stall, or context overflow.               
+
+> TABLE IV RAMULATOR 2COMMAND SERVICE .
+> Offered traffic (% peak / TB/s) Issued / offered (%) Repair-read latency (99th percentile, ns) Peak context demand / 80 available Outcome 70 / 2.35 99.5–100.2 324.1–347.2 57 Keeps up 85 / 2.85 86.5–88.9 378.0–390.2 70 Falls behind 100 / 3.35 72.7–74.5 537.9–620.0 119 Falls behind
+
+At 70% offered traffic, all 10 seeds complete, the repair-read issue queue peaks at 580 of 1024 entries, and closure holds with 10% longer HBM timing, 128 external read-buffer entries, and age thresholds from 8 to 128 half cycles. The 85% and 100% points fall behind, making 70% the highest tested traffic point that keeps up. 
+
+D. Write and Span-Size Tradeoffs 
+
+Fig. 13 sizes differential-parity engines and compares the bandwidth and repair capacity of 512 B, 1 KB, and 2 KB spans. A 2.0 GHz engine accepts 1 update every 16 cycles. At 70% average utilization, each engine provides 87 .5 × 10 6 updates/s with margin for bursts and arbitration. Decode 0.0007% 1% 10% 100%            
+
+> Selected write fraction (a) Write-engine sizing
+> 10 0
+> 10 1
+> 10 2
+> Differential engines required
+> 1 engine
+> Full reuse 75% reuse No reuse
+> 512 B
+> C= 1
+> 1 KB
+> C= 3
+> 2 KB
+> C= 7
+> (b) Span-size tradeoff
+> 0.0 0.5 1.0 1.5 2.0
+> Application bandwidth (TB/s)  2.214 2.091 1.881
+> Representative
+> C= 7 design
+> Fig. 13. Write-engine and span-size tradeoffs at 70% HBM load. (a) Differential-parity engines required as write fraction and parity-cache reuse change. The first category is the upper end of the evaluated LLM-decode range. (b) Application bandwidth and full-chunk repair capacity for 512 B, 1 KB, and 2 KB spans at pb=10 −3. The shorter spans are analytical counterfactuals.
+
+The evaluated LLM-decode write fractions of 0.0004% to 0.0007% require 1 engine for every reuse case in Fig. 13(a). The 1%, 10%, and 100% categories expose the cost of write-heavier workloads. In Fig. 13(b), 512 B, 1 KB, and 2 KB spans leave 2.21, 2.09, and 1.88 TB/s for application traffic and repair 1, 3, and 7 full chunks. The representative 2 KB design selects the C = 7 boundary while retaining HBM-class bandwidth. 
+
+E. Full-Bandwidth Hardware Sizing 
+
+Each 32 B application request invokes repair with probabil-ity pub esc . For the read-only sizing point, application and repair traffic share the HBM bandwidth according to Application bandwidth = HBM bandwidth 
+
+1 + 71 pub esc 
+
+, (5) At the pb = 10 −3 analytical peak-interface point, this gives 2.69 TB/s of application bandwidth, 84 .0 × 10 9 application requests/s, and 291 × 10 6 repairs/s. Workload-specific points add data, parity, and parity-fill traffic to the same budget. We compute each hardware count from the full-bandwidth repair rate, the work performed for each repair, and the clock rate. Each post-reassembly unit requires 87 cycles. Repair-read lanes and syndrome pipelines follow the 71 repair reads. Each erasure decoder shares 114 GF (2 16 ) arithmetic lanes across its stages. Decoding requires 4 cycles per erasure, 1 cycle per erasure pair, and 17 fixed cycles. For a resource that receives work at rate λi, performs wi
+
+cycles of work per arrival, and runs at frequency fi, we select 
+
+Ni =
+
+ λiwi
+
+0.70 fi
+
+
+
+. (6) The 0.70 denominator is the stated average-utilization target. Applying this rule to 291 × 10 6 repairs/s gives 19 post-reassembly units for 87 cycles per repair, 15 repair-read lanes for 71 reads per repair, 20 syndrome pipelines for 72 positions per repair, and 30 erasure decoders for the 106.5-cycle mean service time. We use 16 repair-read lanes to align issue bandwidth with the channel organization. The inner path requires 75 lanes by rate and uses 80, matching the 80 HBM channels. These rounded counts produce the reported 80, 19, 16, 20, and 30 organization. The HBM-side model runs at 2.0 GHz with 80 inner decoders, 80 repair buffers, 19 post-reassembly units, and 16 repair-read lanes. The 1.5 GHz repair domain uses 20 syndrome pipelines and 30 erasure decoders. Finite ready-valid queues separate the domains. We target at most 70% average utilization so that bursts, arbitration, and clock-domain crossings do not immediately create backpressure. This 70% hardware target is a design choice and is independent of the 70% HBM load used in the Ramulator2 simulation. Fig. 14(a) reports utilization at the full 3.35 TB/s interface. Fig. 14(b) begins after all repair reads return and reports queue-plus-service latency under bursty arrivals. Legal repairs require 106.5 repair-domain cycles on average. Fig. 14(a) keeps every modeled block below the 70% target at full HBM bandwidth. Fig. 14(b) injects simultaneous groups of 1 to 64 completed repairs at the same mean rate. Every ad-mitted repair completes, with maximum p99 post-read latency of 356.9 ns, repair-queue depth of 64, and erasure-decoder or result-queue depth of 10. Repairs with 112 and 114 erasures require 521 and 530 cycles. At pb = 10 −3 and full HBM bandwidth, inner decoders, post-reassembly units, repair-read lanes, syndrome pipelines, and erasure decoders reach 65.4%, 66.7%, 64.7%, 69.9%, and 69.0% utilization. Scheduling reaches 58.3%. The selected 10 0 25 50 75 Resource utilization (%) (a) All resources below 70% Inner decoders Post-reassembly Repair-read lanes Syndrome pipelines Erasure decoders Scheduler         
+
+> 65.4 66.7 64.7 69.9 69.0 58.3
+> 70% target
+> 116 32 48 64 Repairs in one burst (b) No repair drops 0100 200 300 Queue + service latency (ns)
+> p99 = 356.7 ns Median 0 dropped repairs
+> Fig. 14. Full-bandwidth repair-path capacity. (a) Every modeled resource remains below the 70% average-utilization target at 3.35 TB/s and pb= 10 −3.(b) After all 71 repair reads return, the 99th-percentile queue-plus-service latency remains below 357 ns for bursts of up to 64 repairs, with no dropped repair. Table IV separately reports HBM command service and repair-read latency.
+
+counts of 80, 19, 16, 20, and 30 therefore keep every modeled block within the 70% hardware target. We synthesize 8 parameterized SystemVerilog kernels with ASAP7 cells. Five REACH kernels implement the in-ner decoder, syndrome pipeline, erasure-decoder GF lane, differential-parity engine, and scheduler. Three direct-long ker-nels implement recursive Chien search, key-equation update, and Forney magnitude operations, with pre-layout paths of 322, 344, and 349 ps. The area model combines mapped kernels with replica counts, explicit storage, and shared control and integration assumptions. The modeled common read path classifies a returned chunk in 13 HBM-side cycles, or 6.5 ns at 2.0 GHz, before local completion. Table V compares both organizations at the analytical 2.69 TB/s application point. Direct-long receives ideal 2 KB coalescing and validates every span. Its average-error organi-zation uses 90 syndrome pipelines, 143 key-equation paths, 1,065 key-equation lanes, 25,706 Chien-search lanes, and 713 Forney lanes. Full-radius sizing raises the last 3 counts to 10,117, 81,077, and 6,286. The mean-work direct-long count weights key-equation, Chien-search, and Forney work by its conditional symbol-error distribution. This is the main comparison with REACH’s mean-work provisioning. The full-radius sensitivity sets both provisioning and decoding activity to 57 unknown symbol errors, the correction radius of the 114-parity-symbol code. Both cases use mapped recursive Chien, key-equation, and Forney elements under shared ASAP7 and throughput assump-tions. The comparison describes this conventional architecture, without assuming equal residual reliability or an algorithm-independent lower bound. REACH uses 20 syndrome pipelines at the repair rate. It requires no long-code position-search lanes because inner rejection supplies the erasure positions before outer recovery begins. The low, nominal, and high area scenarios apply the same assumptions to both organizations. SRAM periphery factors are 1.2 ×, 1.5 ×, and 2.0 ×. Control allowances are 10%, 25%, and 50%, followed by integration factors of 1.15 ×, 1.30 ×, and 1.50 ×. Power sensitivity scales total dynamic power, including clock-pin power, with fixed leakage. The composition excludes endpoint logic, the PHY, clock-tree closure, and complete physical routing.  
+
+> TABLE V NOMINAL CONTROLLER COST AT THE ANALYTICAL 2.69 TB/ SAPPLICATION POINT .
+
+(a) Same-bandwidth nominal comparison Organization Area (mm 2)Ratio to REACH Modeled power (W) Ratio to REACH 
+
+REACH 5.19 / 1.00 × 3.70 / 1.00 ×
+
+Direct-long, mean decode work 11.73 / 2.26 × 8.73 / 2.36 ×
+
+Direct-long, full radius 17.16 / 3.31 × 12.20 / 3.30 ×
+
+REACH reduction vs. mean 55.8% 57.7% 
+
+(b) REACH area breakdown Component Area (mm 2) Share (%) Inner decoders 0.78 15 Syndrome pipelines 1.29 25 Erasure decoders 0.48 9Write and scheduling logic 0.051 1State and storage 0.60 12 Control and integration 2.00 38 
+
+Total 5.19 100 
+
+Across the low-to-high area assumptions, REACH spans 3.90–7.62 mm 2, direct-long with mean decode work spans 9.09–16.36 mm 2, and full-radius direct-long spans 13.32– 23.88 mm 2. Scaling total dynamic power by 0.5 × to 2 × gives 1.85–7.39 W, 4.37–17.45 W, and 6.11–24.39 W. At nominal assumptions and mean decode work, REACH uses 55.8% less area and 57.7% less modeled power. The full-radius sensitivity gives reductions of 69.8% and 69.7%, respectively. REACH reduces hardware demand by invoking outer recovery at the repair rate and removing long-code position-search lanes from that path. The 446 ps slowest inner-lane pipeline stage meets the 500 ps HBM-side block target, and every mapped repair ker-nel meets the 667 ps repair-domain target. These pre-layout diagnostics establish the timing scale used in the analytical composition and are distinct from the 13-cycle common-path latency. 
+
+F. Design Implications 
+
+The results yield 3 system implications. First, the inner ra-dius controls both reliability and hardware demand. Correcting 1 or 2 erroneous bytes keeps requests local, while rejection supplies the position needed by outer repair. A larger radius reduces repair traffic but increases the q-ary SDC reference in Fig. 10. The inner decision therefore determines the recovery work that the controller must provision. Second, ordinary returns and exceptional repair require different provisioning rates. Inner lanes scale with HBM return bandwidth, while repair buffers and outer decoders scale with rejection probability and the 71-read repair cost. This separation supports the analytical full-interface target. The independent 70% resource-utilization target reserves margin for bursts, arbitration, and clock-domain crossings. 11 
+
+Third, sequential weight and KV reads and sparse KV appends favor long-span protection. Fig. 13 quantifies the additional differential engines needed as writes increase or parity reuse falls. Shorter spans reduce repair traffic, while the evaluated 2 KB span provides greater erasure capacity. These tradeoffs explain the read-dominated LLM-decode specializa-tion and guide provisioning for adjacent workloads. V. R ELATED WORK AND DISCUSSION 
+
+REACH builds on established coding primitives and our prior work [14], which used per-chunk CRC detection to gate long-span recovery and differential parity for writes. REACH extends this approach with local correction and explicit rejection for both requested data and repair reads, then carries address-derived erasures through reassembly, backpres-sure, completion, ordered commit, poison handling, and dual-clock service. Local correction reduces the repair demand, while shared target and repair-read classification provides a consistent erasure interface. The evaluation adds binary-channel sampling, Ramulator2 command simulation, and a same-throughput hardware comparison based on synthesized kernels. 
+
+Memory reliability. DRAM scaling has motivated on-die, interface, rank, scrub, remapping, and retirement mecha-nisms [5], [15]–[24]. Field observations motivate our deter-ministic templates, although unavailable physical mapping prevents a fitted device distribution [25]. Cerberus coordinates protection layers, while CXL-ECC, ASPA, and ReScue oper-ate under different interfaces and service contracts [26]–[29]. 
+
+Controller-managed protection. Storage and phase-change-memory controllers apply strong ECC under different latency and bandwidth contracts [3], [30], while logic-layer memory offers greater coding flexibility [31]. NAND demonstrates how controller protection can preserve usable capacity as device reliability changes. REACH follows this principle while addressing HBM’s finer transactions and higher bandwidth. Stronger local codes remain bounded by per-request metadata, while conventional long codes check each span and locate errors in corrupted codewords. REACH supplies unresolved chunk positions before exceptional repair. 
+
+Customized HBM. NVHBM places its memory controller in the HBM stack and uses a custom PHY, illustrating active co-design of controller placement and interfaces [2]. REACH evaluates an accelerator-side extension with a co-designed endpoint record, using the native in-package path and existing scheduler and PHY. NVHBM motivates customized reliability contracts without prescribing REACH’s placement. The storage-cost model in Section IV-C requires a device-side benefit exceeding the coding overhead. Actual manu-facturing cost and endpoint implementation remain separate design questions. 
+
+System contract. REACH uses the co-designed endpoint mode in Table I. Atomic data and metadata enable the inner decision, while physical striping exposes the parallel command resources required by repair. DUE terminates the controller request. A surrounding system can add reread, scrub, retire-ment, or persistent-fault recovery without changing the inner-rejection and known-erasure workflow. Alternative outer codes can preserve address-derived era-sure recovery, with parity, buffering, and decoding resources resized for their service cost. VI. C ONCLUSION 
+
+REACH targets read-dominated AI inference, where se-quential weight and KV reads preserve HBM bandwidth effi-ciency and writes remain sparse. Within this workload regime, REACH separates ordinary 32 B service from exceptional long-span recovery. A short inner code corrects common errors and converts unresolved chunks into address-derived erasures, so the controller invokes the monolithic outer code only after rejection. Differential parity and ordered commit handle the sparse writes without rewriting unchanged data. Ramulator2 sustains 70% HBM load, corresponding to 1.88 TB/s of application bandwidth after repair reads. A sep-arate full-interface model provisions 2.69 TB/s of application traffic at the highest HBM output BER stress. At this target, the nominal synthesis-anchored composition uses 55.8% less controller area and 57.7% less modeled power than the mean-work direct-long design. These results show how regular AI-inference traffic can support strong long-span protection without placing span recovery on ordinary demand service. REFERENCES [1] J. Koch, T. Bennett, W. Chu, and A. Ahmad, “The memory wall: Past, present, and future of DRAM,” SemiAnalysis , 2024. [Online]. Available: https://semianalysis.com/2024/09/03/the-memory-wall/ [2] F. Ghodsian, J. Clayton, and V. Nanda Kumar, “Nvidia NVLink fu-sion brings NVHBM to next-generation AI infrastructure,” NVIDIA Technical Blog, Aug. 2026, accessed 2026-09-06. [Online]. Available: developer.nvidia.com. [3] K. Zhao, W. Zhao, H. Sun, X. Zhang, N. Zheng, and T. Zhang, “LDPC-in-SSD: Making advanced error correction codes work effectively in solid state drives,” in 11th USENIX Conference on File and Storage Technologies (FAST 13) , 2013, pp. 243–256. [4] JEDEC Solid State Technology Association, “High bandwidth memory DRAM (HBM4),” JEDEC Standard JESD270-4, Apr. 2025, accessed 2025-10-26. [Online]. Available: https://www.jedec.org/ standards-documents/docs/jesd270-4 [5] ——, “High bandwidth memory DRAM (HBM3),” JEDEC Standard JESD238B.01, Apr. 2025, accessed 2025-10-26. [Online]. Available: https://www.jedec.org/standards-documents/docs/jesd238b01 [6] H. Zhang, A. Ning, R. Prabhakar, and D. Wentzlaff, “LLMCompass: A hardware evaluation framework for large language model inference,”                  
+
+> arXiv preprint arXiv:2312.03134 , 2023. [7] Qwen Team, “Qwen3-32b,” 2025, public model configuration, https:// huggingface.co/Qwen/Qwen3-32B. [8] Z.ai, “Glm-4.7-flash,” 2026, public model configuration, https:// huggingface.co/zai-org/GLM-4.7-Flash. [9] DeepSeek-AI, “Deepseek-v2-lite,” 2024, public model configuration, https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite. [10] W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. H. Yu, J. Gonzalez, H. Zhang, and I. Stoica, “Efficient memory management for large language model serving with pagedattention,” in Proceedings of the 29th symposium on operating systems principles , 2023, pp. 611–626. [11] vLLM Project, “vLLM documentation, version 0.6.2,” 2024, block-size configuration, https://docs.vllm.ai/ /downloads/en/v0.6.2/pdf/. [12] NVIDIA, “Nvidia h100 tensor core gpu,” 2026, product specifications, accessed 2026-07-17, https://www.nvidia.com/en-us/data-center/h100/. [13] H. Luo, Y. C. Tu˘ grul, F. N. Bostancı, A. Olgun, A. G. Ya˘ glıkc ¸ı, and O. Mutlu, “Ramulator 2.0: A modern, modular, and extensible DRAM simulator,” IEEE Computer Architecture Letters , vol. 23, no. 1, pp. 112– 116, 2024. [14] R. Xie, A. U. Haq, Y. Fang, L. Ma, S. Sen, S. Venkataramani, L. Liu, and T. Zhang, “Breaking the HBM Bit Cost Barrier: Domain-Specific ECC for AI Inference Infrastructure,” IEEE Computer Architecture Letters , vol. 24, no. 02, pp. 313–316, Jul. 2025. [Online]. Available: https://doi.ieeecomputersociety.org/10.1109/LCA.2025.3616810 12
+
+[15] J. Liu, B. Jaiyen, Y. Kim, C. Wilkerson, and O. Mutlu, “An experimental study of data retention behavior in modern dram devices: Implications for retention time profiling mechanisms,” ACM SIGARCH Computer Architecture News , vol. 41, no. 3, pp. 60–71, 2013. [16] Y. Kim, R. Daly, J. Kim, C. Fallin, J. H. Lee, D. Lee, C. Wilkerson, K. Lai, and O. Mutlu, “Flipping bits in memory without accessing them: An experimental study of dram disturbance errors,” ACM SIGARCH Computer Architecture News , vol. 42, no. 3, pp. 361–372, 2014. [17] JEDEC Solid State Technology Association, “DDR5 SDRAM,” JEDEC Solid State Technology Association, JEDEC Standard JESD79-5D, Nov. 2025, published 2025-11-19. Accessed 2025-12-15. [18] S. Gurumurthi, K. Lee, M. Jang, V. Sridharan, A. Nygren, Y. Ryu, K. Sohn, T. Kim, and H. Chung, “HBM3 RAS: Enhancing resilience at scale,” IEEE Computer Architecture Letters , vol. 20, no. 2, pp. 158–161, 2021. [19] B. Murdock, “What designers need to know about HBM3,” https://www. synopsys.com/articles/hbm3-ip-dwtb.html, 2022, accessed 2025-09. [20] P. J. Nair, V. Sridharan, and M. K. Qureshi, “XED: Exposing on-die error detection information for strong memory reliability,” ACM SIGARCH Computer Architecture News , vol. 44, no. 3, pp. 341–353, 2016. [21] T. J. Dell, “A white paper on the benefits of chipkill-correct ECC for PC server main memory,” IBM Microelectronics division , vol. 11, no. 1-23, pp. 5–7, 1997. [22] NVIDIA Corporation, “Row-remapping — NVIDIA GPU memory error management,” NVIDIA Corporation, Application Note DA-09826-002 v001, Jun. 2023, accessed 2025-11-07. [Online]. Available: https://docs.nvidia.com/deploy/a100-gpu-mem-error-mgmt/ row-remapping.html [23] A. N. Udipi, N. Muralimanohar, R. Balsubramonian, A. Davis, and N. P. Jouppi, “LOT-ECC: Localized and tiered reliability mechanisms for commodity memory systems,” ACM SIGARCH Computer Architecture News , vol. 40, no. 3, pp. 285–296, 2012. [24] D. H. Yoon and M. Erez, “Virtualized and flexible ECC for main memory,” in Proceedings of the fifteenth International Conference on Architectural support for programming languages and operating sys-tems , 2010, pp. 397–408. [25] R. Wu, S. Zhou, J. Lu, Z. Shen, Z. Xu, J. Shu, K. Yang, F. Lin, and Y. Zhang, “Removing obstacles before breaking through the memory wall: A close look at HBM errors in the field,” in 2024 USENIX Annual Technical Conference (USENIX ATC 24) , 2024, pp. 851–867. [Online]. Available: https://www.usenix.org/conference/atc24/ presentation/wu-ronglong [26] J. Kim, S. Kim, Y. Ryu, S. Gorgin, and J. Kim, “Cerberus: Cross-layer ECC co-design for robust and efficient memory protection,” 2026, arXiv:2605.02220, https://arxiv.org/abs/2605.02220. [27] Y. Liu, Y. Gu, J. Dai, X. Wu, C. Wu, X. Guo, J. Zhao, J. Li, and M. Guo, “CXL-ECC: an efficient LRC-based on-CXL-memory-expander-controller ECC to enhance reliability and performance of DRAM error correction,” in 2025 62nd ACM/IEEE Design Automation Conference (DAC) . IEEE, 2025, pp. 1–7. [28] F. Li, Q. Li, Y. Guo, W. Cao, and X. Xin, “ASPA: Reassigning DDR5 parity bandwidth,” in 2026 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . IEEE, 2026, pp. 1–14. [29] C. Song, A. A. Cruz, M. J. Kim, M. Wi, G. Ye, K. Kim, S. Lee, J. H. Ahn, and N. S. Kim, “ReScue: Reliable and secure CXL memory,” in 
+
+2026 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . IEEE, 2026, pp. 1–16. [30] M. K. Qureshi, J. Karidis, M. Franceschini, V. Srinivasan, L. Lastras, and B. Abali, “Enhancing lifetime and security of PCM-based main memory with start-gap wear leveling,” in Proceedings of the 42nd annual IEEE/ACM international symposium on microarchitecture , 2009, pp. 14– 23. [31] J. T. Pawlowski, “Hybrid memory cube (HMC),” in 2011 IEEE Hot chips 23 symposium (HCS) . IEEE, 2011, pp. 1–24. 
+
+Rui Xie received the B.E. degree from the Southern University of Science and Technology, China, and the Ph.D. degree in electrical, computer, and systems engineering from Rensselaer Polytechnic Institute, Troy, NY, USA, in 2026. His research focuses on efficient memory systems for large language models. 
+
+Yunhua Fang is pursuing the Ph.D. degree in electrical, computer, and systems engineering at Rensselaer Polytechnic Institute, Troy, NY, USA. He received the B.S. degree in computer science from the University of California, Davis. His research focuses on memory systems for AI infrastructure. 
+
+Asad Ul Haq is pursuing the Ph.D. degree in electrical, computer, and systems engineering at Rensselaer Polytechnic Institute, Troy, NY, USA. He received the B.S. degree in electrical engineering from the National University of Sciences and Technology, Pakistan. His research focuses on CXL-based computational memory systems. 
+
+Linsen Ma received the B.S., M.S., and Ph.D. degrees in electrical engi-neering from Rensselaer Polytechnic Institute, Troy, NY, USA, completing the Ph.D. in 2025. His doctoral research focused on data management over computational storage. 
+
+Sanchari Sen received the B.Tech. degree from IIT Kharagpur, India, and the Ph.D. degree in electrical and computer engineering from Purdue University, West Lafayette, IN, USA. She is a Staff Research Scientist at the IBM T. J. Watson Research Center, Yorktown Heights, NY, USA. Her interests include architecture and compiler design for AI accelerators and approximate computing. 
+
+Swagath Venkataramani received the Ph.D. degree in electrical and com-puter engineering from Purdue University, West Lafayette, IN, USA, in 2016. He is a Principal Research Scientist at the IBM T. J. Watson Research Center, Yorktown Heights, NY, USA. His interests include hardware and software optimizations for machine learning and approximate computing. 
+
+Liu Liu is an Assistant Professor in the Department of Electrical, Computer, and Systems Engineering at Rensselaer Polytechnic Institute, Troy, NY, USA. His research interests include elastic AI computing systems and architecture design. He received the B.S. degree from the University of Electronic Science and Technology of China, and the M.S. degree in electrical and computer engineering and the Ph.D. degree in computer science from the University of California, Santa Barbara. 
+
+Tong Zhang (Fellow, IEEE) is a Professor in the Department of Electrical, Computer, and Systems Engineering at Rensselaer Polytechnic Institute, Troy, NY, USA. His research focuses on computer system design, with an emphasis on memory-centric computing for AI and data science. He received the B.S. and M.S. degrees in electrical engineering from Xi’an Jiaotong University, China, and the Ph.D. degree in electrical and computer engineering from the University of Minnesota, Minneapolis.
