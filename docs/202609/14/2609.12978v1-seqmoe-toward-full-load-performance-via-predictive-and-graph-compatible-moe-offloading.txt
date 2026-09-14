@@ -1,0 +1,966 @@
+Title: SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading
+
+URL Source: https://arxiv.org/pdf/2609.12978v1
+
+Published Time: Mon, 14 Sep 2026 01:14:21 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading 
+
+Zihan Wang 
+
+University of Science and Technology of China Hefei, China wangzh196@mail.ustc.edu.cn 
+
+Yuqi Wang 
+
+University of Science and Technology of China Hefei, China xiaoqi17@mail.ustc.edu.cn 
+
+Lei Gong 
+
+University of Science and Technology of China Hefei, China leigong0203@ustc.edu.cn 
+
+Cheng Tang 
+
+University of Science and Technology of China Hefei, China sisyphustc@mail.ustc.edu.cn 
+
+Wenqi Lou 
+
+Suzhou Institute for Advanced Research, University of Science and Technology of China Suzhou, China louwenqi@ustc.edu.cn 
+
+Teng Wang 
+
+Suzhou Institute for Advanced Research, University of Science and Technology of China Suzhou, China wangt635@ustc.edu.cn 
+
+Chao Wang 
+
+University of Science and Technology of China Hefei, China cswang@ustc.edu.cn 
+
+Xuehai Zhou 
+
+University of Science and Technology of China Hefei, China xhzhou@ustc.edu.cn 
+
+Abstract 
+
+Mixture-of-Experts (MoE) creates a structural advantage for offloading: only a small fraction of activated experts need to reside in device memory, and if they can be loaded in time for computation, offloading can in principle approach full-load performance, where all model weights reside in device mem-ory. Yet translating MoE’s structural advantage into practical offloading gains remains challenging. We propose SeqMoE to bridge this gap. To maximize expert hits, we build predictive memory management: (i) Sequence-to-sequence prediction. We are the first to recast expert activation prediction as se-quence modeling, enabling accurate multi-step, multi-layer forecasts that provide a long and reliable window for down-stream decisions. (ii) Joint prefetch scheduling. We formulate prefetch scheduling as Job Sequencing with Deadlines to maximize expected expert hits and improve bandwidth effi-ciency. (iii) Forecast-driven caching. Leveraging the recursive nature of sequence modeling, we introduce a probabilistic Belady policy for future-aware eviction. To eliminate execu-tion bottleneck, we develop (iv) Graph-compatible offloading runtime. We derive general runtime principles encompassing compute-transparent expert placement and synchronization-free orchestration disciplines for end-to-end graph capture. With 45% expert residency, SeqMoE averages a 96.97% hit rate and 80.22% of full-load performance, advancing the state of the art in MoE offloading. 
+
+Keywords: MoE Offloading Inference, Sequence Modeling 
+
+1 Introduction 
+
+Growing demands for personalization, privacy, embodied intelligence, and autonomous driving are pushing large lan-guage models (LLMs) toward the edge [4]. However, limited edge-device memory hinders large-model deployment. Of-floading inference addresses this mismatch and has emerged as a research focus [26, 28]. Its core principle is to treat de-vice memory (e.g., GPU HBM) as a cache that holds only a subset of model weights, while relegating the rest to larger next-level memory (e.g., CPU DRAM). By extending usable capacity beyond device memory, offloading brings the intel-ligence of larger models to edge applications. Mixture-of-Experts (MoE), a standard architecture for mod-ern LLMs, is particularly amenable to offloading. As shown in Fig. 1 (a), its structural advantage stems from sparse scal-ing: MoE layers dominate the model weights (93%), yet only a small subset of experts (6%) are activated at each inference step. This allows non-MoE layers to remain resident in device memory, while all experts reside in next-level memory and only activated ones need to be dynamically loaded into the device cache. With such dynamic sparsity, if all activated experts can be loaded in time for computation, offload-ing can in principle approach FullLoad performance, where all model weights reside in device memory. This defines the ideal target for offloading inference .However, translating MoE’s structural advantage into practical offloading gains remains challenging. The key bot-tleneck is load-on-demand stalls caused by expert misses, which expose expensive memory I/O on the critical path. As shown in Fig. 1 (b), eager offloading achieves only about 2% of arXiv:2609.12978v1 [cs.OS] 11 Sep 2026 Zihan Wang, Yuqi Wang, Lei Gong, Cheng Tang, Wenqi Lou, Teng Wang, Chao Wang, and Xuehai Zhou Next-Level Memory                                     
+
+> ALL Experts 128 per layer 29.0 GB
+> Active Experts 8 per layer 1.8 GB
+> Non-Expert
+> 2.2 GB
+> Seq2Seq Predictor (Transformer, Mamba)
+> Converged (Recall ~92%)
+> A0 A1 A2 A3 A4 A5
+> A1 A2 A3 A4 A5 A6
+> Shuffled
+> A3 A6 A4 A2 A0 A1
+> A6 A4 A2 A0 A1 A5
+> A𝑖𝑖 : Expert Activation State of All Layers when Generating the 𝑖𝑖 -th Token
+> (b) SeqMoE Narrows the Gap to FullLoad (a) Structural Advantages for Offloading
+> (c) Sequence-Level Dependency in Expert Activations: New Opportunities and Challenges
+> Seq2Seq Predictor (Transformer, Mamba)
+> Can Not Converged (Recall ~23%)
+> 122.7 tok/s
+> FullLoad
+> (Ideal)
+> Eager
+> (Naive)
+> MoE-Infinity
+> (Trace Match)
+> Llama.cpp
+> (Static Offload)
+> KTrans
+> (CPU-GPU)
+> SeqMoE
+> (Ours)
+> Qwen3-30B-FP8 on RTX 4090
+> 45% Loaded for Single-Batch Decoding
+> 2.3 tok/s
+> 11.9 tok/s
+> 30.9 tok/s
+> 34.2 tok/s
+> 104.1 tok/s
+> Device Memory
+> Comp
+> E0
+> Gating / Router
+> E1 E5 E4 E2 E3
+> E2 E1
+> Attention
+> and others
+> Qwen3-30B-FP8 (Total 31.2 GB)
+
+Figure 1. Realizing MoE’s Offloading Advantage. FullLoad performance. Despite extensive efforts to mitigate this bottleneck, existing systems remain far from FullLoad. In contrast, SeqMoE not only substantially outperforms ex-isting MoE offloading systems, but also can approach Full-Load performance, unleashing MoE’s structural advantage for high-performance, low-memory inference. To achieve this, we take maximizing expert hits as the primary ob-jective and build predictive memory management that jointly optimizes early prediction, prefetch scheduling, and cache residency. As load-on-demand stalls recede, we further develop a graph-compatible offloading run-time to eliminate the emerging execution bottleneck .
+
+Activation sequence modeling achieves long overlap win-dows and high accuracy simultaneously . Expert activation is late-bound, so early prediction is essential for downstream decisions. Mainstream methods stay within a single autore-gressive step, predicting deeper-layer expert choices from shallow-layer states. Their accuracy decays rapidly with pre-diction distance, leaving a prefetch window of at most three layers [32, 34, 38, 42]. A few recent works attempt cross-step prediction, but rely on per-layer conditional activation statis-tics between adjacent tokens. Such a memoryless, first-order estimate is too inaccurate for prefetch decisions [43, 45]. In contrast, as shown in Fig. 1 (c), we encode the activation state of the full layer stack per generation step and train a Transformer [35] probe to perform next-step prediction. Convergence holds on the ordered sequence and disappears under step shuffling, indicating that expert activation car-ries learnable sequence-level dependencies [33] (Section 3.1). Therefore, we recast expert activation prediction as sequence modeling, extending the overlap window across autoregres-sive steps at high accuracy. 
+
+Activation sequence prediction extends overlap windows, but complicates prefetch scheduling . A longer overlap window relaxes the horizon constraint but not bandwidth: a slow link such as PCIe sustains only a fraction of prefetch tasks, so the prefetcher must decide which experts deserve bandwidth. Candidates differ along two axes. Prediction confidence is an objective: it quantifies the transfer’s expected contribution to expert hits. Deadline is a constraint: it temporally couples tasks into bandwidth contention. Existing prefetchers over-look the joint scheduling structure and conflate both into independent per-task scores [32, 38], leading to suboptimal selection (Section 3.2). This waste grows as longer overlap windows deepen task queue and enlarge scheduling space. Instead, we formulate prefetching as Job Sequencing with Deadlines [10] to improve bandwidth efficiency. 
+
+Activation sequence forecasting transforms history-statistics caching into future-aware eviction . Effective caching retains reusable experts, avoiding redundant transfers and reducing both prefetch bandwidth pressure and expert misses. Exist-ing policies typically adapt classical eviction algorithms such as LRU and LFU, collapsing historical activation states into coarse statistics to extrapolate reuse [34, 41]. We compare them against variants of the optimal Belady’s MIN [5] and show that exploiting future activations yields consistently better eviction decisions (Section 3.3). Fortunately, the re-cursive nature of sequence modeling makes future-aware eviction practical: rather than relying on lossy historical sum-maries, we roll the historical sequence forward into multi-step forecasts to guide cache eviction. 
+
+As expert misses recede, offloading runtime emerges as the new execution bottleneck . An offloading runtime is essential to coordinate the offloading pipeline with LLM inference. How-ever, existing runtimes introduce substantial coordination overhead that prevents execution from achieving full-load ef-ficiency. The fundamental limitation is their incompatibility with graph-based execution mechanisms [15], such as CUDA Graphs [29], that reduce dispatch overhead by replaying pre-captured operations (Section 3.4). First, dynamic expert placement in the cache hinders fused MoE kernels [36, 44], a key enabler of graph-based MoE execution. Second, prefetch-ing and caching rely heavily on host-device synchronization, which fragment graph execution and diminish its benefits. FreeToken [41] 1 explores graph-based offloading but is mis-aligned with predictive management, which is critical to high expert-hit rates. In contrast, we derive general runtime principles that coordinate predictive memory management with LLM inference for end-to-end graph capture. Building on these insights, we present SeqMoE, an MoE offloading system that delivers low-memory inference ap-proaching full-load performance. To maximize expert hits, we build predictive memory management: (i) Sequence-to-Sequence (seq2seq) expert activation predictor . We are the first to recast expert activation prediction as sequence model-ing, capturing routing dependencies across the full layer stack and generation trajectory. We adopt Mamba2 [11], a lightweight and efficient sequence model, as the predictor 
+
+> 1
+
+A recent concurrent work relying solely on LRU for expert hits. SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading 
+
+backbone. During inference, the predictor continuously fore-casts multi-step, multi-layer activations, providing long and reliable windows for downstream decisions. (ii) Joint prefetch scheduling . We formulate prefetch scheduling as a matroid optimization problem [13] to maximize expected expert hits under deadline constraints, thereby improving bandwidth efficiency. (iii) Forecast-driven caching . Leveraging the pre-dicted sequence of future activations, we introduce proba-bilistic Belady eviction, which prioritizes experts by their likely near-term reuse, effectively retaining reusable experts. To eliminate execution bottleneck, we develop (iv) Graph-compatible offloading runtime . We derive general principles encompassing compute-transparent expert placement for fused MoE kernels and synchronization-free offloading or-chestration disciplines. They coordinate predictive memory management with LLM inference for graph-based execution. We evaluate SeqMoE across diverse datasets on Qwen3-30B-A3B, Qwen3.6-35B-A3B, GPT-OSS-120B, and DeepSeek-V4-Flash against llama.cpp [27], MoE-Infinity [38], KTrans-formers [7], and FreeToken [41]. At 25% and 45% expert resi-dency, SeqMoE averages 91.72% and 96.97% hit rates, versus 74.24% and 88.50% for the strongest baseline. At 45% resi-dency, it averages 80.22% of full-load performance, versus 51.50% for FreeToken and at most 28.03% for other baselines. 
+
+• We are the first to formulate expert activation pre-diction as sequence modeling, enabling long overlap windows with high accuracy. 
+
+• We propose predictive memory management for MoE offloading, jointly optimizing early prediction, prefetch-ing, and cache residency to maximize expert hit rates. 
+
+• We propose a graph-compatible runtime that enables graph-based execution of MoE offloading. 
+
+• Results show that SeqMoE approaches full-load per-formance and advances the state of the art in MoE offloading inference. 
+
+2 Background 
+
+2.1 MoE’s Structural Advantages for Offloading 
+
+Mixture-of-Experts (MoE) has become a standard architec-ture for modern LLMs, employing a router to dynamically select active experts [22]. Consider an MoE model with 𝐿 
+
+layers, hidden dimension 𝑑 , and 𝑒 experts per layer, of which 
+
+𝑘 experts are activated per token. A request comprises 𝐼 to-ken steps spanning both prefill and decoding, with batch size 𝑏 . At step 𝑖 ∈ [ 0, 𝐼 ) and layer 𝑙 ∈ [ 0, 𝐿 ), given the input 
+
+X𝑖,𝑙 ∈ R𝑏 ×𝑠 ×𝑑 , where sequence length 𝑠 = 1, the router and MoE computation can be formulated as 
+
+A𝑟 𝑖,𝑙 = Linear (𝑋 𝑖,𝑙 ),
+
+J𝑖,𝑙 , W𝑖,𝑙 = Φ(A𝑟 𝑖,𝑙 ),
+
+Y𝑖,𝑙 = MoE (X𝑖,𝑙 , W𝑖,𝑙 , 𝐸 𝑙 [Ji,l]) ,
+
+Table 1. Configurations of evaluated MoE models.            
+
+> LLM Model Parameters Experts per Layer (MoE / Total) (Active / Total)
+> Qwen3-30B-A3B-FP8 29B / 31B 8 / 128 Qwen3.6-35B-A3B-BF16 32B / 35B 8 / 256 GPT-OSS-120B-MXFP4 115B / 117B 4 / 128 DeepSeek-V4-Flash 277B / 284B 6 / 256
+
+where E𝑙 = {𝐸 𝑙,𝑗 }𝑒 −1 
+
+> 𝑗 =0
+
+denotes the expert collection of layer 
+
+𝑙 . A𝑟 𝑖,𝑙 ∈ R𝑏 ×𝑠 ×𝑒 denotes the raw expert activation state , and 
+
+Φ(·) typically consists of softmax followed by a Top-𝑘 oper-ation. J𝑖,𝑙 ∈ [ 𝑒 ]𝑏 ×𝑠 ×𝑘 , W𝑖,𝑙 ∈ R𝑏 ×𝑠 ×𝑘 denote selected expert indices and their routing weights. The output Y𝑖,𝑙 ∈ R𝑏 ×𝑠 ×𝑑 
+
+is computed by dispatching each token to its selected ex-perts and aggregating their weighted outputs. As shown in Table 1, sparse scaling makes MoE layers dominate model parameters while activating only a small fraction of experts per inference step. The dynamic sparsity creates a structural advantage for offloading: only the activated experts need to reside in device memory at each inference step. If they can be loaded in time for computation, offloading can in principle approach FullLoad performance with a much smaller memory footprint .
+
+2.2 Expert Activation Prediction 
+
+Expert activation is late-bound, making early prediction essential for downstream scheduling. Existing approaches mainly fall into three categories. 
+
+Similarity-based cross-layer prediction . ProMoE [32] pre-dicts deeper-layer activations from shallow-layer hidden states with MLPs. Pre-gated [20] advances routing decisions through fine-tuning. MoE-APEX [34] directly feeds shallow-layer hidden states into future routers. These methods rely on residual-induced cross-layer similarity, causing accuracy to degrade rapidly with prediction distance and limiting looka-head to only one to three layers. For example, on Qwen3-30B-FP8 with an RTX 4090 over PCIe 4.0, one layer’s computation overlaps the transfer of only 1.39 experts on average, leaving little room for prefetching. Trace-based cross-layer prediction .MoE-Infinity [38] and Taming-MoE [42] match shallow-layer activation states against request-level and iteration-level his-tories, respectively. As activation patterns evolve, matching must be updated layer by layer, again limiting lookahead to at most three layers. First-order cross-step prediction . ST-MoE [45] and Patterns-MoE [43] explore cross-step predic-tion based on per-layer conditional activation statistics be-tween adjacent tokens. This memoryless, first-order Markov model is too coarse for precise scheduling: ST-MoE uses it only to assist cross-layer prediction, while Patterns-MoE confines it to lightweight cache guidance. Zihan Wang, Yuqi Wang, Lei Gong, Cheng Tang, Wenqi Lou, Teng Wang, Chao Wang, and Xuehai Zhou 0 10 20 30       
+
+> Epoch
+> 12345
+> Loss
+> Qwen3-30B-A3B-FP8
+> 010 20 30
+> Epoch
+> 123456
+> Loss
+> GPT-OSS-120B-MXFP4
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+> Recall
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+> Recall
+> Loss (O) Loss (S) Recall-Topk+3 (O) Recall-Topk+3 (S)
+
+Figure 2. Sequence Dependence in Expert Activation. Overall, existing methods cannot simultaneously achieve high prediction accuracy and sufficient lookahead to effec-tively overlap computation with memory transfers, leaving downstream scheduling with a narrow and unreliable opti-mization window. 
+
+2.3 Sequence Modeling 
+
+Sequence modeling captures dependencies in ordered data to represent or predict states from historical context [33]. Given a sequence 𝑥 1: 𝑇 = (𝑥 1, 𝑥 2, . . . , 𝑥 𝑇 ), it learns a map-ping 𝑔 : (𝑥 1, . . . , 𝑥 𝑡 ) ↦ → 𝑦 𝑡 . MoE expert activations natu-rally form sequences across generation steps and thus fit this framework. Representative models include Transform-ers [35], Recurrent Neural Networks (RNNs) [14], Long Short-Term Memory (LSTMs) [18], and recent State Space Models such as Mamba [11]. Transformers offer strong long-range modeling but in-cur growing Key-Value (KV) cache memory overhead. We therefore use a Transformer only to verify sequence-level dependencies in expert activations and provide an accuracy upper bound. In contrast, RNNs, LSTMs, and Mamba com-press history into a fixed-size state: 
+
+𝐻 𝑡 = 𝑓 (𝐻 𝑡 −1, 𝑥 𝑡 ), 𝑦 𝑡 = 𝑔 (𝐻 𝑡 , 𝑥 𝑡 ),
+
+where 𝑓 (·) and 𝑔 (·) are the state-update and output func-tions. The fixed-size state 𝐻 𝑡 enables lightweight prediction with low memory overhead. However, RNNs and LSTMs struggle with long-range dependencies and require sequen-tial training. Mamba enhances long-range modeling through selective, content-aware state updates, while its state-space formulation supports efficient parallel training. Therefore, Mamba combines a fixed-size historical state ,
+
+strong long-range modeling capability , and efficient parallel training . We adopt Mamba as the backbone of our sequence-to-sequence (seq2seq) expert activation predictor. 
+
+2.4 Graph-based Execution Mechanisms 
+
+Graph-based execution reduces host-side dispatch overhead by capturing device operations into a graph and replay-ing them with a single dispatch [15]. Mechanisms such as NVIDIA CUDA Graphs [29], AMD HIP Graphs [2], Ascend ACL Graphs [19], and Intel SYCL Graphs [21] are particularly effective for small-batch LLM decoding, where short kernels make dispatch overhead significant. Edge inference typically operates at small batch sizes and thus benefits substantially. For MoE offloading, as on-demand loading stalls recede, re-ducing dispatch overhead becomes critical to approaching full-load performance. Efficient graph replay favors fixed execution structures and memory addresses while minimizing host intervention and synchronization. These requirements conflict with MoE offloading. First, dynamic expert placement hinders the use of fused MoE kernels, a key enabler of graph-based MoE ex-ecution . Although kernels such as Triton Fused MoE [36] and DeepGEMM [44] encapsulate dynamic activation within fixed execution structures, offloading dynamically maps ex-perts to cache slots, making their addresses unstable. Second, prefetching and caching traditionally rely on CPU-GPU syn-chronization, which breaks graph execution and re-exposes dispatch overhead . FreeToken [41], a recent concurrent work, moves LRU cache management to the GPU to adapt offload-ing to CUDA Graph execution. However, it does not support prefetching, a basic offloading operation, nor does it derive general principles for graph-compatible offloading. The offloading runtime must therefore be redesigned to coordinate prediction, prefetching, and caching with LLM inference under graph execution constraints. 
+
+3 Motivation and Key Idea 
+
+3.1 Expert Activation Sequence Modeling Expert activation exhibits strong sequence-level de-pendence that can be effectively exploited through sequence modeling . We encode expert activations across the full layer stack at each generation step into a vector and arrange these vectors in generation order to form an activation sequence. We train decoder-only Transformers for next-step prediction on the original (O) and shuffled (S) sequences, respectively. Fig. 2 reveals two observations. First, training fails to converge after shuffling, indicating that pre-dictability stems from sequence-level dependence in expert activations rather than merely model capacity, demonstrat-ing the sufficiency of sequence modeling. Second, top-11 recall on Qwen3-30B-A3B ( 𝑒 = 128 , 𝑘 = 8) and top-7 recall 
+
+Table 2. Prefetch Scheduling Example 
+
+Candidates A B C D E F
+
+Deadline 1 2 2 3 3 3
+
+Confidence 0.55 0.90 0.40 0.75 0.70 0.30 
+
+Capacity 1 3 4
+
+Optimal A B D E
+
+MoE-Infinity B D E F
+
+ProMoE A B C DSeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading 15% 25% 35% 45%        
+
+> Loaded
+> 50 60 70 80 90 100
+> Hit Rate
+> Qwen3-30B-A3B-FP8
+> 15% 25% 35% 45%
+> Loaded
+> GPT-OSS-120B-MXFP4
+> Belady Belady-8 Belady-F8 LRU LFU
+
+Figure 3. Benefits of Future-Aware Eviction. on GPT-OSS-120B ( 𝑒 = 128 , 𝑘 = 4) both exceed 90%, substan-tially outperforming existing cross-step prediction methods (Section 9.4), demonstrating the necessity of explicitly mod-eling such sequential dependence. 
+
+3.2 Joint Structure in Prefetch Scheduling Bandwidth scarcity turns prefetch scheduling into a constrained task-selection problem . A slow interconnect can transfer only a subset of prefetch candidates, which differ along two dimensions: prediction confidence, the likelihood that an expert will be activated, and deadline, the time until its owning layer executes. Let ddl 𝑡 , pos ∈ [ 0, 𝐼 × 𝐿 ) denote the deadline of task 𝑡 and the current position, respectively. 
+
+conf 𝑡 denotes its expected hit contribution, and 𝐶 (ddl ) the transfer capacity available before ddl . Maximizing expert hits can then be formulated as: max 
+
+> 𝑇
+
+∑︁ 𝑡 ∈𝑇 
+
+conf 𝑡 𝑠.𝑡 . |{ 𝑡 ∈ 𝑇 : ddl 𝑡 ≤ ddl }| ≤ 𝐶 (ddl ), ∀ddl .
+
+MoE-Infinity prioritizes tasks by conf 𝑡 (1− ( ddl 𝑡 −pos )/( 𝐿 +
+
+1)) , with pos advancing dynamically, while ProMoE sorts tasks lexicographically by (− ddl 𝑡 , conf 𝑡 ). As Table 2 shows, neither yields an optimal selection. Both rank tasks inde-pendently, overlooking how their selections jointly consume transfer capacity under deadline constraints. The resulting bandwidth waste can grow as longer overlap windows ex-pand the scheduling space. In contrast, the feasible task sets form a matroid, allowing weighted matroid greedy to opti-mally solve the formulated problem [13]. We use this for-mulation to guide online prefetch scheduling and improve bandwidth efficiency. 
+
+3.3 Future-Aware Cache Eviction Future-aware eviction consistently outperforms history-based policies . Existing approaches typically adapt classical eviction policies such as LRU and LFU. Fig. 3 compares them with variants of the optimal Belady’s MIN [5], where the x-axis denotes the fraction of experts that can reside in the cache. Belady uses the complete future activation sequence and evicts the expert whose next activation is farthest in the future. Belady-8 limits this oracle knowledge to the next eight steps, while Belady-F8 replaces oracle activations with Eager CG Sync 050 100 150 200   
+
+> Decode (tok/s)
+> Qwen3-30B-A3B-FP8
+> 52.1 122.7 74.9
+> Eager CG Sync
+> GPT-OSS-120B-MXFP4
+> 68.6 175.7 91.7
+
+Figure 4. Impact of End-to-End Graph Capture. our eight-step forecasts (Section 7.1). We make three observa-tions. First, LRU and LFU perform similarly, suggesting that both capture only part of the expert reuse patterns. Second, future-aware policies consistently outperform history-based ones, highlighting the value of future activation information for eviction. Third, Belady-F8 closely approaches Belady-8, showing that predicted activations provide a reliable basis for cache eviction. 
+
+3.4 End-to-End Graph Execution As on-demand loading stalls recede, maintaining low dispatch overhead becomes critical to approaching full-load performance . We place all model weights in device memory to simulate a 100% expert hit rate and isolate the per-formance impact of graph-based execution. Fig. 4 compares three execution modes. Eager represents existing runtimes that cannot accommodate dynamic expert placement in fused MoE kernels and instead dispatch individual GEMMs accord-ing to expert activation. CG combines fused MoE kernels with CUDA Graphs, representing ideal full-load execution. Sync breaks the graph between attention and MoE to re-flect CPU–GPU synchronization introduced by prefetching and caching operations in existing runtimes. Both eager ex-ecution and synchronization substantially degrade overall inference performance. These results highlight the necessity of end-to-end graph capture for achieving high-performance MoE offloading inference. 
+
+4 Overview 
+
+Fig. 5 presents an overview of SeqMoE. During inference, each Transformer block enters the offloading pipeline af-ter attention and routing. The system first lands previously issued prefetch tasks, which may target experts from any layer, and updates cache slot states (Section 7.2). It then loads any missing experts required by the current layer from host to device memory. At a predictor’s trigger layer 𝑙 ′, the pre-dictor forecasts expert activation probabilities over multiple steps for its assigned layers 𝑙 to 𝑙 ′ (Section 5). The first-step probabilities generate prefetch tasks (Section 6.1), which the prefetcher schedules as a job sequencing with deadlines problem using matroid greedy (Section 6.2). Subsequent-step Zihan Wang, Yuqi Wang, Lei Gong, Cheng Tang, Wenqi Lou, Teng Wang, Chao Wang, and Xuehai Zhou Graph-Compatible Offloading Runtime 
+
+> Activation Predictor
+> (Sequence Modeling)
+> Attention
+> Router
+> Offloading
+> Fused MoE
+> D4 : Device-Initiated Miss Load
+> Task Deadline
+> History
+
+𝑨𝑨 𝑖𝑖−1 ,𝑙𝑙 ′
+
+> 𝑨𝑨 𝑖𝑖+1 ,𝑙𝑙 :𝑙𝑙 ′′′
+> 𝑨𝑨 0,𝑙𝑙 :𝑙𝑙 ′ 𝑨𝑨 1,𝑙𝑙 :𝑙𝑙 ′′
+> 𝑨𝑨 𝑖𝑖−2 ,𝑙𝑙 :𝑙𝑙 ′ 𝑨𝑨 𝑖𝑖−1 ,𝑙𝑙 :𝑙𝑙 ′′
+
+... 
+
+... 
+
+> 𝑨𝑨 𝑖𝑖−1 ,𝑙𝑙 :𝑙𝑙 ′ 𝑨𝑨 𝑖𝑖 ,𝑙𝑙 :𝑙𝑙 ′′
+> 𝑨𝑨 𝑖𝑖 ,𝑙𝑙 :𝑙𝑙 ′′
+> 𝑨𝑨 𝑖𝑖+𝑐𝑐− 1,𝑙𝑙 :𝑙𝑙 ′′′  𝑨𝑨 𝑖𝑖+𝑐𝑐 ,𝑙𝑙 :𝑙𝑙 ′′′
+
+... 
+
+...     
+
+> Mamba2-Based Model
+> Prefetch Cache
+> Forecast-Driven Cache
+> (Future-Aware Eviction)
+> Joint Scheduling Prefetcher
+> (Job Sequences with Deadline)
+> T1
+> Fetch Empty Comp Used
+> Probabilistic Belady Policy
+> Slot State Transition
+> Confidence
+> D3 : Host-Initiated DMA Prefetch D1 : Graph-Capturable Prediction
+> D2 : Device-Resident Cache
+> T2
+> T3
+> T4
+> Matroid Greedy Optimization
+> T5
+> T6
+> T7
+> T8
+> MoE Offloading Pipeline
+> Prefetch Landing
+> 1
+> Expert Miss
+> 2
+> Prediction
+> 3
+> Update Prefetch
+> 5
+> 13
+> 4
+> 52
+> Transparent
+> 6
+
+step 𝑖𝑖 − 1
+
+layer 𝑙𝑙𝑙 
+
+Predictive Memory Management for MoE Offloading 
+
+Device  Host 
+
+> Gen Cache
+> 4
+> D3 : Async Host-Device Communication
+
+Figure 5. SeqMoE System Overview. probabilities update the probabilistic Belady policy for future-aware eviction (Section 7.1). Finally, the runtime’s compute-transparent expert placement allows execution to leave the offloading pipeline and resume fused MoE computation (Sec-tion 8.1). Beyond this pipeline, we establish four runtime orchestration disciplines that govern how these memory-management components coordinate to enable graph-based execution (Section 8.2). 
+
+5 Seq2Seq Expert Activation Prediction 
+
+5.1 Expert Activation Collection 
+
+We collect expert activation traces across diverse workloads, including mathematics (GSM8K [8], MATH [16]), code (Code-Forces [9]), text comprehension (OpenOrca [25]), and multi-turn conversations (ShareGPT [3]). To improve collection efficiency, we adopt a two-pass process. The first pass collects token ID traces through continuous batching. The second packs multiple token ID traces into a single prefill pass to dump expert activations, fully exploiting the inference en-gine’s parallelism. We denote the expert activations spanning multiple steps and layers as 
+
+A𝑟 𝑖 :𝑖 ′,𝑙 :𝑙 ′ = Stack 𝑙 ′ −1 
+
+> 𝑘 =𝑙
+
+(Concat 𝑖 ′ −1 
+
+> 𝑗 =𝑖
+
+A𝑟 𝑗,𝑘 ) ∈ R𝑏 ×𝑠 ×𝑛 ×𝑒 ,
+
+where 𝑠 = 𝑖 ′ − 𝑖 is the sequence length and 𝑛 = 𝑙 ′ − 𝑙 is the number of layers. Each collected expert activation trace is represented as A𝑟  
+
+> 0: 𝐼, 0: 𝐿
+
+∈ R𝑏 ×𝐼 ×𝐿 ×𝑒 .
+
+5.2 Model Architecture 
+
+We next introduce the preprocessing and model architecture of the predictor. The preprocessing is defined as 
+
+A𝑖 :𝑖 ′,𝑙 :𝑙 ′ = Ψ(A𝑟 𝑖 :𝑖 ′,𝑙 :𝑙 ′ ) ∈ R𝑏 ×𝑠 × ( 𝑛 ×𝑒 ) ,
+
+where Ψ(·) consists of two steps. First, activation-masked normalization sets inactive experts to -inf and applies soft-max along the expert dimension. This preserves the relative preference among activated experts as prediction confidence for prefetch scheduling, while suppressing noise from irrel-evant experts to improve recursive prediction and provide more reliable signals for cache eviction. Second, reshaping merges the layer and expert dimensions into a single feature dimension, treating activations across multiple layers as a unified representation at each generation step. The number of included layers introduces a trade-off between predic-tion accuracy and prefetch overlap: including more layers improves accuracy but shortens the overlap window. Based on the preprocessed input, the predictor can be formulated as 
+
+Z1 = Linear (A𝑖 :𝑖 ′,𝑙 :𝑙 ′ ) ∈ R𝑏 ×𝑠 ×𝑚 ,
+
+Z2, H𝑖 ′ = Mamba2 (Z1, H𝑖 ),
+
+A′ 
+
+> 𝑖 +1: 𝑖 ′+1,𝑙 :𝑙 ′
+
+= Linear (Z2) ∈ R𝑏 ×𝑠 × ( 𝑛 ×𝑒 ) ,
+
+where 𝑚 denotes hidden dimension of Mamba2. Its learned recurrent state accumulates information from the 𝑖 ′ − 𝑖 input activation states, updating from H𝑖 to H𝑖 ′ . Each output in 
+
+A′ 
+
+> 𝑖 +1: 𝑖 ′+1,𝑙 :𝑙 ′
+
+predicts the activation probabilities for the step immediately following its corresponding input. 
+
+5.3 Prediction Execution 
+
+The predictor supports four execution modes. Consider a predictor responsible for layers [𝑙, 𝑙 ′):
+
+Training . The predictor takes A0: 𝐼 −1,𝑙 :𝑙 ′ ∈ R𝑏 × ( 𝐼 −1) × ( 𝑛 ×𝑒 )
+
+as input and produces A′ 
+
+> 1: 𝐼,𝑙 :𝑙 ′
+
+, supervised by the correspond-ing ground truth A1: 𝐼,𝑙 :𝑙 ′ . No recurrent state needs to be re-tained across training sequences. SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading 
+
+Prefill . For a prompt length 𝑝 , the predictor consumes 
+
+A0: 𝑝,𝑙 :𝑙 ′ ∈ R𝑏 ×𝑝 × ( 𝑛 ×𝑒 ) and outputs A′ 
+
+> 1: 𝑝 +1,𝑙 :𝑙 ′
+
+, while retaining the recurrent state H𝑝 . Predictor prefill proceeds along with LLM prefill, and only the final prediction A′ 
+
+> 𝑝,𝑙 :𝑙 ′
+
+is used for downstream operations. 
+
+One-step prediction . Suppose LLM inference reaches step 𝑖 − 1 at layer 𝑙 ′. Given H𝑖 −1, the predictor takes A𝑖 −1,𝑙 :𝑙 ′
+
+∈ R𝑏 ×1× ( 𝑛 ×𝑒 ) and produces A′ 
+
+> 𝑖,𝑙 :𝑙 ′
+
+, updating the state to H𝑖 .This mode runs at every generation step to issue prefetch tasks for the next step. 
+
+Recursive prediction . Starting from the one-step predic-tion above, the predictor repeatedly feeds its latest output back as input. The first recursive input is Ψ(A′ 
+
+> 𝑖,𝑙 :𝑙 ′
+
+). After 𝑐 
+
+iterations, it produces A′′  
+
+> 𝑖 +1: 𝑖 +𝑐 +1,𝑙 :𝑙 ′
+
+∈ R𝑏 ×𝑐 × ( 𝑛 ×𝑒 ) , which fore-casts expert activations over the next 𝑐 steps. The recurrent state is then restored to H𝑖 so that recursive rollout does not affect the next one-step prediction. Recursive prediction also runs at every generation step to update the cache policy. 
+
+5.4 Training 
+
+We combine a ranking loss [17] with KL divergence loss [23]. Since inference selects predicted experts by Top-𝑘 , the rank-ing loss directly optimizes this decision: it enforces ground-truth Top-𝑘 experts to score higher than hard negatives by a margin, improving the ordering around the Top-𝑘 deci-sion boundary. We further apply KL divergence between the prediction A′ 
+
+> 1: 𝐼,𝑙 :𝑙 ′
+
+and ground truth A1: 𝐼,𝑙 :𝑙 ′ . Since the ground-truth distribution follows the same space as the predictor input A0: 𝐼 −1,𝑙 :𝑙 ′ , this objective aligns the input and output distributions, facilitating recursive prediction. To further improve recursive prediction, we first train the predictor with teacher forcing, where ground-truth activa-tions are always used as inputs for subsequent predictions. After convergence, we adopt Scheduled Sampling [6] by probabilistically replacing a subset of A0: 𝐼 −1,𝑙 :𝑙 ′ with the cor-responding predictions from A′ 
+
+> 1: 𝐼,𝑙 :𝑙 ′
+
+and continue training. This gradually exposes the predictor to its own outputs dur-ing training, improving its robustness to error accumulation in recursive inference. 
+
+6 Joint Prefetch Scheduling 
+
+6.1 Prefetch Task Generation 
+
+Suppose inference proceeds to step 𝑖 − 1, layer 𝑙 ′, where the predictor performs one-step prediction and outputs the expert activation probabilities A′ 
+
+> 𝑖,𝑙 :𝑙 ′
+
+∈ R𝑏 ×1×𝑛 ×𝑒 . Based on this prediction, the runtime generates 𝑘 ≤ 𝑘 ′ < 𝑒 prefetch tasks for experts with high activation probabilities. Consider a generated task 𝑡 corresponding to expert 𝐸 𝑝,𝑞 , where 𝑙 ≤
+
+𝑝 < 𝑙 ′ denotes its layer and 0 ≤ 𝑞 < 𝑒 denotes its expert index. Its prediction confidence, which quantifies its expected contribution to expert hits, and deadline, which indicates 
+
+Algorithm 1 Joint Prefetch Scheduling 
+
+Inputs: 𝑄 task : current prefetch task queue, pos : current inference position, 𝐵 avg : average transfer budget per layer, 𝐵 cur : remaining transfer budget of current layer. 
+
+Output: selected : selected task for prefetching.  
+
+> 1:
+
+if pos is updated then  
+
+> 2:
+
+𝐵 avg ← 𝐵 avg + 𝛼 × 𝐵 cur  
+
+> 3:
+
+𝐵 cur ← 𝐵 avg  
+
+> 4:
+
+𝑄 task ← { 𝑡 ∈ 𝑄 task | ddl 𝑡 > pos + 1} 
+
+> 5:
+
+Sort 𝑄 task by ddl 𝑡 in ascending order  
+
+> 6:
+
+Initialize an empty min-heap Heap  
+
+> 7:
+
+for 𝑡 in 𝑄 task do  
+
+> 8:
+
+Heap .Push (𝑡 ; conf 𝑡 , −ddl 𝑡 ) 
+
+> 9:
+
+if |Heap | > 𝐶 (ddl 𝑡 ) then  
+
+> 10:
+
+Heap .Pop ()  
+
+> 11:
+
+selected ← arg min 𝑡 ∈Heap ddl 𝑡  
+
+> 12:
+
+B𝑐𝑢𝑟 ← B𝑐𝑢𝑟 − 1 
+
+> 13:
+
+return selected 
+
+when the expert is needed for computation, are defined as 
+
+conf 𝑡 = Mean (A′ 
+
+> 𝑖,𝑙 :𝑙 ′
+
+[:, 0, 𝑝, 𝑞 ]) ,
+
+ddl 𝑡 = (𝑖 − 1) · 𝐿 + 𝑝 
+
+Accordingly, task 𝑡 has an overlap window of 𝐿 − ( 𝑙 ′ − 1 − 𝑝 ),during which the expert transfer can overlap with ongoing inference. Within this window, the task remains a candidate for scheduling and, once selected, performs the actual expert transfer from the next-level memory to device memory. 
+
+6.2 Prefetch Task Selection 
+
+Algorithm 1 shows how the current prefetch task is selected. The average transfer budget 𝐵 avg is profiled during warmup. When inference advances to a new layer (Line 1), we update 
+
+𝐵 avg with an Exponential Moving Average (EMA) to adapt to runtime bandwidth variation and reset the current-layer budget 𝐵 cur accordingly (Lines 2–3). We then remove tasks whose deadlines are no later than the next layer, as they are either already expired or may not complete in time (Line 4). The remaining tasks are processed in ascending deadline order to construct the maximum-confidence feasible set un-der the deadline constraints (Lines 5–10). Specifically, for a task with deadline ddl , the available transfer capacity before its deadline is 
+
+𝐶 (ddl ) = max (1, 𝐵 cur ) + 𝐵 avg × ( ddl − pos − 1),
+
+which accounts for the remaining budget of the current layer and the transfer capacity of subsequent layers. Following matroid greedy, tasks are inserted into a min-heap keyed by confidence, and the lowest-confidence task is removed when-ever the retained set exceeds 𝐶 (ddl ), ensuring feasibility while prioritizing tasks with higher expected contributions to expert hits. This preserves the highest-confidence feasible Zihan Wang, Yuqi Wang, Lei Gong, Cheng Tang, Wenqi Lou, Teng Wang, Chao Wang, and Xuehai Zhou 
+
+task set under all deadline constraints. Finally, Earliest Dead-line First (EDF) selects the task with the earliest deadline for transfer (Line 11). The prefetcher waits for the transfer to complete and then reruns the algorithm to select the next prefetch task. 
+
+7 Forecast-driven Caching 
+
+7.1 Probabilistic Belady Policy 
+
+Suppose inference reaches step 𝑖 − 1 at layer 𝑙 ′. After com-pleting the single-step prediction, the predictor recursively generates A′′  
+
+> 𝑖 +1: 𝑖 +𝑐 +1,𝑙 :𝑙 ′
+
+, which estimates expert activation probabilities over the next 𝑐 steps. The optimal Belady’s MIN retains objects that will be reused sooner and evicts those whose next reuse lies farthest in the future. Inspired by this principle, we propose a probabilistic Belady policy that ex-tends future reuse to predicted activation probabilities. For expert 𝐸 𝑝,𝑞 , where 𝑙 ≤ 𝑝 < 𝑙 ′ denotes its layer and 0 ≤ 𝑞 < 𝑒 
+
+its expert index, we define its retention priority as 
+
+CacheScore 𝑝,𝑞 =
+
+Í𝑐 −1 
+
+> 𝑗 =0
+
+(𝜆 𝑗 · Mean (A′′ [:, 𝑖, 𝑝, 𝑞 ])) 
+
+Í𝑐 −1 
+
+> 𝑗 =0
+
+𝜆 𝑗 ,
+
+where 0 < 𝜆 < 1. This score prioritizes experts with higher activation probabilities in the nearer future, approximating Belady’s preference for earlier reuse. 
+
+7.2 Slot State Transition 
+
+Each cache slot has one of four states. Empty denotes a free slot that can be directly allocated without eviction. Used 
+
+holds a resident expert that is eligible for eviction. Fetch de-notes a slot reserved for an ongoing prefetch and is protected from eviction. Compute holds an expert awaiting computa-tion and is also protected from eviction. Four events in the offloading pipeline trigger slot-state transitions. First, when creating a prefetch task, an Empty 
+
+or Used slot is reserved and transitioned to Fetch . Second, when the prefetch lands, the slot transitions from Fetch to 
+
+Compute if the transfer completes successfully. Otherwise, it falls back to Empty . Third, an on-demand load directly tran-sitions an allocated Empty or Used slot to Compute . Finally, immediately before executing each MoE layer, all Compute 
+
+slots belonging to that layer are transitioned to Used , includ-ing both activated experts and prefetched-but-unactivated experts, making them eligible for subsequent eviction. Following these transitions, slot allocation always prior-itizes Empty slots. If none is available, we evict the expert with the lowest CacheScore among Used slots. 
+
+8 Graph-Compatible Offloading Runtime 
+
+8.1 Compute-Transparent Expert Placement 
+
+Fused MoE kernels are a key enabler of graph-based MoE execution, as they encapsulate dynamic expert activation within a fixed execution structure. They typically require each layer’s expert weights to follow a fixed layout: 
+
+[num_experts , dim 0, dim 1],
+
+where experts are stored contiguously at a fixed base address and selectively computed according to expert_id . Offload-ing breaks this structure by dynamically placing experts at arbitrary locations. Our key idea is to share cache slots across all MoE layers, whose expert-weight pointers reference the same fixed base address with the layout: 
+
+[num_slots , dim 0, dim 1].
+
+This design offers four benefits. First, it restores the fixed base address required by fused MoE kernels. Once all activated experts are cached, a lookup table maps expert_id to phys-ical slot_id , preserving computation semantics. Second, al-though num_slots can far exceed num_experts , sparse acti-vation keeps kernel latency unchanged in our measurements, preserving computation performance. Third, global sharing improves the flexibility of caching and prefetch scheduling. Finally, it accommodates the many experts activated dur-ing prefill without the per-layer capacity limits of statically partitioned slots. This design fully decouples the offloading pipeline from model computation, restoring fused-kernel efficiency and a fixed execution structure amenable to graph capture. 
+
+8.2 Offloading Orchestration Discipline 
+
+We further eliminate host-device synchronization in the of-floading pipeline to incorporate the pipeline itself into graph-based execution. As shown in Fig. 5, we introduce four or-chestration disciplines for its core components: the predictor, cache, prefetcher, and on-demand loading. 
+
+• Graph-capturable prediction . The predictor must run entirely on the device, and its prediction process can be directly captured into the graph. 
+
+• Device-resident cache . Cache management must run entirely on the device, avoiding frequent host-device synchronization for expert access information and cache decisions. 
+
+• Device-initiated miss loading . On a cache miss, the device must initiate the required data transfer and track its progress, avoiding host-device synchroniza-tion to determine transfer completion. 
+
+• Asynchronous host-device communication and host-initiated DMA . The prefetcher runs on the CPU for scheduling flexibility, while both control commu-nication and host-initiated data transfers must remain fully asynchronous. Together, these disciplines coordinate prediction, cache man-agement, prefetch scheduling, and on-demand loading with-out introducing host-device synchronization into the exe-cution path. This coordination enables end-to-end graph SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading 
+
+capture of the offloading pipeline while preserving flexible host-side scheduling and asynchronous data movement. 
+
+8.3 Implementation 
+
+Following these disciplines, our implementation uses two threads. The main thread issues only CUDA operations for model inference, prediction, cache management, and on-demand loading, while a CPU worker thread runs prefetcher. CUDA Graph captures the main thread’s CUDA operations, with prefetcher activity fully overlapped. For prediction, our seq2seq predictor has no dynamic con-trol flow, allowing direct capture of both one-step and recur-sive prediction. For cache management, all metadata, includ-ing lookup and state tables, reside on the GPU, with oper-ations such as lookup and eviction implemented as CUDA kernels. For on-demand loading, we allocate the host expert pool with cudaHostAllocMapped . A custom kernel on the main thread’s CUDA stream copies missing experts from host to GPU memory, avoiding host synchronization while remaining graph-capturable. For prefetching, we similarly use cudaHostAllocMapped 
+
+to allocate pinned, mapped host memory as a shared con-trol region between CPU and GPU, supporting three forms of asynchronous communication. First, the GPU updates the inference position pos at each layer, which the CPU prefetcher reads after completing each prefetch task. Sec-ond, when a cache miss triggers on-demand loading, the GPU sets a shared flag to pause new prefetch submissions, reducing bandwidth contention. Third, monotonically in-creasing tags coordinate task dispatch and prefetch land-ing. The GPU assigns each new task a slot and binds its tag to that slot, and the CPU processes only unseen tags. The GPU updates the cache state only when the returned tag matches the slot’s expected tag. Prefetched weights by-pass the control region: the CPU prefetcher initiates host-to-device DMA using cudaMemcpyAsync on a dedicated CUDA copy stream. Consequently, prefetch configuration, task gen-eration, data transfer, and completion notification proceed asynchronously with the main computation stream, and GPU execution never waits for the CPU prefetcher. We implement SeqMoE in Hugging Face Transformers [37] using hooks. A single offloading function, inserted after rout-ing and before MoE computation, incorporates these opera-tions without changing external interfaces. 
+
+8.4 Prefill Offloading 
+
+Prefill rarely achieves full-load performance under offload-ing because many tokens activate a broad set of experts, substantially weakening MoE’s structural advantage from sparsity. Chunked prefill, a common optimization in cloud serving [1], is poorly suited to offloading because it incurs repeated expert transfers across chunks. With many tokens routed simultaneously, expert activa-tion increasingly reflects statistical popularity. We therefore profile expert activation frequencies offline over the dataset. Before prefill and after each layer, we prioritize prefetch tasks for high-frequency activated experts in subsequent layers. We keep num_slots − 𝑒 slots in the Fetch state, re-serving 𝑒 slots for evicting and loading missed experts. We omit graph capture during prefill because of its variable se-quence lengths and substantial computation, consistent with common inference practice [24]. 
+
+9 Experimental Evaluation 
+
+9.1 Experimental Methodology Hardware . We evaluate on three GPU-based platforms. The NVIDIA RTX 4090 platform has 24 GB GPU memory, an Intel Xeon Gold 6430 CPU, and 120 GB host memory, connected via PCIe 4.0. The NVIDIA RTX 5090 platform has 32 GB GPU memory, an Intel Xeon Platinum 8470Q CPU, and 120 GB host memory, connected via PCIe 5.0. The NVIDIA RTX PRO 6000 Blackwell platform has 96 GB GPU memory, an Intel Xeon Platinum 8470Q CPU, and 256 GB host memory, connected via PCIe 5.0. 
+
+Models . We evaluate four advanced, widely used MoE-based LLM models with diverse architectures and precisions: Qwen3-30B-A3B-FP8 (QW3) [40], GPT-OSS-120B-MXFP4 (GPT) [30], Qwen3.6-35B-A3B-BF16 (QW36) [31], and DeepSeek-V4-Flash (DSV4) [12]. Table 1 summarizes their model weight config-urations and expert activation characteristics. 
+
+Datasets . For each model, we sample 5K, 5K, 5K, 30K, and 5K examples from MATH [16], GSM8K [8], CodeForces [9], OpenOrca [25], and ShareGPT [3], respectively, to construct a pool of 50K traces covering mathematics, coding, general text comprehension, and multi-turn dialogue, with sequence lengths of 0.1K–10K tokens. 
+
+Configuration . We use 90% of each subset, totaling 45K traces, for predictor training and the remaining 5K for pre-dictor testing. We further select 600 test traces for inference evaluation. We evaluate QW3 on the NVIDIA RTX 4090, QW36 on the NVIDIA RTX 5090, and both GPT and DSV4 on the NVIDIA RTX PRO 6000 Blackwell. During inference, we generate 𝑘 ′ = 𝑘 + 3 prefetch tasks per prediction and use 
+
+𝑐 = 8 recursive prediction steps with 𝜆 = 0.5 for the cache policy. We deploy two predictors, triggered at 𝑙 ′ = 𝐿 /2 and 
+
+𝑙 ′ = 𝐿 , respectively. 
+
+Baselines . We compare SeqMoE’s inference performance against four frameworks. Llama.cpp [27] supports concur-rent CPU–GPU computation in C/C++. MoE-Infinity [38] uses request-level expert activations for GPU prefetching and caching. KTransformers combines CPU–GPU hybrid in-ference with optimized CPU expert kernels. FreeToken [41], a concurrent work, supports graph-based offloading with-out prefetching and uses LRU without explicit expert-hit optimization. FullLoad keeps all weights on GPUs, using pipeline parallelism (PP) when multiple GPUs are needed for fairness with offloading. It runs on vLLM [24] 0.28.0 for Zihan Wang, Yuqi Wang, Lei Gong, Cheng Tang, Wenqi Lou, Teng Wang, Chao Wang, and Xuehai Zhou 15% 25% 35% 45% 
+
+Loaded    
+
+> 050 100
+> 122.7
+> 150
+> Decode (tok/s)
+> ××××
+> Higher is Better (↑)
+> Full-load
+
+Qwen3-30B-A3B-FP8    
+
+> 21.1 24.1 27.0 30.9 25.9 27.6 32.2 34.2 6.8 7.4 9.7 11.9 47.9 67.4 81.4 104.1
+> 15% 25% 35% 40%
+
+Loaded  
+
+> 060 120
+> 156.3
+> 180 Full-load
+
+Qwen3.6-35B-A3B-BF16    
+
+> 28.2 31.9 35.4 37.9 26.9 29.8 31.7 35.0 7.3 8.5 9.2 12.6 46.3 60.2 77.4 86.2 70.2 92.1 110.7 118.3
+> 15% 25% 35% 45%
+
+Loaded    
+
+> 080
+> 175.7
+> 240
+> ××××
+> Full-load
+
+GPT-OSS-120B-MXFP4    
+
+> 21.1 25.5 29.1 33.1 11.1 12.9 14.6 16.9 43.6 61.9 85.7 101.2 83.3 99.9 123.4 139.2
+> 15% 25% 35% 45%
+
+Loaded    
+
+> 030 60
+> 74.8
+> 90
+> ××××
+> Full-load
+
+Deepseek-V4-Flash    
+
+> 15.0 16.2 18.5 21.0 11.7 12.8 13.9 14.8 21.2 26.1 29.7 34.0 31.7 44.3 51.7 57.4
+> 15% 25% 35% 45%
+
+Loaded       
+
+> 050 100
+> 119.5
+> 150
+> Decode (tok/s)
+> ××××
+> Higher is Better (↑)
+> Full-load
+> 21.5 24.5 27.2 30.8 23.9 26.4 30.7 36.2 48.4 66.7 79.3 102.3
+> 15% 25% 35% 40%
+
+Loaded     
+
+> 060 120
+> 156.2
+> 180 Full-load
+> 29.0 31.9 35.9 38.5 26.5 32.2 30.5 32.7 45.3 62.4 80.6 90.3 71.3 91.1 111.2 116.6
+> 15% 25% 35% 45%
+
+Loaded       
+
+> 080
+> 171.1
+> 240
+> ××××
+> Full-load
+> 20.4 24.7 28.2 32.1 41.9 63.5 83.2 98.2 80.2 97.2 120.5 135.6
+> 15% 25% 35% 45%
+
+Loaded    
+
+> 030 60
+> 74.4
+> 90 Full-load
+> 15.3 16.7 19.5 21.8 11.6 12.8 13.9 15.7 21.2 26.1 29.7 33.0 31.3 39.9 44.1 56.9
+> 124
+
+Batch Size     
+
+> 060 120 180
+> Decode (tok/s)
+> ×××
+> Higher is Better (↑)
+> 27.0 31.0 34.7 32.2 41.7 49.0 81.4 105.8 154.7
+> 124
+
+Batch Size   
+
+> 0100 200 300
+> 35.4 40.8 46.2 31.7 40.6 49.3 77.4 91.5 103.5 110.7 154.0 225.8
+> 124
+
+Batch Size     
+
+> 080 160 240
+> ×××
+> 29.1 31.7 32.9 85.7 96.2 106.0 123.4 163.2 173.5
+> 124
+
+Batch Size    
+
+> 030 60 90
+> 18.5 32.7 36.8 13.9 17.1 20.6 29.7 38.2 40.0 51.7 64.9 82.4
+> 15% 25% 35% 45%
+
+Loaded       
+
+> 110
+> TTFT (s)
+> ××××
+> Lower is Better (↓)
+> 2.4 2.1 1.9 1.6 2.3 2.2 2.2 2.1 0.9 0.9 0.7 0.6
+> 15% 25% 35% 40%
+
+Loaded    
+
+> 110
+> 6.8 4.9 4.3 4.1 2.2 2.0 1.8 1.8 1.2 1.2 1.2 1.2 1.1 1.0 0.8 0.8
+> 15% 25% 35% 45%
+
+Loaded       
+
+> 110
+> ××××
+> 7.5 6.5 5.6 5.0 1.1 1.1 1.2 1.1 1.0 0.9 0.8 0.7
+> 15% 25% 35% 45%
+
+Loaded 
+
+> 10 100
+> 14.1 12.4 10.5 8.6 21.5 18.5 16.3 15.8 2.8 2.9 2.8 2.8 2.7 2.4 2.2 2.0
+> Decode length: 128–1024 Decode length: 4096–8192 Loaded: 35% Prefill length: 1024
+
+llama.cpp KTransformers MoE-Infinity FreeToken SeqMoE 
+
+Figure 6. End-to-End Inference Performance Comparison. DSV4 and 0.26.0 for other models. For expert hit rates, we compare the caching policies of these frameworks and ablate our prefetch scheduling. For prediction accuracy, we com-pare against Patterns-MoE [43], the first work to explore cross-step expert prediction using conditional probabilities. 
+
+Metrics . Tokens per second (tokens/s) measures decoding throughput, while time to first token (TTFT, s) measures prefill latency. Expert hit rate (%) is the fraction of required experts already resident in device memory before on-demand loading for MoE computation, indicating memory manage-ment efficiency and the potential to approach FullLoad per-formance. Recall (%) measures prediction accuracy as the fraction of actually activated experts correctly predicted. 
+
+9.2 End-to-End Performance 
+
+Fig. 6 compares end-to-end performance. Crosses indicate unsupported configurations. We evaluate MoE-Infinity only in the first experiment group due to its low inference speed. The x-axis shows the number of available device cache slots as a fraction of all experts, ranging from 15% to 40% for QW36 due to RTX 5090 memory limits, and from 15% to 45% for the other three models. Continuous serving at the edge often focuses on inference with a batch size of one [34, 39, 41]. The first row reports performance on shorter sequences (128–1,024 tokens). At 45% cache capacity (40% for QW36), SeqMoE achieves 84.82%, 75.69%, 79.20%, and 76.65% of FullLoad performance on QW3, QW36, GPT, and DSV4, respectively. FreeToken reaches only 55.15%, 57.60%, and 45.45% on QW36, GPT, and DSV4, while the remaining baselines achieve at most 28.03%. Moreover, SeqMoE’s high expert hit rate enables it to match FreeToken at 45% or 40% capacity using only 25%. The second row reports results on longer sequences (4,096–8,192 tokens). Increased computation and hit-rate fluctuations cause minor performance changes, but the overall ranking persists as SeqMoE maintains prediction accuracy over long sequences. The third row evaluates small-batch inference with vary-ing numbers of concurrent requests. SeqMoE achieves the largest performance gains as concurrency increases, since competition among sequences for limited cache capacity reduces expert reuse and makes timely prefetching increas-ingly important. The fourth row compares prefill latency across cache capacities. FreeToken uses ping-pong buffers that alternate between layers, resulting in largely stable latency as cache capacity increases. In contrast, SeqMoE achieves lower prefill latency through flexible prefetching and cache state transitions. 
+
+9.3 Expert Hit Rates 
+
+Fig. 7 compares expert hit rates, a key indicator of memory-management efficiency and the potential to approach Full-Load performance. LRU, LFU, and PrefillHot are adopted by FreeToken, MoE-APEX, and KTransformers. PrefillHot se-lects the most frequently activated experts during prefill and SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading 15% 25% 35% 45%               
+
+> Loaded
+> 30 40 50 60 70 80 90 100
+> Hit Rate
+> Qwen3-30B-A3B-FP8
+> 15% 25% 35% 40%
+> Loaded
+> Qwen3.6-35B-A3B-BF16
+> 15% 25% 35% 45%
+> Loaded
+> GPT-OSS-120B-MXFP4
+> 15% 25% 35% 45%
+> Loaded
+> Deepseek-V4-Flash
+> SeqMoE SeqMoE(Infinity) SeqMoE(CacheOnly) LRU LFU PrefillHot
+
+Figure 7. Expert Hit Rate Comparison. keeps this selection fixed throughout decoding. At cache ca-pacities of 15%, 25%, 35%, 40%, and 45%, SeqMoE achieves av-erage hit rates of 84.56%, 91.72%, 95.09%, 96.11%, and 96.97%, respectively, compared with 60.02%, 74.24%, 84.49%, 86.37%, and 88.50% for LRU, the strongest baseline. We further evaluate two ablation variants: SeqMoE (In-finity), which uses score-based prefetch scheduling from MoE-Infinity, and SeqMoE (CacheOnly), which relies solely on forecast-driven caching. Future-aware eviction alone out-performs existing history-based policies, demonstrating the value of predicted activations in guiding cache residency. Prefetching further improves hit rates by loading experts before they are needed. However, independent score-based prioritization struggles to select the most beneficial combi-nation of prefetch tasks under bandwidth and deadline con-straints. This limitation is especially pronounced at smaller cache capacities, where higher miss rates generate more prefetch tasks and intensify bandwidth contention, high-lighting the importance of joint deadline-aware scheduling. 75 80 85 90                    
+
+> Recall
+> Qwen3-30B-A3B-FP8
+> 8910 11 12
+> Top-K
+> 40 45 50
+> 75 80 85 90
+> Recall
+> Qwen3.6-35B-A3B-BF16
+> 8910 11 12
+> Top-K
+> 40 45 50
+> 75 80 85 90
+> Recall
+> GPT-OSS-120B-MXFP4
+> 45678
+> Top-K
+> 40 45 50
+> 70 75 80 85
+> Recall
+> Deepseek-V4-Flash
+> 678910
+> Top-K
+> 40 45 50
+> Seq-1 Seq-8 Seq-L1 Patterns-MoE
+
+Figure 8. Expert Prediction Recall Comparison. 
+
+9.4 Prediction Accuracy 
+
+Fig. 8 compares prediction recall. Patterns-MoE lacks suffi-cient accuracy for reliable prefetching, as fetching incorrect experts not only wastes transfer bandwidth but can also evict cached experts that would otherwise be reused. Seq-1 de-notes one-step prediction over full sequences. Selecting the top 𝑘 + 3 experts yields recalls of 90.90%, 88.39%, 90.76%, and 85.81% on QW3, QW36, GPT, and DSV4, respectively. Seq-8 recursively predicts eight steps, with an average recall drop of only 3.58 percentage points relative to Seq-1. This limited degradation demonstrates robustness to recursive error ac-cumulation and supports the effectiveness of activation-state preprocessing and scheduled sampling in maintaining accu-racy over longer prediction horizons. Seq-L1 reports recall on sequences longer than 4,096 tokens and remains compa-rable to Seq-1, suggesting that prediction accuracy remains stable even for longer sequences within the evaluated range of 0.1K–10K tokens. 
+
+9.5 Offloading Overhead 
+
+Fig. 9 breaks down offloading inference time into four com-ponents at 45% cache capacity (40% for QW36). Offloading overhead comprises three components: on-demand stalls, predictor inference, and management operations. Despite an average miss rate of only 3.25%, on-demand loading remains the largest component, highlighting the substantial cost of data transfers on the critical path and the priority of elimi-nating expert cache misses. Predictor inference accounts for 3.46% of execution time on average. Increasing the number of predictors extends the overlap window but introduces ad-ditional prediction overhead and slightly reduces accuracy, creating a trade-off between lookahead, prediction cost, and reliability. The total predictor memory footprints are 120 MB, 228 MB, 112 MB, and 223 MB for QW3, QW36, GPT, and DSV4, respectively. Increasing the number of predictors does not increase their total memory footprint, since each predictor covers fewer layers and can therefore use a smaller hidden dimension. CUDA management kernels, including Zihan Wang, Yuqi Wang, Lei Gong, Cheng Tang, Wenqi Lou, Teng Wang, Chao Wang, and Xuehai Zhou Time Breakdown              
+
+> Qwen3-30B-A3B-FP8
+> 83.50% 4.02% 2.10% 10.38%
+> Qwen3.6-35B-A3B-BF16
+> 73.98% 3.91% 2.39% 19.71%
+> GPT-OSS-120B-MXFP4
+> 80.56% 3.73% 1.97% 13.73%
+> Deepseek-V4-Flash
+> 77.98% 2.16%1.73% 18.12%
+> Computation Predictor Management On-demand stall
+
+Figure 9. Inference Time Breakdown. cache management, prefetch dispatch, and prefetch landing, account for 2.05% of execution time on average. 
+
+10 Conclusion 
+
+We presented SeqMoE, an MoE offloading system that ap-proaches full-load performance through predictive memory management and a graph-compatible runtime. By formulat-ing expert activation prediction as sequence modeling, Seq-MoE provides accurate, long-horizon forecasts that jointly guide prefetch scheduling and cache eviction. This coordi-nated design improves expert hit rates across the memory hierarchy to reduce on-demand stalls. Moreover, compute-transparent expert placement and synchronization-free or-chestration disciplines reconcile dynamic offloading with graph-based execution mechanisms, enabling end-to-end graph capture and translating improved memory manage-ment into inference performance. Evaluations demonstrate that SeqMoE substantially outperforms existing offloading systems, highlighting the importance of jointly designing prediction, memory management, and execution to real-ize MoE’s structural advantages in high-performance, low-memory inference. By combining timely expert availability with efficient execution, SeqMoE advances the state of the art in MoE offloading inference. 
+
+References 
+
+[1] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav Gulavani, Alexey Tumanov, and Ramachandran Ram-jee. 2024. Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI 24) . USENIX Association, 117–134. 
+
+https://www.usenix.org/conference/osdi24/presentation/agrawal 
+
+[2] AMD. [n. d.]. HIP Graphs. HIP documentation. Accessed: 2026-09-09. https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_ runtime_api/hipgraph.html 
+
+[3] anon8231489123. 2023. ShareGPT_Vicuna_unfiltered. Hugging Face dataset. Accessed: 2026-09-09. https://huggingface.co/datasets/ anon8231489123/ShareGPT_Vicuna_unfiltered 
+
+[4] Apple. 2024. Introducing Apple’s On-Device and Server Foundation Models. Apple Machine Learning Research. https://machinelearning. apple.com/research/introducing-apple-foundation-models 
+
+[5] L. A. Bélády. 1966. A Study of Replacement Algorithms for a Virtual-Storage Computer. IBM Systems Journal 5, 2 (1966), 78–101. doi: 10. 1147/sj.52.0078 
+
+[6] Samy Bengio, Oriol Vinyals, Navdeep Jaitly, and Noam Shazeer. 2015. Scheduled Sampling for Sequence Prediction with Recurrent Neu-ral Networks. In Advances in Neural Information Processing Systems ,Vol. 28. https://arxiv.org/abs/1506.03099 
+
+[7] Hongtao Chen, Weiyu Xie, Boxin Zhang, Jingqi Tang, Jiahao Wang, Jianwei Dong, Shaoyuan Chen, Ziwei Yuan, Chen Lin, Chengyu Qiu, Yuening Zhu, Qingliang Ou, Jiaqi Liao, Xianglin Chen, Zhiyuan Ai, Yongwei Wu, and Mingxing Zhang. 2025. KTransformers: Unleashing the Full Potential of CPU/GPU Hybrid Inference for MoE Models. In 
+
+Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Principles . doi: 10.1145/3731569.3764843 
+
+[8] Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. 2021. Training Verifiers to Solve Math Word Problems. arXiv preprint arXiv:2110.14168 (2021). https://arxiv.org/abs/2110.14168 
+
+[9] Codeforces. [n. d.]. Codeforces Problemset. Online resource. Accessed: 2026-09-09. https://codeforces.com/problemset 
+
+[10] Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, and Clif-ford Stein. 2009. Introduction to Algorithms (3 ed.). MIT Press. [11] Tri Dao and Albert Gu. 2024. Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Du-ality. In Proceedings of the 41st International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 10041–10071. https://proceedings.mlr.press/v235/dao24a.html 
+
+[12] DeepSeek-AI, Anyi Xu, Bangcai Lin, et al. 2026. DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence. arXiv preprint arXiv:2606.19348 (2026). https://arxiv.org/abs/2606.19348 
+
+[13] Jack Edmonds. 1971. Matroids and the Greedy Algorithm. Mathemat-ical Programming 1 (1971), 127–136. doi: 10.1007/BF01584082 
+
+[14] Jeffrey L. Elman. 1990. Finding Structure in Time. Cognitive Science 
+
+14, 2 (1990), 179–211. doi: 10.1207/s15516709cog1402_1 
+
+[15] Abhishek Ghosh, Ajay Nayak, Ashish Panwar, and Arkaprava Basu. 2026. GraCE: Unlocking CUDA Graphs with Compiler Support for ML Workloads. In 20th USENIX Symposium on Operating Systems Design and Implementation (OSDI 26) . USENIX Association, 1927–1947. 
+
+https://www.usenix.org/conference/osdi26/presentation/ghosh 
+
+[16] Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song, and Jacob Steinhardt. 2021. Measuring Mathematical Problem Solving With the MATH Dataset. In Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks , Vol. 1. https://arxiv.org/abs/2103.03874 
+
+[17] Ralf Herbrich, Thore Graepel, and Klaus Obermayer. 2000. Large Margin Rank Boundaries for Ordinal Regression. In Advances in Large-Margin Classifiers . MIT Press, 115–132. SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading 
+
+[18] Sepp Hochreiter and Jürgen Schmidhuber. 1997. Long Short-Term Memory. Neural Computation 9, 8 (1997), 1735–1780. doi: 10.1162/neco. 1997.9.8.1735 
+
+[19] Huawei. [n. d.]. ACL Graph: Cross-Stream Capture. CANN documen-tation. In Chinese. Accessed: 2026-09-09. https://www.hiascend.com/ document/detail/zh/CANNCommunityEdition/920beta2/others/ acldevg/runtime_doc_dev_0031.html 
+
+[20] Ranggi Hwang, Jianyu Wei, Shijie Cao, Changho Hwang, Xiaohu Tang, Ting Cao, and Mao Yang. 2024. Pre-Gated MoE: An Algorithm-System Co-Design for Fast and Scalable Mixture-of-Expert Inference. In 2024 ACM/IEEE 51st Annual International Symposium on Computer Architecture (ISCA) . 1018–1031. doi: 10.1109/ISCA59077.2024.00078 
+
+[21] Intel. [n. d.]. SYCL Graph Usage Guide and Examples. Intel LLVM documentation. Accessed: 2026-09-09. https://github.com/intel/llvm/ blob/sycl/sycl/doc/syclgraph/SYCLGraphUsageGuide.md 
+
+[22] Albert Q. Jiang, Alexandre Sablayrolles, Antoine Roux, Arthur Mensch, Blanche Savary, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Emma Bou Hanna, Florian Bressand, Gianna Lengyel, Guil-laume Bour, Guillaume Lample, Lélio Renard Lavaud, Lucile Saulnier, Marie-Anne Lachaux, Pierre Stock, Sandeep Subramanian, Sophia Yang, Szymon Antoniak, Teven Le Scao, Théophile Gervet, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and William El Sayed. 2024. Mixtral of Experts. arXiv:2401.04088 [cs.LG] https://arxiv.org/abs/ 2401.04088 
+
+[23] Solomon Kullback and Richard A. Leibler. 1951. On Information and Sufficiency. The Annals of Mathematical Statistics 22, 1 (1951), 79–86. doi: 10.1214/aoms/1177729694 
+
+[24] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the 29th Symposium on Operating Systems Principles . Association for Computing Machinery, 611–626. doi: 10.1145/3600006.3613165 
+
+[25] Wing Lian, Bleys Goodson, Eugene Pentland, Austin Cook, Chan-vichet Vong, and Teknium. 2023. OpenOrca: An Open Dataset of GPT Augmented FLAN Reasoning Traces. Hugging Face dataset. 
+
+https://huggingface.co/datasets/Open-Orca/OpenOrca 
+
+[26] Jiacheng Liu, Peng Tang, Wenfeng Wang, Yuhang Ren, Xiaofeng Hou, Pheng-Ann Heng, Minyi Guo, and Chao Li. 2026. A Survey on Infer-ence Optimization Techniques for Mixture of Experts Models. Comput. Surveys 58, 10, Article 247 (2026), 37 pages. doi: 10.1145/3794845 
+
+[27] llama.cpp Contributors. [n. d.]. llama.cpp: LLM Inference in C/C++. GitHub repository. Accessed: 2026-09-09. https://github.com/ggml-org/llama.cpp 
+
+[28] Xupeng Miao, Gabriele Oliaro, Zhihao Zhang, Xinhao Cheng, Hongyi Jin, Tianqi Chen, and Zhihao Jia. 2025. Towards Efficient Generative Large Language Model Serving: A Survey from Algorithms to Systems. 
+
+Comput. Surveys 58, 1 (2025). doi: 10.1145/3754448 
+
+[29] NVIDIA. [n. d.]. CUDA Programming Guide: CUDA Graphs. Online documentation. Accessed: 2026-09-09. https://docs.nvidia.com/cuda/ cuda-programming-guide/04-special-topics/cuda-graphs.html 
+
+[30] OpenAI. 2025. gpt-oss-120b & gpt-oss-20b Model Card . Technical Report. OpenAI. https://openai.com/index/gpt-oss-model-card/ 
+
+[31] Qwen Team. 2026. Qwen3.6-35B-A3B. Hugging Face Model Card. Accessed: 2026-09-09. https://huggingface.co/Qwen/Qwen3.6-35B-A3B 
+
+[32] Xiaoniu Song, Zihang Zhong, Rong Chen, and Haibo Chen. 2025. ProMoE: Fast MoE-based LLM Serving using Proactive Caching. arXiv:2410.22134 [cs.DC] https://arxiv.org/abs/2410.22134 
+
+[33] Ilya Sutskever, Oriol Vinyals, and Quoc V. Le. 2014. Sequence to Sequence Learning with Neural Networks. In Advances in Neural Information Processing Systems , Vol. 27. https://arxiv.org/abs/1409.3215 
+
+[34] Peng Tang, Jiacheng Liu, Xiaofeng Hou, Yifei Pu, Jing Wang, Pheng-Ann Heng, Chao Li, and Minyi Guo. 2026. MoE-APEX: An Efficient MoE Inference System with Adaptive Precision Expert Offloading. In 
+
+Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 .1185–1200. doi: 10.1145/3779212.3790187 
+
+[35] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention Is All You Need. In Advances in Neural Information Processing Systems , Vol. 30. https://arxiv.org/abs/1706.03762 
+
+[36] vLLM Contributors. [n. d.]. vLLM: Fused MoE Triton Kernels. GitHub repository. Accessed: 2026-09-09. https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/layers/fused_moe/ fused_moe.py 
+
+[37] Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Remi Louf, Morgan Funtowicz, Joe Davison, Sam Shleifer, Patrick von Platen, Clara Ma, Yacine Jernite, Julien Plu, Canwen Xu, Teven Le Scao, Syl-vain Gugger, Mariama Drame, Quentin Lhoest, and Alexander Rush. 2020. Transformers: State-of-the-Art Natural Language Processing. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations . Association for Compu-tational Linguistics, 38–45. doi: 10.18653/v1/2020.emnlp-demos.6 
+
+[38] Leyang Xue, Yao Fu, Zhan Lu, Luo Mai, and Mahesh Marina. 2025. MoE-Infinity: Efficient MoE Inference on Personal Machines with Sparsity-Aware Expert Cache. arXiv:2401.14361 [cs.LG] https://arxiv. org/abs/2401.14361 
+
+[39] Zhenliang Xue, Yixin Song, Zeyu Mi, Xinrui Zheng, Yubin Xia, and Haibo Chen. 2024. PowerInfer-2: Fast Large Language Model Inference on a Smartphone. arXiv preprint arXiv:2406.06282 (2024). https: //arxiv.org/abs/2406.06282 
+
+[40] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, et al. 2025. Qwen3 Technical Report. arXiv preprint arXiv:2505.09388 (2025). 
+
+https://arxiv.org/abs/2505.09388 
+
+[41] Shuo Yang, Xiaoze Fan, Melissa Pan, Haocheng Xi, Zhe Wang, Shanlin Sun, Kurt Keutzer, Song Han, Matei Zaharia, Chenfeng Xu, and Ion Stoica. 2026. FreeToken: Efficient Edge-Native MoE Serving with Bandwidth-Adaptive Execution. arXiv preprint arXiv:2608.16157 (2026). 
+
+https://arxiv.org/abs/2608.16157 
+
+[42] Hanfei Yu, Xingqi Cui, Hong Zhang, Hao Wang, and Hao Wang. 2026. Taming Latency-Memory Trade-Off in MoE-Based LLM Serving via Fine-Grained Expert Offloading. In Proceedings of the 2026 Euro-pean Conference on Computer Systems . 176–191. doi: 10.1145/3767295. 3769319 
+
+[43] Zhongkai Yu, Yue Guan, Zihao Yu, Chenyang Zhou, Zhengding Hu, Shuyi Pei, Yangwook Kang, Yufei Ding, and Po-An Tsai. 2026. Patterns behind Chaos: Forecasting Data Movement for Efficient Large-Scale MoE LLM Inference. In 2026 ACM/IEEE 53rd Annual International Symposium on Computer Architecture (ISCA) . 68–84. doi: 10.1109/ISCA66397.2026.00021 
+
+[44] Chenggang Zhao, Zhean Xu, Liang Zhao, Jiashi Li, Chenhao Xu, Anyi Xu, Shengyu Liu, Kexing Zhou, and Kuai Yu. 2025. DeepGEMM: Clean and Efficient BLAS Kernel Library on GPU. GitHub repository. 
+
+https://github.com/deepseek-ai/DeepGEMM 
+
+[45] Yingnan Zhao, Razvan Bunescu, Ahmed Louri, Avinash Karanth, and Ke Wang. 2026. A Spatio-Temporal Expert Prefetching Framework for Efficient MoE-based LLM Inference. arXiv:2606.15453 [cs.AR] 
+
+https://arxiv.org/abs/2606.15453

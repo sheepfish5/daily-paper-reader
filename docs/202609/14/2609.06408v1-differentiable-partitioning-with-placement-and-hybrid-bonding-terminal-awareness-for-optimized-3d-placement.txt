@@ -1,0 +1,565 @@
+Title: Differentiable Partitioning with Placement and Hybrid Bonding Terminal Awareness for Optimized 3D Placement
+
+URL Source: https://arxiv.org/pdf/2609.06408v1
+
+Published Time: Wed, 09 Sep 2026 01:30:48 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Differentiable Partitioning with Placement and Hybrid Bonding Terminal Awareness for Optimized 3D Placement 
+
+## Liwen Jiang 
+
+Fudan University Shanghai, China lwjiang24@m.fudan.edu.cn 
+
+## Xu Shi 
+
+Fudan University Shanghai, China xshi22@m.fudan.edu.cn 
+
+## Rufeng Xiao 
+
+Fudan University Shanghai, China rfxiao24@m.fudan.edu.cn 
+
+## Changhao Yan 
+
+Fudan University Shanghai, China yanch@fudan.edu.cn 
+
+## Rujun Jiang 
+
+Fudan University Shanghai, China rjjiang@fudan.edu.cn 
+
+## Zhiang Wang 
+
+Fudan University Shanghai, China zhiangwang@fudan.edu.cn 
+
+## Keren Zhu 
+
+Fudan University Shanghai, China krzhu@fudan.edu.cn 
+
+## Abstract 
+
+Research on 3D-ICs physical design has expanded rapidly in recent years. Hybrid bonding-enabled 3D integrated circuits (3D-ICs) offer substantial benefits in interconnect scaling and system integration, yet tier assignment remains challenging because it jointly deter-mines 3D wirelength and hybrid bonding terminal (HBT) assign-ment. This paper presents a differentiable partitioning framework that directly optimizes placement-aware tier assignment for 3D-ICs through gradient-based optimization. Discrete tier assignment is relaxed to continuous probabilities, and a Dual-Max 3D wirelength model is introduced to capture per-tier half-perimeter wirelength (HPWL). In addition, a terminal-aware cutsize penalty selectively suppresses cross-die nets in HBT-congested regions, and a local bal-ance constraint enforces grid-cell density equilibrium across tiers. Experimental results on OpenROAD benchmarks show that our method reduces D2D HPWL by 2 .0% on average over two min-cut baselines and by 12 .1% over the state-of-the-art 3D placer [1]. We open-source our partition code with 3D placement flow to support reproducibility. 1
+
+## Keywords 
+
+3D-IC, differentiable partitioning, physical design, placement opti-mization 
+
+## 1 Introduction 
+
+Three-dimensional integrated circuits have emerged as a promising approach to extend system performance in post-Moore era. Among various 3D integration technologies, hybrid bonding has gained substantial industrial adoption due to its ultra-fine pitch, high yield, and compatibility with advanced packaging flows. However, these advantages cannot be fully realized without effective EDA tools that address the unique physical design challenges in the vertical dimension [2–4]. 
+
+> 1The source code of this work is available at https://github.com/liW-J/D2D-Placer-With-Differentiable-Partitioner.
+
+Existing 3D placement methodologies fall into two categories. 
+
+True-3D placers [5, 6] treat x-y-z coordinates as continuous variables within a unified analytical framework, employing bis-tratal wirelength models [5] or multi-technology weighted-average (MTWA) interpolation [6] to relax the discrete tier assignment into a differentiable form. However, as illustrated in Table 1, D2D-HPWL-style wirelength objectives are inherently insensitive to tier assignment, because D2D HPWL collapses to its 2D lower bound when x-y coordinates are unconstrained, providing no effective gradient signal for partitioning. Moreover, 3D placement optimization objectives dominated by wirelength cannot account for the complex constraints of 3D placement in the full physical design process. Furthermore, true-3D global placement effectively produces only a coarse placement result, and additional refinement or co-placement stages are still required to obtain feasible per-tier layouts. Pseudo-3D placers [1, 7–12] decompose the problem into tier partitioning followed by 2D placement on each die, leveraging mature 2D analytical engines. Representa-tive techniques include bin-based placement-driven partitioning with FM refinement [7], bilevel programming for joint placement and partitioning [9], layout-aware partitioning with multi-die co-placement [1], and differentiable snaking-aware partitioning [10]. Recent partitioners [11] further incorporate ILP-based constraints on tier transitions and density balance. Despite these advances, pseudo-3D flows rely on loosely coupled stages, where partition quality remains dependent on heuristic choices rather than a unified optimization objective. Both paradigms thus share a fundamental challenge in the the weak coupling between placement and partitioning. A true 3D placement algorithm that ideally accounts for terminal positions when calculating D2D HPWL may result in double degradation in wirelength after detailed placement caused by the displacement of terminal positions. In pseudo-3D flows, tier assignment commonly relies on min-cut based algorithms such as FM refinement with congestion-aware objectives, or general-purpose hypergraph parti-tioners such as hMETIS and TritonPart that minimize cutsize as a proxy for interconnect cost. However, cutsize correlates poorly arXiv:2609.06408v1 [cs.ET] 6 Sep 2026 Liwen Jiang, Xu Shi, Rufeng Xiao, Changhao Yan, Rujun Jiang, Zhiang Wang, and Keren Zhu 
+
+Table 1: Partition sensitivity of different wirelength metrics on a 3-pin net with 𝐴 , 𝐵 , 𝐶 at 𝑥 = 1, 2, 9. Both 2D HPWL and D2D HPWL equal 8 for all four partitions, whereas the D2D HPWL without HBT correctly distinguishes them as 1 < 7 <
+
+8 < 11 .                                  
+
+> Partition Illustration 2D HPWL D2D HPWL D2D HPWL without HBT
+> {1,1,1},
+> {0,0,0}ABC888
+> {1,1,0},
+> {0,0,1}ABC881
+> {1,0,0},
+> {0,1,1}ABC887
+> {1,0,1},
+> {0,1,0}ABC8811
+
+with wirelength in the 3D placement, as a low-cutsize par-tition may still yield poor D2D HPWL when cross-die nets induce large bounding boxes on both tiers. Moreover, greedy FM-style moves operate on local gain, making the final partition sensitive to move ordering and initial assignment. These deficien-cies motivate 3D specificity optimization formulations tailored to F2F bonded designs. To bridge the gap between various 3D placement metrics and tier assignment, we develop a differentiable partitioning framework. We directly model 3D interconnect cost through a partition-sensitive wirelength model and meticulously design specialized optimization objectives for 3D placement. The main contributions are summa-rized as follows: 
+
+• We propose a differentiable partitioning framework for opti-mized 3D placement that relaxes discrete tier assignment to a continuous probability, enabling gradient-based optimization. 
+
+• We introduce the Dual-Max 3D wirelength model that models per-tier HPWL through coordinate mirroring, providing numerically stable gradients with placement information. 
+
+• We design a terminal-aware cutsize penalty for HBT spatial congestion and a local balance constraint enforcing per-grid-cell density equilibrium across tiers, ensuring a stable and usable solution for downstream flow. 
+
+• We integrate the differentiable partitioner into a complete 3D placement flow. Experimental results on OpenROAD benchmarks show that our method reduces D2D HPWL by 2 .0% on average over two min-cut baselines, and achieves 12 .1% lower D2D HPWL than CoPlace [1]. We open-source the 3D placement flow to support reproducible evaluation and comparison. The rest of this paper is structured as follows. Section 2 pro-vides the background and problem formulation. Section 3 presents the overall placement flow for heterogeneous F2F bonded 3D ICs. Section 4 details our density and wirelength algorithms. Section 5 presents experimental results, followed by conclusion in Section 6. 
+
+## 2 Preliminaries 2.1 Partitioning in Pseudo-3D Flow 
+
+In representative 3D physical design flows built on commercial 2D tools, tier partitioning is a central step. The Pin-3D flow [13, 14] first performs a 2D global placement, then applies placement-driven tier partitioning via bin-based FM min-cut [7], followed by per-tier co-placement and refinement. True-3D analytical placers [5, 6] jointly optimize coordinates across tiers within a unified framework, yet their global placement results are sensitive to initialization and typically require additional refinement to produce feasible per-tier layouts. In both cases, the partition outcome directly constrains downstream optimization stages, making tier partitioning a key sub-problem in 3D global placement. Therefore, tier partitioning in F2F 3D-ICs cannot be treated as a standalone min-cut problem. A useful partition must be evalu-ated together with the geometric placement that follows: it should reduce the per-die wirelength span of each net, avoid excessive cross-die connections that require hybrid bonding terminal (HBT) insertion, and maintain local area balance on each tier so that the 2D placement result can be retained as a reference. These requirements couple discrete die assignment with continuous 𝑥 -𝑦 placement and terminal planning, which motivates formulating the target problem from the perspective of 3D global placement. 
+
+## 2.2 3D Global Placement 
+
+The 3D placement problem addressed in this work follows the for-mulation introduced by the ICCAD Contest 2022 [15], which cap-tures the essential challenges of two-die face-to-face (F2F) stacked 3D-ICs with hybrid bonding vertical interconnects. Given a netlist and per-die standard cell libraries with identical die outlines, along with constraints on die utilization and hybrid bonding terminals, the problem is formulated as a joint optimization over cell-to-die partitioning, two-dimensional placement on each die, and terminal assignment. The goal is to assign each standard cell to one of the two dies, produce legalized placements on both dies, and place HBTs for all cross-die nets in compliance with terminal size and spacing constraints. 
+
+The optimization objective is to minimize the total die-to-die half-perimeter wirelength (D2D HPWL) . For a cross-die net 𝑒 , it is decomposed into two sub-nets: ˆ 𝑒 + on the top die and ˆ 𝑒 −
+
+on the bottom die, each augmented with the corresponding HBT as a virtual pin. The wirelength of net 𝑒 is then defined as: 
+
+𝑊 𝑒 = 𝑊 ˆ𝑒 + + 𝑊 ˆ𝑒 − , (1) where ( 𝑊 ˆ𝑒 + = 𝑝 ˆ𝑒 + (𝑥 ) + 𝑝 ˆ𝑒 + (𝑦 ),𝑊 ˆ𝑒 − = 𝑝 ˆ𝑒 − (𝑥 ) + 𝑝 ˆ𝑒 − (𝑦 ), (2) and 𝑝 ˆ𝑒 (𝑥 ) = max 𝑖 ∈ ˆ𝑒 𝑥 𝑖 − min 𝑖 ∈ ˆ𝑒 𝑥 𝑖 denotes the span of sub-net ˆ 𝑒 
+
+along the 𝑥 -axis; 𝑝 ˆ𝑒 (𝑦 ) is defined analogously. Because HBTs must reside on the top-most metal layer with required terminal size and terminal spacing requirement, the number and placement of cross-die nets directly impact both wirelength and terminal congestion. Consequently, the 3D placement problem integrates hypergraph partitioning, per-die 2D placement, and terminal planning into a unified optimization task. 3D placement is substantially more complex than classical 2D placement. Differentiable Partitioning with Placement and Hybrid Bonding Terminal Awareness for Optimized 3D Placement 2
+
+Netlist Input Differentiable 3D Partitioning Flatten 2D Placement Multi-Die Co-Placement Refinement & Replacement Die-by-Die LG & DP Output   
+
+> Density Grad 3D WL Grad Cutsize Grad Balance Grad Partitioning From Scratch ?Converge? Yes No D2D HPWL #HBT ?Pass End? Move Candidates Incremental Gain Update Yes No Die-by-Die Placement
+
+Figure 1: Overview of our partitioning-first 3D placement flow. 
+
+## 3 Partitioning-First 3D Placement Flow 
+
+Our proposed flow follows a partitioning-first strategy, which is il-lustrated in Figure 1: netlist input, partitioning, 2D initial placement, multi-die co-placement, refinement, replacement, and legalization and detailed placement. After differentiable partitioning, 3D global placement produces concrete cell coordinates and tentative termi-nal locations; these geometric quantities are then used by a discrete FM refinement step to remove residual local suboptimality before final die-by-die legalization. 
+
+## 3.1 Differentiable 3D Partitioning 
+
+The differentiable partitioner optimizes the following composite objective: min 𝑊 (𝑥, 𝑦, 𝑧 ) + 𝜆 𝑐 𝐶 (𝑧 ) + 𝜆 𝑏 𝐵 (𝑧 ) + 𝜆 𝑑 𝐷 (𝑥, 𝑦 ), (3) where 𝑊 is the Dual-Max 3D wirelength, 𝐶 is a terminal-aware cutsize penalty, 𝐵 is a local balance penalty, and 𝐷 is a unified 2D electrostatic density penalty. The first three terms involve the tier variable 𝑧 and constitute the core of the differentiable partitioner; their detailed formulations are presented in Section 4. The density term spreads the current 2D coordinates in a unified placement domain, while the local balance term prevents the tier assignment from concentrating too much cell area in any spatial region of either die. A continuous 3D field [16] would introduce cross-tier repul-sive forces and intermediate vertical states that are not physically meaningful for cells confined to one of two dies. Therefore, we use a unified 2D density penalty for global planar spreading and rely on the local balance term to enforce per-region density feasibility on both tiers. Algorithm 1 summarizes the complete procedure. The binary constraint on 𝑧 is relaxed to continuous probabilities ˜ 𝑧 𝑖 = 𝜎 (𝑡 𝑖 ) ∈ (0, 1) via learnable logits 𝑡 𝑖 , enabling end-to-end gradient-based optimization. All logits are initialized near zero ( 𝑡 𝑖 ∼ N ( 0, 0.01 2))so that all cells start at the unbiased midpoint ˜ 𝑧 𝑖 ≈ 0.5. Optimization proceeds in two phases: an exploration phase (iterations 1 to 𝑇 𝑠 ), where the sigmoid maps logits to tier probabilities and the gradient of t is scaled by a small factor 𝑠 0 ≪ 1 to let cell positions stabilize before tier assignment becomes decisive; and a convergence phase 
+
+Algorithm 1 Differentiable 3D Partitioning 
+
+Require: Netlist ( V , E ) with pin positions, die dimensions (𝑐 𝑥 , 𝑐 𝑦 )
+
+Output: Binary tier assignment z ∈ { 0, 1}|V | 
+
+1: t ← N ( 0, 0.01 2I) ⊲ Initialize logits near zero ( ˜𝑧 𝑖 ≈ 0.5)
+
+2: Compute schedules 𝛾 [·] , 𝜆 𝑐 [·] , 𝜆 𝑏 [·] , 𝜆 𝑑 [·] , 𝑠 [·] , 𝜏 [·] 
+
+3: for 𝑘 = 1 to 𝑇 do 
+
+4: 𝛾 ← 𝛾 [𝑘 ]; 𝜆 𝑐 ← 𝜆 𝑐 [𝑘 ]; 𝜆 𝑏 ← 𝜆 𝑏 [𝑘 ]; 𝜆 𝑑 ← 𝜆 𝑑 [𝑘 ]
+
+5: if 𝑘 ≤ 𝑇 𝑠 then 
+
+6: ˜𝑧 𝑖 ← 𝜎 (𝑡 𝑖 ) for all 𝑖 ∈ V ⊲ Exploration phase 
+
+7: else 
+
+8: ˜𝑧 𝑖 ← GumbelSoftmax (𝑡 𝑖 , 𝜏 [𝑘 ] ) for all 𝑖 ⊲ Convergence phase 
+
+9: end if 
+
+10: 𝛼 +             
+
+> 𝑖 ←˜𝑧 𝑖 ,𝛼 −
+> 𝑖 ←1−˜𝑧 𝑖 for all 𝑖 ⊲Tier weights
+
+11: 𝐿 WL ← Í𝑒 ∈E 𝑤 𝑒          
+
+> f𝑊 +
+> 𝑒 (˜z) + f𝑊 −
+> 𝑒 (˜z)⊲Dual-Max 3D WL (11)
+
+12: for each cut net 𝑒 (pins span both tiers) do 
+
+13: ℎ𝑒 ← center  BB (𝑒 + ) ∩ BB (𝑒 − ) ⊲ HBT position (14) 
+
+14: end for 
+
+15: overlap 𝑒 ← SpatialHash  {ℎ𝑒 }, 𝑑 thr   
+
+> ⊲Overlap detection
+
+16: 𝑤 cut         
+
+> 𝑒 ←𝑤 overlap if overlap 𝑒 , else 1⊲Eq. (15)
+
+17: 𝐿 cut ← Í𝑒 𝑤 cut       
+
+> 𝑒 ·e𝑐 𝑒 (˜z)⊲Cutsize loss (16)
+
+18: 𝐴 𝑡 𝑔 ← Í𝑖 𝐺 𝑔,𝑖 ˜𝑧 𝑖 ; 𝐴 𝑏 𝑔 ← Í𝑖 𝐺 𝑔,𝑖 (1 − ˜𝑧 𝑖 ) for all 𝑔 
+
+19: 𝐿 bal ← Í𝑔          
+
+> ReLU (𝐴 𝑡 𝑔 −𝜃 𝑔 ) + ReLU (𝐴 𝑏 𝑔 −𝜃 𝑔 )⊲Local balance
+
+20: 𝐿 den ← ElectrostaticDensity (x, y) ⊲ Unified 2D density 
+
+21: 𝐿 ← 𝐿 WL + 𝜆 𝑐 𝐿 cut + 𝜆 𝑏 𝐿 bal + 𝜆 𝑑 𝐿 den 
+
+22: ∇t𝐿 ← 𝑠 [𝑘 ] · ∇ t𝐿 ⊲ Scale t gradient ( 𝑠 [𝑘 ] ≪ 1 for 𝑘 ≤ 𝑇 𝑠 )
+
+23: t ← Nesterov (t, ∇t𝐿 ); t ← clamp (t, −10 , 10 )
+
+24: end for 
+
+25: return z ← 1[𝜎 (t) > 0.5] ⊲ Binary tier assignment 
+
+(iterations 𝑇 𝑠 +1 to 𝑇 ), where Gumbel-Softmax reparameterization with temperature annealing rapidly drives ˜ z toward binary values. 
+
+## 3.2 Multi-Die Co-Placement 
+
+Once the differentiable partitioner fixes the tier assignment, the netlist is split into a top-die and a bottom-die sub-netlist coupled through the HBTs on cross-die nets. We then jointly refine the per-die cell positions and the HBT locations via a multi-electrostatic 2.5D global placement [1, 16], which minimizes the cross-die wire-length while removing cell overlap on each die. Following the D2D wirelength model in Section 2, every cross-die net 𝑒 is reconstructed into a top-die sub-net ˆ 𝑒 + and a bottom-die sub-net ˆ 𝑒 − , both augmented with the shared HBT as a virtual pin. Cells and terminals are distributed over three coupled electrostatic layers, namely the top die, the bottom die, and the terminal layer, and the co-placement minimizes: min 
+
+> x,y
+
+∑︁ 𝑒 
+
+𝑊 ˆ𝑒 + + 𝑊 ˆ𝑒 −
+
+ +∑︁  
+
+> 𝑘 ∈ {+ ,−,ℎ }
+
+𝜆 𝑘 𝐷 𝑘 (x, y), (4) where 𝐷 𝑘 is the electrostatic density penalty of layer 𝑘 and 𝜆 𝑘 
+
+its weight. To honor the terminal spacing constraint, each HBT is instantiated on the terminal layer with an enlarged footprint 
+
+(𝑤 ℎ + 𝑠 ℎ ) × ( ℎℎ + 𝑠 ℎ ), where 𝑤 ℎ , ℎℎ , and 𝑠 ℎ denote the terminal width, height, and minimum spacing; the terminal-layer density penalty then spreads the HBTs to meet the spacing requirement. HBTs are initialized at the center of their optimal region [5] and co-optimized with the cells [6]. The three layers share a single position vector and are solved by one Nesterov optimizer with adaptive density weighting on top of DREAMPlace [17], so that cell spreading on both dies and terminal placement converge consistently. The resulting placement yields the concrete cell coordinates and HBT positions consumed by the subsequent FM refinement. Liwen Jiang, Xu Shi, Rufeng Xiao, Changhao Yan, Rujun Jiang, Zhiang Wang, and Keren Zhu 
+
+## 3.3 HPWL- and Terminal-Driven FM-based Refinement 
+
+After 3D global placement, the flow obtains concrete cell coordi-nates and HBT positions. We use this placement information to perform a discrete Fiduccia–Mattheyses (FM) refinement on the binary tier assignment, correcting residual local suboptimality left by the continuous relaxation. Let E ( 𝑣 ) denote the set of nets incident to cell 𝑣 . For a tentative move that flips the tier of 𝑣 , the gain is defined as 
+
+𝑔 (𝑣 ) = Δ𝑊 (𝑣 ) + 𝜆 𝑡 Δ𝐻 (𝑣 ), (5) where 𝜆 𝑡 controls the relative importance of terminal reduction. 
+
+Δ𝑊 measures the D2D HPWL reduction on affected nets, while 
+
+Δ𝐻 rewards reductions in the number of cross-die terminals. For each cut net, 𝑊 𝑒 is evaluated by augmenting the correspond-ing top- and bottom-die sub-nets with an HBT virtual pin. For a net with a legalized terminal, its legalized location is used; otherwise, the HBT is estimated by the center of the intersection between the top- and bottom-die pin bounding boxes. We restrict candidates to cells incident to current cut nets and group them into spatial bins according to their 2D coordinates. Within each bin, candidates are selected by a priority queue ordered by (5); after each tentative move, the incident-net HPWL, cut-net masks, and affected gains are updated. A move is feasible only if the destination die satisfies the utilization constraint: 
+
+𝐴 cur  
+
+> 𝑘
+
++ 𝑎 𝑣 ≤ 𝑈 𝑘 𝐴 die , (6) where 𝑎 𝑣 is the cell area, 𝐴 cur  
+
+> 𝑘
+
+is the current occupied area on desti-nation die 𝑘 , and 𝑈 𝑘 is the prescribed maximum utilization. As in classical FM, only the move prefix with the largest cumulative gain is retained, and the remaining tentative moves are rolled back. The bin passes terminate when no positive cumulative gain remains, af-ter which the refined assignment is passed to die-by-die legalization and detailed placement. 
+
+## 4 Differentiable 3D Partitioning 
+
+In 3D IC, D2D HPWL is mainly determined by partitioned net topology and terminal distribution, both determined by the tier assignment 𝑧 . This section formulates the 𝑧 -dependent terms of (3) (Algorithm 1), which form the differentiable 3D partitioner: min 𝑊 (𝑧 ) + 𝜆 𝑐 𝐶 (𝑧 ) + 𝜆 𝑏 𝐵 (𝑧 ). (7) 
+
+## 4.1 Dual-Max 3D Wirelength Model 
+
+Wirelength Modeling. The wirelength benefit of 3D partitioning comes from reducing the per-die pin span. We therefore use a 
+
+Dual-Max 3D wirelength objective that sums tier-specific HPWLs while excluding HBT terminal connections. By isolating intra-tier wirelength, this objective responds directly to tier assignment and provides informative gradients for grouping spatially proximate pins on the same die. Let 𝑧 𝑖 ∈ { 0, 1} denote the binary assignment of pin 𝑖 , where 
+
+𝑧 𝑖 = 1 indicates the top die and 𝑧 𝑖 = 0 the bottom die. We introduce tier-specific weights 𝛼 + 
+
+> 𝑖
+
+= 𝑧 𝑖 and 𝛼 − 
+
+> 𝑖
+
+= 1 − 𝑧 𝑖 . For a net 𝑒 with 𝑛 
+
+pins, the discrete per-tier HPWL along the 𝑥 -axis is written in a unified form for both dies 𝑘 ∈ {+ , −} :
+
+𝑊 𝑘 𝑒 (z) = max  
+
+> 𝑖 ∈𝑒
+
+𝛼 𝑘 𝑖 𝑥 𝑖 + max  
+
+> 𝑖 ∈𝑒
+
+𝛼 𝑘 𝑖 (𝑐 𝑘 − 𝑥 𝑖 ) − 𝑐 𝑘 , (8) where 𝑐 𝑘 is the die dimension along 𝑥 .The second term uses coordinate mirroring : by the identity min 𝑖 𝑥 𝑖 = 𝑐 𝑘 − max 𝑖 (𝑐 𝑘 − 𝑥 𝑖 ) for 𝑥 𝑖 ∈ [ 0, 𝑐 𝑘 ], the lower boundary is represented with another maximum rather than an explicit minimum. This all-max form express the HPWL as a sum of two pointwise maxima for binary assignments. The 𝑦 -axis contribution is defined analogously. The total discrete Dual-Max 3D wirelength sums the tier contributions across all nets: 
+
+𝑊 (z) =∑︁ 
+
+> 𝑒
+
+𝑊 + 
+
+> 𝑒
+
+(z) + 𝑊 − 
+
+> 𝑒
+
+(z) . (9) Since every term in the discrete formulation (8) is a pointwise max operation, the entire model can be uniformly relaxed by replac-ing each max with the log-sum-exp (LSE) approximation, avoiding the numerical pitfalls of an LSE-min alternative. Relaxing the binary constraint to ˜ 𝑧 𝑖 ∈ ( 0, 1), the smooth per-tier HPWL for die 𝑘 along the 𝑥 -axis becomes: 
+
+e𝑊 𝑘 𝑒 ( ˜z) = 1
+
+𝛾 log 
+
+∑︁  
+
+> 𝑖 ∈𝑒
+
+𝑒 𝛾 ˜𝛼 𝑘 𝑖 𝑥 𝑖 
+
+
+
++ 1
+
+𝛾 log 
+
+∑︁  
+
+> 𝑖 ∈𝑒
+
+𝑒 𝛾 ˜𝛼 𝑘 𝑖 (𝑐 𝑘 −𝑥 𝑖 ) 
+
+− 𝑐 𝑘 , (10) where 𝛾 > 0 controls the approximation sharpness and ˜ 𝛼 + 
+
+> 𝑖
+
+=
+
+˜𝑧 𝑖 , ˜𝛼 − 
+
+> 𝑖
+
+= 1 − ˜𝑧 𝑖 . The mirrored all-max form is crucial under con-tinuous tier relaxation. A direct alternative, LSE-max 𝑖 (𝛼 𝑘 𝑖 𝑥 𝑖 ) − 
+
+LSE-min 𝑖 (𝛼 𝑘 𝑖 𝑥 𝑖 ), would suffer from phantom pins: when 𝛼 𝑘 𝑖 → 0 for an off-die pin, 𝛼 𝑘 𝑖 𝑥 𝑖 → 0, and these zero-like terms can dominate LSE-min because coordinates are non-negative. In the mirrored form, 𝛼 𝑘 𝑖 (𝑐 𝑘 − 𝑥 𝑖 ) also vanishes, but the LSE-max suppresses such terms relative to on-die contributions. Thus the lower boundary is stably recovered as 𝑐 𝑘 minus the LSE-max of mirrored coordinates. The total differentiable Dual-Max 3D wirelength is: 
+
+e𝑊 ( ˜z) =∑︁ 
+
+> 𝑒
+
+ e𝑊 + 
+
+> 𝑒
+
+( ˜z) + e𝑊 − 
+
+> 𝑒
+
+( ˜z) . (11) The probabilities ˜ z are parameterized by learnable logits: ˜ 𝑧 𝑖 = 𝜎 (𝑡 𝑖 ),with 𝑡 𝑖 clamped to [− 10 , 10 ] to reduce sigmoid saturation and van-ishing gradients. When 𝑧 𝑖 ∈ { 0, 1} for all 𝑖 ∈ 𝑒 , the Dual-Max 3D wirelength of net 𝑒 reduces to the sum of the exact per-tier HPWLs: 𝑊 + 
+
+> 𝑒
+
+(z) + 
+
+𝑊 − 
+
+> 𝑒
+
+(z) = HPWL (𝑒 +) + HPWL (𝑒 − ), where 𝑒 + = {𝑖 ∈ 𝑒 : 𝑧 𝑖 = 1}
+
+and 𝑒 − = {𝑖 ∈ 𝑒 : 𝑧 𝑖 = 0}. For binary 𝑧 , the weighted coordinates retain only pins assigned to die 𝑘 : max 𝑖 {𝛼 𝑘 𝑖 𝑥 𝑖 } = max 𝑖 ∈𝑒 𝑘 𝑥 𝑖 and 
+
+𝑐 𝑘 − max 𝑖 {𝛼 𝑘 𝑖 (𝑐 𝑘 − 𝑥 𝑖 )} = min 𝑖 ∈𝑒 𝑘 𝑥 𝑖 . Thus 𝑊 𝑘 𝑒 = max 𝑖 ∈𝑒 𝑘 𝑥 𝑖 −
+
+min 𝑖 ∈𝑒 𝑘 𝑥 𝑖 , the exact per-tier HPWL. The 𝑦 -axis contribution is defined analogously. 
+
+Illustrative Example. Figure 2 compares four LSE-smoothed wire-length formulations over 𝑧 2 ∈ [ 0, 1], varying two choices: HBT inclusion and coordinate mirroring. The 2D HPWL baseline is fixed at 8 and is partition-blind. D2D HPWL with native coordinates (blue) is nearly flat around 𝑊 ≈ 14 with 𝑧 ∗ 
+
+> 2
+
+= 0.516, mainly due to phantom pins in the max − min form. Coordinate mirroring (purple) removes this inflation and gives 𝑊 (0) = 8.07, close to the exact D2D HPWL of 8, but HBT insertion still weakens partition sensitivity. Excluding HBT pins while retaining native coordinates (red) im-proves sensitivity but remains distorted by phantom pins, shifting the minimum to the inferior endpoint side ( 𝑧 ∗ 
+
+> 2
+
+= 0.78). Dual-Max Differentiable Partitioning with Placement and Hybrid Bonding Terminal Awareness for Optimized 3D Placement 0.0 0.2 0.4 0.6 0.8 1.0                      
+
+> Tier Assignment( z2)
+> 0246810 12 14
+> Wirelength
+> 2D HPWL = 8
+> z*2= 0.066
+> W(0) = 1.25
+> W(1) = 7.12
+> z*2= 0.253
+> W(0) = 8.07
+> z*2= 0.78
+> z*2= 0.516
+> D2D + native coords. D2D w/o HBT + naive coords. D2D + mirrored coords. D2D w/o HBT + mirrored coords (Dual-Max 3D)
+> Example: x1= 1, x2= 2, x3= 9, c= 10, z1= 0, z3= 1, = 2
+
+Figure 2: LSE-smoothed wirelength landscape as a function of 𝑧 2. Comparison of four wirelength formulations on a 3-pin net ( 𝑥 1=1, 𝑥 2=2, 𝑥 3=9, 𝑐 =10 , 𝑧 1=0, 𝑧 3=1). 
+
+3D wirelength (green) combines HBT exclusion and coordinate mirroring, yielding 𝑊 (0) = 1.25, 𝑊 (1) = 7.12, and 𝑧 ∗ 
+
+> 2
+
+= 0.066, correctly biasing optimization toward 𝑧 2 = 0. The coordinate-wise convexity of Dual-Max 3D wirelength un-derlies this favorable landscape. Since 𝑊 + 
+
+> 𝑒
+
+(𝑧 𝑘 ) is non-decreasing in 𝑧 𝑘 and 𝑊 − 
+
+> 𝑒
+
+(𝑧 𝑘 ) is non-increasing, their sum 𝑊 𝑒 (𝑧 𝑘 ) forms a U-shaped curve with a unique minimum 𝑧 ∗ 
+
+> 𝑘
+
+∈ ( 0, 1). When 𝑊 𝑒 (0) <
+
+𝑊 𝑒 (1), the minimum 𝑧 ∗ 
+
+> 𝑘
+
+shifts toward 0; symmetrically, 𝑧 ∗ 
+
+> 𝑘
+
+> 0.5when 𝑊 𝑒 (0) > 𝑊 𝑒 (1). In the example above, 𝑊 (0) = 1.25 ≪
+
+𝑊 (1) = 7.12 yields 𝑧 ∗ 
+
+> 2
+
+= 0.066, confirming that the gradient at fractional 𝑧 consistently points toward the superior binary parti-tion. As the soft tier assignment ˜ 𝑧 𝑘 is driven toward binary values during optimization, this geometric bias guides convergence to the endpoint with lower per-tier wirelength. 
+
+## 4.2 Terminal-Aware Cutsize Constraint 
+
+Cut nets introduce HBTs while enabling spacing gains; too many spatially clustered cut nets can increase terminal congestion and D2D HPWL. We address this with a terminal-aware cutsize penalty that emphasizes cross-die nets whose estimated HBTs overlap (lines 12–17 of Algorithm 1). Following [10], net 𝑒 is cut when its pins span both dies: cutsize (𝑒 ) =  1 − min   
+
+> 𝑖 ∈𝑒
+
+𝑧 𝑖 
+
+ · max   
+
+> 𝑖 ∈𝑒
+
+𝑧 𝑖 , (12) which equals 1 if and only if max 𝑖 ∈𝑒 𝑧 𝑖 = 1 and min 𝑖 ∈𝑒 𝑧 𝑖 = 0 (i.e., the net spans both dies), and 0 otherwise. To make this differentiable, we replace the max and min operators with their LSE approximations as shown in [10]: 
+
+e𝑐 𝑒 ( ˜z) =
+
+
+
+1 − LSE-min 𝑖 ∈𝑒 { ˜𝑧 𝑖 }
+
+
+
+· LSE-max 𝑖 ∈𝑒 { ˜𝑧 𝑖 }. (13) 
+
+Terminal Overlap Detection. Unlike conventional cutsize penal-ties, our formulation accounts for the spatial distribution of HBTs. For each cut net 𝑒 , let 𝑒 + = {𝑖 ∈ 𝑒 : ˜ 𝑧 𝑖 ≥ 0.5} and 𝑒 − = {𝑖 ∈ 𝑒 :˜𝑧 𝑖 < 0.5} denote the current top- and bottom-die pin subsets. We estimate the HBT position as the center of the intersection of the per-tier bounding boxes: 
+
+ℎ𝑒 = 𝑥 ∩,max  
+
+> 𝑒
+
++ 𝑥 ∩,min 
+
+> 𝑒
+
+2 , 𝑦 ∩,max  
+
+> 𝑒
+
++ 𝑦 ∩,min 
+
+> 𝑒
+
+2
+
+!
+
+, (14) where 𝑥 ∩,min  
+
+> 𝑒
+
+= max (𝑥 min  
+
+> 𝑒 +
+
+, 𝑥 min   
+
+> 𝑒 −
+
+), 𝑥 ∩,max  
+
+> 𝑒
+
+= min (𝑥 max  
+
+> 𝑒 +
+
+, 𝑥 max   
+
+> 𝑒 −
+
+), and analogously for 𝑦 . Two terminals ℎ𝑒 and ℎ𝑒 ′ are considered overlap-ping if ∥ℎ𝑒 − ℎ𝑒 ′ ∥2 < 𝑑 thr , where 𝑑 thr is a spacing threshold derived from the HBT pitch and size constraints. To avoid the quadratic cost of all-pairs distance computation, we employ spatial hashing: terminal positions are quantized into grid cells of side length 𝑑 thr ,and pairwise checks are restricted to terminals within the same or adjacent cells. 
+
+Cutsize Loss. For each net 𝑒 , we assign an elevated cutsize weight when its estimated HBT overlaps another terminal: 
+
+𝑤 𝑒 =
+
+(
+
+𝑤 overlap , if ∃ 𝑒 ′ ≠ 𝑒 : ∥ℎ𝑒 − ℎ𝑒 ′ ∥2 < 𝑑 thr ,
+
+1, otherwise , (15) where 𝑤 overlap > 1 is a penalty coefficient. The terminal-aware cutsize loss is then: 
+
+𝐶 ( ˜z) =∑︁  
+
+> 𝑒 ∈ E
+
+𝑤 𝑒 · e𝑐 𝑒 ( ˜z). (16) Thus every cut net receives a baseline penalty ( 𝑤 𝑒 = 1), while nets in congested terminal regions are discouraged more strongly. Because overlap detection requires spatial queries, the overlap mask is updated every 𝐾 iterations to balance cost and tracking accuracy. 
+
+## 4.3 Local Balance Penalty 
+
+The unified 2D density penalty (Section 3) spreads cells globally but is tier-agnostic, so localized regions may collapse onto one die. Following the observation in CoPlace [1], we impose a per-grid-cell balance penalty (lines 18–19 of Algorithm 1) to encourage spatially uniform tier assignment. We partition the placement region into a uniform grid and pre-compute a cell-to-grid weight matrix 𝐺 , where 𝐺 𝑔,𝑖 represents the area contribution of cell 𝑖 to grid cell 𝑔 . Under the soft tier assign-ment ˜ z, the weighted cell area assigned to the top and bottom tiers in grid cell 𝑔 is: 
+
+𝐴 𝑡 𝑔 ( ˜z) =∑︁ 
+
+> 𝑖
+
+𝐺 𝑔,𝑖 ˜𝑧 𝑖 , 𝐴 𝑏 𝑔 ( ˜z) =∑︁ 
+
+> 𝑖
+
+𝐺 𝑔,𝑖 (1 − ˜𝑧 𝑖 ). (17) The local balance penalty penalizes only overflow beyond a per-grid capacity threshold 𝜃 𝑔 :
+
+𝐵 ( ˜z) =∑︁ 
+
+> 𝑔
+
+ReLU (𝐴 𝑡 𝑔 ( ˜z) − 𝜃 𝑔 ) + ReLU (𝐴 𝑏 𝑔 ( ˜z) − 𝜃 𝑔 ) . (18) For macro designs, individual macros may span multiple grid cells and dominate the local area budget, making bin-level balance alone insufficient to guarantee chip-level area feasibility. To address this, we augment the penalty with a global balance term that treats the entire placement region as a single bin (1 ×1 grid), ensuring that the total cell area on each tier remains within the prescribed utiliza-tion bound even when large macros skew the local distribution. This formulation naturally extends to heterogeneous integration, where the two dies adopt different process technologies with distinct cell area scaling. Liwen Jiang, Xu Shi, Rufeng Xiao, Changhao Yan, Rujun Jiang, Zhiang Wang, and Keren Zhu   
+
+> (a) Iter. 0 (b) Iter. 100 (c) Iter. 500
+
+Figure 3: Evolution of the soft tier assignment ˜z during dif-ferentiable partitioning on the swerv_wrapper benchmark. Cells are colored by their tier probability. 
+
+## 5 Experimental Results 
+
+Our proposed framework implement in Python with PyTorch for automatic differentiation. All experiments are conducted on a Linux server equipped with Intel Xeon Gold 5320 CPUs @ 2.20 GHz (52 cores), 377 GB of RAM, and NVIDIA A800 80 GB PCIe with CUDA 12.4. 
+
+## 5.1 Validation on 3D Placement Flow 
+
+Table 2 evaluates the proposed differentiable partitioner within the 3D placement flow under homogeneous ASAP7 technology. The evaluated testcases are drawn from OpenROAD benchmarks and cover both standard-cell-only designs and macro designs, scaled copies of aes and ibex are further included to stress larger design sizes. For a unified comparison with CoPlace, we convert the synthe-sized designs into the ICCAD 2022 contest format as the common input. Under ASAP7, where one row site corresponds to 270 DBU, each HBT is set to 100 × 100 DBU with a minimum spacing of 100 DBU. Our 3D global engine adopts Multi-Die Co-Placement imple-mentation based on DREAMPlace [17], keeping the downstream co-placement stage consistent across the evaluated partitioners. We replace the partition result obtained by hMETIS/TritonPart and the 2.5D placement phase of CoPlace to ours flow. We attempted to compare against [18], but its 3D mixed-size global placement did not converge on the OpenROAD benchmark. To account for the stochasticity of logit initialization and Gumbel-Softmax sampling, we repeat the experiment with different random seeds and report results that remain stable across these runs. Our method achieves 4.9% average wirelength reduction over the 2D baseline. Compared with the min-cut baselines hMETIS and TritonPart, our method reduces D2D HPWL by 1 .5% and 2 .6% on average, respectively. The two per-case exceptions are ibex ×5 and ariane133 : TritonPart obtains 3 .9% lower D2D HPWL than our method on the former, while hMETIS is 0 .8% lower on the latter. It reflects the not abso-lute correlation between the partitioning objective and the final evaluation metric: our partitioner optimizes a relaxed, HBT-free Dual-Max wirelength together with cutsize and balance penalties, whereas Table 2 reports D2D HPWL after discrete tier assignment, multi-die co-placement, HBT positioning, and refinement. These downstream transformations can change the relative quality of a partition; on these two cases, the min-cut solutions yield a more fa-vorable topology–geometry tradeoff in the final placement despite not being geometry-aware during partitioning. On the six design-scale cases where both CoPlace and our method are available, our 
+
+Figure 4: Per-iteration runtime breakdown of the four for-ward operators in the differentiable partitioner, measured on the swerv_wrapper benchmark. 
+
+Figure 5: Terminal-aware D2D HPWL and true cutsize under different 𝜆 c on the final converage of jpeg .
+
+method further lowers D2D HPWL by 12 .1% on average. Overall, the normalized results indicate that directly optimizing a partition-sensitive 3D wirelength objective provides more placement-aware tier assignments than cutsize-oriented partitioning alone. Although hMETIS and TritonPart often produce fewer HBTs, their normalized HPWL ratios remain higher than ours, showing that minimizing terminal count alone does not achieve comparable D2D HPWL reduction. Figure 3 visualizes the evolution of the soft tier assignment ˜ z on the swerv_wrapper benchmark. Figure 4 shows the per-iteration run-time breakdown of the four forward operators in our optimization algorithm, profiled on the swerv_wrapper benchmark and averaged over 10 consecutive iterations. The average forward pass takes approximately 8.42 ms per iteration. 
+
+## 5.2 Effectiveness of Cutsize Weight 
+
+To verify that the cutsize penalty coefficient 𝜆 c can effectively con-trol the actual number of cross-die nets, we sweep it from 0 to 2 × 10 5 on the jpeg with all other hyperparameters fixed. Figure 5 reports the true D2D HPWL and true cutsize at optimization con-vergence. The final cutsize drops sharply from 18 ,751 at 𝜆 c = 0 to 1,559 at 𝜆 c = 500, and then stabilizes within the 1 ,000–2 ,000 range for larger 𝜆 c. This confirms that 𝜆 c effectively controls the real cut-size through the differentiable cutsize penalty. Meanwhile, final D2D HPWL exhibits a non-monotonic trajectory: it decreases from 
+
+∼4.0×10 6 at 𝜆 c = 0 to a minimum of ∼2.5×10 6 near 𝜆 c = 3 × 10 4,then climbs back to ∼4.5×10 6 at 𝜆 c = 1.7 × 10 5. Moderate cutsize reduction coincides with improved D2D HPWL, yet over-penalizing cutsize distorts placement and degrades wirelength. Differentiable Partitioning with Placement and Hybrid Bonding Terminal Awareness for Optimized 3D Placement 
+
+Table 2: Comparison of D2D HPWL and HBT count(# HBT) across partitioning methods with 3D placement flow under homogeneous ASAP7 technology. 
+
+Circuit Scale #Instance 2D hMETIS TritonPart CoPlace Ours HPWL HPWL #HBT HPWL #HBT HPWL #HBT HPWL #HBT aes 
+
+×1 11556 28389324 27442604 134 26995304 133 28269693 6202 26939246 4826 
+
+×5 57780 226003442 201077280 1239 202229876 1266 221641279 34007 192823296 26046 
+
+×10 115560 502753764 444919488 2842 448306390 2816 606822180 3728 437680576 47141 ibex ×1 11122 33669071 33024900 263 33234607 265 36947171 4419 32721895 1920 
+
+×5 55610 260211853 243511520 1395 240887714 1336 278294693 23274 250738752 29686 jpeg ×1 35616 62127512 63818728 241 68882055 304 62609787 9340 59180656 8026 ariane133 ×1 103930 357075888 362182699 965 363296971 1033 - - 365162299 5729 swerv_wrapper ×1 66850 275237220 283412608 1338 289962506 1286 - - 283089828 4639 ratio 1.000 0.966 0.979 1.060 0.951 
+
+“-” indicates unavailable, failed, or incomplete results. CoPlace-based results are not reported for macro designs because its flow does not support macro placement. 
+
+## 5.3 Runtime Breakdown 
+
+The Balance operator dominates at 27.6%, reflecting the cost of computing the grid-cell area sums and ReLU overflow penalties across the spatial grid. The HPWL operator accounts for 24.0% and the Cutsize operator for 23.3%; both involve per-net LSE reductions over the full netlist and contribute roughly equally to the overall cost. The Density operator is the lightest component at 12.0%, since the electrostatic density field is computed on a coarser 2D grid shared with the conventional placer. The remaining 13.1% covers gradient computation, parameter updates, and auxiliary bookkeep-ing. Overall, the four core loss operators constitute about 87% of the forward pass, and all four can be evaluated in parallel on GPU, leaving ample room for further acceleration on larger designs. 
+
+## 6 Conclusion 
+
+This paper presents a differentiable partitioning framework for F2F 3D-IC placement. By relaxing tier assignment into continuous vari-ables, the framework jointly optimizes Dual-Max 3D wirelength, terminal-aware cutsize, and local balance. The Dual-Max model sums tier-specific HPWLs without HBT terminal connections, mak-ing wirelength optimization directly sensitive to tier assignment. On OpenROAD benchmarks, it reduces D2D HPWL by 1 .5% and 2.6% over the min-cut baselines hMETIS and TritonPart, respec-tively, and achieves 12 .1% lower D2D HPWL than CoPlace. 
+
+## Acknowledgement 
+
+We would like to thank Bangqi Fu for his valuable assistance with CoPlace, which helped us evaluate our method under comparable experimental conditions. 
+
+## References 
+
+[1] Bentian Fu, Ligang Liu, Yuhang Sun, Wing-Ho Lau, Martin D.F. Wong, and Evangeline F.Y. Young. 2024. CoPlace: Coherent Placement Engine with Layout-Aware Partitioning for 3D ICs. In Proceedings of the Asia and South Pacific Design Automation Conference . 65–70. [2] Xingyu Zhao, Wenxing Li, Zhen Zeng, Zhifeng Huang, Biwei Xie, Xiaochun Li, and Yungang Bao. 2025. Toward Advancing 3D-ICs Physical Design: Challenges and Opportunities. In Proceedings of the Asia and South Pacific Design Automation Conference . 294–301. [3] Yuxuan Zhao, Lin Zou, and Bei Yu. 2025. Invited: Physical Design for Advanced 3D ICs: Challenges and Solutions. In Proceedings of the International Symposium on Physical Design . 209–216. [4] Lingjun Zhu and Sung Kyu Lim. 2023. Invited: Design Automation Needs for Monolithic 3D ICs: Accomplishments and Gaps. In Proceedings of the ACM/IEEE Design Automation Conference . 1–4. [5] Peiyu Liao, Yuxuan Zhao, Dawei Guo, Yibo Lin, and Bei Yu. 2024. Analytical Die-to-Die 3-D Placement With Bistratal Wirelength Model and GPU Acceleration. 
+
+IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 
+
+43, 6 (2024), 1624–1637. [6] Yen-Jung Chen, Chun-Hsiang Hsieh, Ping-Hsuan Su, Shao-Hua Chen, and Yao-Wen Chang. 2024. Mixed-Size 3D Analytical Placement with Heterogeneous Technology Nodes. In Proceedings of the ACM/IEEE Design Automation Conference .1–6. [7] Shreepad Panth, Kambiz Samadi, Yang Du, and Sung Kyu Lim. 2014. Placement-Driven Partitioning for Congestion Mitigation in Monolithic 3D IC Designs. In 
+
+Proceedings of the International Symposium on Physical Design . 47–54. [8] Pruek Vanna-Iampikul, Chao Shao, Yi-Chen Lu, Sai Pentapati, and Sung Kyu Lim. 2021. Snap-3D: A Constrained Placement-Driven Physical Design Methodology for Face-to-Face-Bonded 3D ICs. In Proceedings of the International Symposium on Physical Design . 39–46. [9] Xingyu Zhao, Song Chen, Yuan Qiu, Jianli Li, Zhifeng Huang, Biwei Xie, Xi-aochun Li, and Yungang Bao. 2023. iPL-3D: A Novel Bilevel Programming Model for Die-to-Die Placement. In Proceedings of the IEEE/ACM International Conference on Computer-Aided Design . 1–9. [10] Yen-Hsiang Huang and Sung Kyu Lim. 2025. Snake-3D: Differentiable Learning for Cross-Tier Logic Path Snaking Optimization in 3D ICs. In Proceedings of the IEEE/ACM International Conference on Computer-Aided Design . 1–9. [11] Eunji Jeong, Taewhan Kim, and Heechun Park. 2025. PPA-Aware Tier Partitioning for 3D IC Placement with ILP Formulation. In Proceedings of the Asia and South Pacific Design Automation Conference . 879–885. [12] Yunqi Shi, Chengrui Gao, Wenjie Ren, Siyuan Xu, Ke Xue, Mingxuan Yuan, Chao Qian, and Zhi-Hua Zhou. 2025. Open3DBench: Open-Source Benchmark for 3D-IC Backend Implementation and PPA Evaluation. arXiv preprint arXiv:2503.12946 
+
+(2025). [13] Sai Surya Kiran Pentapati, Kyungwook Chang, Vassilios Gerousis, Rwik Sen-gupta, and Sung Kyu Lim. 2020. Pin-3D: A Physical Synthesis and Post-Layout Optimization Flow for Heterogeneous Monolithic 3D ICs. In Proceedings of the International Conference on Computer-Aided Design . 1–9. [14] Liwen Jiang, Andrew B. Kahng, Zhiang Wang, and Zhiyu Zheng. 2026. Invited: Toward Sustainable and Transparent Benchmarking for Academic Physical De-sign Research. In Proceedings of the International Symposium on Physical Design .245–253. [15] Kai-Shun Hu, I-Jye Lin, Yen-Hsiang Huang, Hao-Yu Chi, Yi-Hsuan Wu, and Chin-Fang Cindy Shen. 2022. 2022 ICCAD CAD Contest Problem B: 3D Placement with D2D Vertical Connections. In Proceedings of the IEEE/ACM International Conference on Computer-Aided Design . 1–5. [16] Jingwei Lu, Hao Zhuang, Ilgweon Kang, Pengwen Chen, and Chung-Kuan Cheng. 2016. ePlace-3D: Electrostatics based Placement for 3D-ICs. In Proceedings of the International Symposium on Physical Design . 11–18. [17] Yibo Lin, Zixuan Jiang, Jiaqi Gu, Wuxi Li, Shounak Dhar, Haoxing Ren, Brucek Khailany, and David Z. Pan. 2021. DREAMPlace: Deep Learning Toolkit-Enabled GPU Acceleration for Modern VLSI Placement. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 40, 4 (2021), 748–761. [18] Yuxuan Zhao, Peiyu Liao, Siting Liu, Jiaxi Jiang, Yibo Lin, and Bei Yu. 2025. Analytical Heterogeneous Die-to-Die 3-D Placement With Macros. IEEE Trans-actions on Computer-Aided Design of Integrated Circuits and Systems 44, 2 (2025), 402–415.

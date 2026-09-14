@@ -1,0 +1,598 @@
+{
+  "mode": "standard",
+  "generated_at": "2026-09-14T22:51:15.845299+00:00",
+  "stats": {
+    "mode": "standard",
+    "tag_count": 2,
+    "deep_divecandidates": 5,
+    "deep_cap": 7,
+    "deep_selected": 5,
+    "quick_candidates": 8,
+    "quick_skim_target": 12,
+    "quick_selected": 8
+  },
+  "deep_dive": [
+    {
+      "id": "2609.12379v1",
+      "source": "arxiv",
+      "title": "ForgeMegakernel: A General Framework for Efficient Auto-Regressive Model Decode Megakernels",
+      "abstract": "Auto-regressive model decode is bandwidth-bound, since every weight and key/value-cache byte crosses high-bandwidth memory once per token. A megakernel is an ideal solution, but existing automatic megakernel generation approaches cannot achieve both generalization across models and correctness guarantees.   We present ForgeMegakernel, which generates a per-model high-performance decode megakernel using coding agents. ForgeMegakernel pairs a universal knowledge base of ten progressive milestones with an independent mid-state test oracle. The milestones provide the megakernel's structural properties: a fine-grained instruction stream for each SM, dependency counters replacing the global synchronization, and a shared-memory buffer pool for workload balance across SMs and greater parallelism. The test oracle derives the mid-states of the megakernel and checks the performance, error and precision during the generation process, guaranteeing a correct and trustworthy forged megakernel.   We evaluated ForgeMegakernel on 14 representative decoding operations across eight model families spanning 0.6B-13B parameters. The generated megakernels achieved 50.5-85.9% MBU and geometric mean speedups of 1.21x over SGLang 0.5.18 and 1.54x over a megakernel compiler under identical configurations. Inside SGLang, evaluated on GSM8K with ragged prompts, all 14 megakernels decoded faster than the SGLang engine at comparable answer accuracy.",
+      "authors": [
+        "Leshan Li",
+        "Zhui Zhu",
+        "Xianglong Deng",
+        "Yaojian Chen",
+        "Qingfeng He",
+        "Yuxuan Li",
+        "Rong Zhao",
+        "Xu Han",
+        "Zhiyuan Liu"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-09-11T02:52:02+00:00",
+      "link": "https://arxiv.org/pdf/2609.12379v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "auto-regressive decode megakernel generation for LLM inference",
+      "llm_evidence_cn": "面向自回归解码的融合大核生成，属GPU算子优化",
+      "llm_evidence": "面向自回归解码的融合大核生成，属GPU算子优化",
+      "canonical_evidence": "面向自回归解码的融合大核生成，属GPU算子优化",
+      "llm_tldr_en": "ForgeMegakernel uses coding agents with progressive milestones and a mid-state test oracle to auto-generate per-model decode megakernels, tackling bandwidth-bound auto-regressive decode and enabling correct, generalized high-performance GPU kernels.",
+      "llm_tldr_cn": "自回归模型解码受限于带宽，每生成一个token都要把权重和KV缓存字节读一遍显存，而现有自动megakernel生成方法难以兼顾跨模型泛化与正确性保证。本文提出ForgeMegakernel，借助编码智能体，结合十个递进里程碑构成的通用知识库与独立中间态测试预言机，为每个模型生成高性能解码megakernel，实现细粒度指令流、依赖计数器替代全局同步等结构特性。该工作为解码大核的自动生成提供了兼顾泛化与正确性的通用框架。",
+      "llm_tldr": "自回归模型解码受限于带宽，每生成一个token都要把权重和KV缓存字节读一遍显存，而现有自动megakernel生成方法难以兼顾跨模型泛化与正确性保证。本文提出ForgeMegakernel，借助编码智能体，结合十个递进里程碑构成的通用知识库与独立中间态测试预言机，为每个模型生成高性能解码megakernel，实现细粒度指令流、依赖计数器替代全局同步等结构特性。该工作为解码大核的自动生成提供了兼顾泛化与正确性的通用框架。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.12471v1",
+      "source": "arxiv",
+      "title": "AMDKernelVault: Large-Scale Datasets and Agentic Training for AMD GPU Kernel Optimization",
+      "abstract": "We introduce AMDKernelVault, an open HIP and Triton kernel corpus and training framework for recent AMD CDNA GPUs. Existing LLM-based kernel agents are largely CUDA/NVIDIA-centric and often depend on repeated frontier-LLM calls for generation, reflection, and optimization. To address this gap, we develop HIPKernelGen and TritonKernelGen, agent-driven pipelines that transform PyTorch references into HIP or Triton kernels, compile and validate candidates under ROCm, and latency-profile them on AMD hardware. The corpus contains 62,153 execution-verified HIP kernel samples, 2,377 production-grounded ROCm Libraries QA entries, and 39,893 Triton kernels. We further train Qwen3-8B with supervised fine-tuning and execution-aware reinforcement learning as a demonstration of the corpus's utility. Under fixed evaluation budgets, it achieves the highest correctness among the compared models on PyTorch-to-HIP (34.0% Pass@1), TritonBench-G (33.2% Corr@3), and ROCmBench (41.94% Corr@3), but does not uniformly lead compilation or speed metrics. The corpus and documentation are available at https://huggingface.co/datasets/amd/AIG-Datasets, and the associated training and kernel-generation code is available at https://github.com/AMD-AGI/hip_kernel_llm_lab.",
+      "authors": [
+        "Ji Liu",
+        "Saptarshi Majumder",
+        "Yiqing Huang",
+        "Wenwen Ouyang",
+        "Umang Pandey",
+        "Zeping Li",
+        "Chushi Chen",
+        "Zihao An",
+        "Puyuan Yang",
+        "Zekai Li",
+        "Sina Rafati",
+        "Ziqiong Liu",
+        "Pratik Prabhanjan Brahma",
+        "Dong Li",
+        "Zicheng Liu",
+        "Sharon Zhou",
+        "Emad Barsoum"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL"
+      ],
+      "published": "2026-09-11T06:14:05+00:00",
+      "link": "https://arxiv.org/pdf/2609.12471v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "agentic training and datasets for AMD GPU kernel optimization",
+      "llm_evidence_cn": "面向AMD GPU算子优化的智能体训练与数据集",
+      "llm_evidence": "面向AMD GPU算子优化的智能体训练与数据集",
+      "canonical_evidence": "面向AMD GPU算子优化的智能体训练与数据集",
+      "llm_tldr_en": "AMDKernelVault provides HIP and Triton kernel corpora plus agent-driven pipelines and execution-aware training for AMD CDNA GPUs, addressing the CUDA/NVIDIA-centric bias of LLM kernel agents.",
+      "llm_tldr_cn": "现有基于LLM的内核智能体多集中于CUDA/NVIDIA，且依赖反复调用前沿大模型完成生成、反思与优化。本文提出AMDKernelVault，面向AMD CDNA GPU的开放HIP与Triton内核语料与训练框架，构建HIPKernelGen与TritonKernelGen智能体流水线，将PyTorch参考转换为内核并在ROCm下编译验证与延迟剖析。语料含六万余HIP内核与近四万Triton内核，并用监督微调与执行感知强化学习训练Qwen3-8B，为AMD GPU算子优化提供数据与训练基础。",
+      "llm_tldr": "现有基于LLM的内核智能体多集中于CUDA/NVIDIA，且依赖反复调用前沿大模型完成生成、反思与优化。本文提出AMDKernelVault，面向AMD CDNA GPU的开放HIP与Triton内核语料与训练框架，构建HIPKernelGen与TritonKernelGen智能体流水线，将PyTorch参考转换为内核并在ROCm下编译验证与延迟剖析。语料含六万余HIP内核与近四万Triton内核，并用监督微调与执行感知强化学习训练Qwen3-8B，为AMD GPU算子优化提供数据与训练基础。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.13134v1",
+      "source": "arxiv",
+      "title": "Rethinking Heterogeneous System Disaggregation for Subquadratic Attention",
+      "abstract": "Frontier language models are more aggressively using subquadratic attention to reduce the memory footprint and compute requirements during inference while still delivering frontier accuracy. While existing systems make dense attention-centric disaggregated serving decisions, we show that disaggregating inference around the unique arithmetic intensity and memory footprint of subquadratic attention LLMs can achieve significant throughput and energy efficiency gains on emerging DRAM-based and SRAM-only heterogeneous systems.   We introduce SQD (SubQuadratic Disaggregation), a fine-grained heterogeneous disaggregation scheme that splits decode by quadratic and subquadratic attention rather than by operator type, and that applies across subquadratic attention variants. For sparse attention LLMs, we disaggregate decode into top-k selection, which must index through the full KV, and top-k attention plus FFN, which have static memory footprints. For linear and sliding-window attention LLMs, we disaggregate decode into dense attention layers and subquadratic attention layers plus FFN. In an adjusted 8xB200 heterogeneous system proxy, we observe average tokens/J improvements of 53% on GLM 5.2, 31% on Nemotron 3 Ultra, and 56% on Gemma 4 31B over the strongest GPU-only baselines. In an analytical model of a Rubin plus LPX system with fixed power budgets, we observe 1.2x to 1.5x tighter achievable latencies and up to 3.6x higher throughput over the best baseline of attention-FFN disaggregation. Our experiments also reveal architectural insights on chip and interconnect provisioning for next-generation heterogeneous systems serving subquadratic attention.",
+      "authors": [
+        "Arya Tschand",
+        "Yaosheng Fu",
+        "Vikram Sharma Mailthody",
+        "Nicolai Oswald",
+        "Po-An Tsai",
+        "Ritchie Zhao",
+        "Oreste Villa",
+        "Vijay Janapa Reddi",
+        "Karu Sankaralingam"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-09-11T17:55:45+00:00",
+      "link": "https://arxiv.org/pdf/2609.13134v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "heterogeneous disaggregation for subquadratic attention inference serving",
+      "llm_evidence_cn": "面向次二次注意力的异构推理分离部署",
+      "llm_evidence": "面向次二次注意力的异构推理分离部署",
+      "canonical_evidence": "面向次二次注意力的异构推理分离部署",
+      "llm_tldr_en": "Existing disaggregated serving is dense-attention-centric; this paper introduces SQD, splitting decode by quadratic and subquadratic attention, achieving throughput and energy gains on DRAM-based and SRAM-only heterogeneous systems.",
+      "llm_tldr_cn": "前沿语言模型越来越多采用次二次注意力以降低推理的内存与算力需求，但现有分离式服务系统仍按稠密注意力做决策，无法匹配其独特的算术强度与内存占用。论文提出SQD，一种细粒度异构分离方案，按二次与次二次注意力而非算子类型拆分解码阶段，并适配多种次二次注意力结构。实验表明该方案在基于DRAM与纯SRAM的异构系统上显著提升吞吐与能效，为新型注意力的推理系统设计提供了新思路。",
+      "llm_tldr": "前沿语言模型越来越多采用次二次注意力以降低推理的内存与算力需求，但现有分离式服务系统仍按稠密注意力做决策，无法匹配其独特的算术强度与内存占用。论文提出SQD，一种细粒度异构分离方案，按二次与次二次注意力而非算子类型拆分解码阶段，并适配多种次二次注意力结构。实验表明该方案在基于DRAM与纯SRAM的异构系统上显著提升吞吐与能效，为新型注意力的推理系统设计提供了新思路。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "disaggregated inference",
+      "matched_requirement_id": "req-2",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.12551v1",
+      "source": "arxiv",
+      "title": "RoofLang: Enabling AI-Driven Architecting of LLM Inference Systems",
+      "abstract": "AI is beginning to make substantive contributions to LLM inference optimization. Existing AI optimizations are predominantly profiling-based. Profiling-bound feedback confines the search to the capabilities and performance of an existing software stack, preventing a fundamentally better architecture of LLM inference systems from being identified. To enable the AI-driven LLM inference system architecting loop, we argue that a general workload representation, a verifiable mutation space, and an implementation-independent evaluator are required. We present the RoofLang domain-specific language (DSL) that provides these features. In our evaluation, RoofLang reveals that DeepSeek V4-series models could achieve 3.5-39.5$\\times$ higher peak decode throughput than other representative models. This gap is disproportionate to their total parameter counts and arises largely from compact KV-cache designs that support larger batches and reduce memory traffic. A persistent optimizer agent further discovered several new architectures that improved both throughput and interactivity of DeepSeek V4 Pro on NVIDIA B300 by 6.23-50.1%.",
+      "authors": [
+        "Ziyue Yang",
+        "Yuting Jiang",
+        "Lei Qu",
+        "Peng Cheng"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.AI"
+      ],
+      "published": "2026-09-11T07:57:28+00:00",
+      "link": "https://arxiv.org/pdf/2609.12551v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "AI-driven design space search over LLM inference architectures",
+      "llm_evidence_cn": "面向LLM推理系统架构的AI驱动设计空间搜索",
+      "llm_evidence": "面向LLM推理系统架构的AI驱动设计空间搜索",
+      "canonical_evidence": "面向LLM推理系统架构的AI驱动设计空间搜索",
+      "llm_tldr_en": "Existing AI optimizations of LLM inference are profiling-bound, confining search to an existing software stack. RoofLang is a DSL offering general workload representation, a verifiable mutation space, and an implementation-independent evaluator for AI-driven architecting, revealing 3.5-39.5x higher peak decode throughput for DeepSeek V4-series.",
+      "llm_tldr_cn": "现有面向LLM推理的AI优化多依赖profiling反馈，受限于既有软件栈的能力，难以发现根本更优的推理系统架构。本文提出RoofLang领域专用语言，提供通用工作负载表示、可验证变更空间与实现无关评估器，从而支撑AI驱动的架构探索闭环。评估表明DeepSeek V4系列模型的峰值解码吞吐可提升3.5至39.5倍，为推理系统设计空间探索提供了可验证、实现无关的基础设施。",
+      "llm_tldr": "现有面向LLM推理的AI优化多依赖profiling反馈，受限于既有软件栈的能力，难以发现根本更优的推理系统架构。本文提出RoofLang领域专用语言，提供通用工作负载表示、可验证变更空间与实现无关评估器，从而支撑AI驱动的架构探索闭环。评估表明DeepSeek V4系列模型的峰值解码吞吐可提升3.5至39.5倍，为推理系统设计空间探索提供了可验证、实现无关的基础设施。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "LLM-driven design space exploration",
+      "matched_requirement_id": "req-11",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.12208v1",
+      "source": "arxiv",
+      "title": "Vortex: Bridging Extreme Compression and Efficient LLM Inference",
+      "abstract": "Extreme compression techniques, including vector quantization (VQ) and input-dependent sparsity, can significantly reduce the memory footprint of large language models (LLMs). However, a key challenge remains in translating such compression into practical efficiency. On conventional systolic-array-based accelerators, VQ incurs high dequantization overhead, while the irregular patterns of input-dependent sparsity are difficult to exploit. In this study, we address these challenges with Vortex, an architecture compatible with systolic-array-based accelerators with minimal hardware overhead, bridging the gap between extreme compression and efficient inference. Vortex adopts a bi-flow execution strategy that efficiently supports vector-quantized models across both prefill and decoding workloads, and we further optimize it through systematic design space exploration. On the algorithm side, we propose codebook-wise contextual sparsity to align with VQ execution. Across end-to-end workloads, Vortex achieves $8.03\\times$--$23.7\\times$ speedup and $5.68\\times$--$12.5\\times$ energy reduction over state-of-the-art accelerators.",
+      "authors": [
+        "Haoxuan Shan",
+        "Cong Guo",
+        "Bowen Duan",
+        "Chiyue Wei",
+        "Feng Cheng",
+        "Yuzhe Fu",
+        "Yintao He",
+        "Hai \"Helen\" Li",
+        "Yiran Chen"
+      ],
+      "primary_category": "cs.AR",
+      "categories": [
+        "cs.AR"
+      ],
+      "published": "2026-09-10T21:04:15+00:00",
+      "link": "https://arxiv.org/pdf/2609.12208v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "compression and efficient LLM inference on accelerators",
+      "llm_evidence_cn": "加速器上的压缩与高效LLM推理",
+      "llm_evidence": "加速器上的压缩与高效LLM推理",
+      "canonical_evidence": "加速器上的压缩与高效LLM推理",
+      "llm_tldr_en": "Vortex is an architecture that bridges extreme compression and efficient LLM inference via a bi-flow execution strategy, supporting vector-quantized models on systolic-array accelerators with minimal overhead.",
+      "llm_tldr_cn": "极端压缩技术如矢量量化与输入相关稀疏虽能压缩大模型内存，却难以在传统脉动阵列加速器上转化为实际效率，原因是反量化开销高且不规则稀疏难以利用。本文提出Vortex，以双流执行策略在最小硬件开销下高效支持矢量量化模型。该架构在保持脉动阵列兼容性的同时弥合了压缩与高效推理之间的鸿沟。",
+      "llm_tldr": "极端压缩技术如矢量量化与输入相关稀疏虽能压缩大模型内存，却难以在传统脉动阵列加速器上转化为实际效率，原因是反量化开销高且不规则稀疏难以利用。本文提出Vortex，以双流执行策略在最小硬件开销下高效支持矢量量化模型。该架构在保持脉动阵列兼容性的同时弥合了压缩与高效推理之间的鸿沟。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch"
+    }
+  ],
+  "quick_skim": [
+    {
+      "id": "2609.06408v1",
+      "source": "arxiv",
+      "title": "Differentiable Partitioning with Placement and Hybrid Bonding Terminal Awareness for Optimized 3D Placement",
+      "abstract": "Research on 3D-ICs physical design has expanded rapidly in recent years. Hybrid bonding-enabled 3D integrated circuits (3D-ICs) offer substantial benefits in interconnect scaling and system integration, yet tier assignment remains challenging because it jointly determines 3D wirelength and hybrid bonding terminal (HBT) assignment. This paper presents a differentiable partitioning framework that directly optimizes placement-aware tier assignment for 3D-ICs through gradient-based optimization. Discrete tier assignment is relaxed to continuous probabilities, and a Dual-Max 3D wirelength model is introduced to capture per-tier half-perimeter wirelength (HPWL). In addition, a terminal-aware cutsize penalty selectively suppresses cross-die nets in HBT-congested regions, and a local balance constraint enforces grid-cell density equilibrium across tiers. Experimental results on OpenROAD benchmarks show that our method reduces D2D HPWL by 2.0% on average over two min-cut baselines and by 12.1% over the state-of-the-art 3D placer. We open-source our partition code with 3D placement flow to support reproducibility.",
+      "authors": [
+        "Liwen Jiang",
+        "Xu Shi",
+        "Rufeng Xiao",
+        "Changhao Yan",
+        "Rujun Jiang",
+        "Zhiang Wang",
+        "Keren Zhu"
+      ],
+      "primary_category": "cs.ET",
+      "categories": [
+        "cs.ET"
+      ],
+      "published": "2026-09-06T05:56:14+00:00",
+      "link": "https://arxiv.org/pdf/2609.06408v1",
+      "tags": [
+        "keyword:dse",
+        "query:dse"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "gradient-based tier assignment for 3D physical design placement",
+      "llm_evidence_cn": "面向3D物理设计布局的梯度式层分配",
+      "llm_evidence": "面向3D物理设计布局的梯度式层分配",
+      "canonical_evidence": "面向3D物理设计布局的梯度式层分配",
+      "llm_tldr_en": "This paper presents a differentiable partitioning framework for hybrid-bonding 3D-ICs that relaxes discrete tier assignment into continuous probabilities, uses a Dual-Max 3D wirelength model and a terminal-aware cutsize penalty to jointly optimize placement-aware tier assignment and bonding terminal costs.",
+      "llm_tldr_cn": "针对混合键合3D-IC中层分配需同时决定3D线长与混合键合端子分配、传统方法难以联合优化的问题，本文提出可微划分框架。该框架将离散层分配松弛为连续概率，引入Dual-Max 3D线长模型刻画各层半周长线长，并加入端子感知的切割代价惩罚项，通过梯度优化直接求解布局感知的层分配。结果实现了3D线长与键合端子分配的联合优化，为3D-IC物理设计中的层分配提供了新的可微优化方案。",
+      "llm_tldr": "针对混合键合3D-IC中层分配需同时决定3D线长与混合键合端子分配、传统方法难以联合优化的问题，本文提出可微划分框架。该框架将离散层分配松弛为连续概率，引入Dual-Max 3D线长模型刻画各层半周长线长，并加入端子感知的切割代价惩罚项，通过梯度优化直接求解布局感知的层分配。结果实现了3D线长与键合端子分配的联合优化，为3D-IC物理设计中的层分配提供了新的可微优化方案。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "Automated parameter tuning and search for physical design flows such as OpenROAD/ORFS, synthesis, placement, routing, or compiler optimization.",
+      "matched_requirement_id": "req-17",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.12299v1",
+      "source": "arxiv",
+      "title": "Argus: Orchestrating Cross-Layer GPU Performance Measurements around Semantic Regions",
+      "abstract": "GPU developers and automated optimizers need performance evidence for semantic code regions--such as neural-network operator implementations and pipeline stages--but this evidence is fragmented across profiling tools. Answering a region-level question can require manually constructing probes and program variants, isolating interfering measurements, and mapping evidence to regions and execution contexts. We present Argus, a region-centric measurement planner and runtime that automates this workflow. Clients identify regions with boundary markers and select signals and execution scopes. Argus preserves region identity across compilation, execution, and measurement variants, constructs interference-aware multi-run plans, and orchestrates transformations and profiling across backends. It joins compiler-, hardware-, and system-level evidence using region identity and dynamic execution context, producing reports that record measurement origins and attribution ambiguity.   We evaluate Argus across agentic kernel optimization, persistent megakernel optimization, and cross-level PGO. Across 44 persistent-GEMM and attention configurations, Argus improves 39/44 cases and raises AlphaEvolve's geometric-mean speedup from 5.4% to 8.9%. On a persistent TinyLlama-1.1B decode megakernel, an optimization agent reaches 1.65 ms/token with Argus versus 4.92 ms/token without it, producing a kernel $2.1\\times$ faster than PyTorch with CUDA Graphs. Finally, Argus-guided cross-level PGO improves compute--communication overlap, increasing throughput by 7% on average across five multi-GPU settings.",
+      "authors": [
+        "Jianzhu Yao",
+        "Yue Guan",
+        "Srivatsan Ramesh",
+        "Yuanwei Fang",
+        "Jian Jiao",
+        "Boda Li",
+        "Yueming Hao",
+        "Xinwei Qiang",
+        "Pramod Viswanath",
+        "Yufei Ding",
+        "Bill Yoshimi",
+        "Alexey Loginov",
+        "Shane Nay",
+        "Adnan Aziz"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.PF"
+      ],
+      "published": "2026-09-11T00:07:04+00:00",
+      "link": "https://arxiv.org/pdf/2609.12299v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "region-centric GPU performance measurement for kernel and operator optimization",
+      "llm_evidence_cn": "面向算子与内核优化的区域级 GPU 性能测量",
+      "llm_evidence": "面向算子与内核优化的区域级 GPU 性能测量",
+      "canonical_evidence": "面向算子与内核优化的区域级 GPU 性能测量",
+      "llm_tldr_en": "Argus automates region-centric GPU performance measurement by preserving semantic region identity across compilation and execution, building interference-aware multi-run plans.",
+      "llm_tldr_cn": "GPU 开发者与自动优化器需要针对算子实现等语义代码区域的性能证据，但这些证据分散在多种剖析工具中，需人工构造探针并隔离干扰测量。本文提出 Argus，一个以区域为中心的测量规划器与运行时，通过边界标记保持区域身份跨编译与执行一致，并自动构造抗干扰的多轮测量计划。该工具简化了 GPU 算子级性能分析流程，为内核优化与自动调优提供可复用的测量基础设施。",
+      "llm_tldr": "GPU 开发者与自动优化器需要针对算子实现等语义代码区域的性能证据，但这些证据分散在多种剖析工具中，需人工构造探针并隔离干扰测量。本文提出 Argus，一个以区域为中心的测量规划器与运行时，通过边界标记保持区域身份跨编译与执行一致，并自动构造抗干扰的多轮测量计划。该工具简化了 GPU 算子级性能分析流程，为内核优化与自动调优提供可复用的测量基础设施。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.12075v1",
+      "source": "arxiv",
+      "title": "Efficient Vision-Language-Action Management and Serving for Robot Factories",
+      "abstract": "Vision-Language-Action (VLA) models show high robotic manipulation capabilities via a two-stage design: a Vision-Language Model (VLM) stage followed by an Action Diffusion Transformer (ADiT) stage. Since robots must meet strict Service-Level Objectives (SLOs) for safety, VLA inference is inherently latency-critical. Meeting these SLOs requires high-end GPUs, yet weight, cost, and power constraints preclude integrating such GPUs on-robot. Prior works offload VLA inference to edge servers that serve many robots on VLA models. However, current VLA systems lack support for multi-request, multi-model execution on a multi-GPU server under SLOs, while existing serving systems for multi-stage models are optimized for throughput and stage disaggregation across separate GPUs, which are ill-suited for the millisecond-scale stages of VLA models. We design Robion, the first VLA serving and management system for multi-robot, multi-model requests on multi-GPU edge servers that meets SLOs. Our serving engine disaggregates the VLM and ADiT stages within a GPU via two streams, dynamically restricting the SMs on VLM stream so ADiT always finds SMs to run alongside it, and co-locates multiple models by sharing these streams across them, prioritizing requests by least remaining SLO time. Our management engine enables flexible model placements on multi-GPU servers, and integrates an intelligent traffic controller that maximizes per-model batching under the chosen placement while bounding each GPU's load to meet SLOs. For individual models, Robion serves on average 6.7$\\times$ and 1.5$\\times$ higher robot load within 98% SLO attainment over vLLM-Omni, the most widely used multi-stage serving system, and Monolithic, which runs VLM and ADiT as a single pipeline, respectively. In a large-scale experiment of serving 8 different models on a 4-GPU server, Robion can serve up to 64 robots within 98% SLO attainment.",
+      "authors": [
+        "Dionysios Adamopoulos",
+        "Nattapol Chanpaisit",
+        "Basel Fakhri",
+        "Christina Giannoula"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.AR",
+        "cs.LG",
+        "cs.PF",
+        "cs.RO"
+      ],
+      "published": "2026-09-10T18:04:22+00:00",
+      "link": "https://arxiv.org/pdf/2609.12075v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "multi-stage VLA serving with stage disaggregation under SLOs",
+      "llm_evidence_cn": "满足SLO的多阶段VLA服务与阶段解耦",
+      "llm_evidence": "满足SLO的多阶段VLA服务与阶段解耦",
+      "canonical_evidence": "满足SLO的多阶段VLA服务与阶段解耦",
+      "llm_tldr_en": "This paper presents a management and serving system for Vision-Language-Action models in robot factories, supporting multi-request, multi-model execution on multi-GPU edge servers under latency SLOs and refining stage disaggregation for the two-stage VLM plus action-diffusion pipeline.",
+      "llm_tldr_cn": "针对视觉-语言-动作模型推理延迟敏感、机器人端无法部署高端GPU，而现有服务系统难以支持多请求多模型多阶段SLO调度的问题，本文提出面向机器人工厂的VLA管理与服务系统。该系统在含多GPU的边缘服务器上支持多请求、多模型的VLA执行，并针对两阶段（VLM加动作扩散Transformer）结构优化阶段划分与资源调度。结果表明其在满足安全SLO的同时提升了资源效率，为延迟关键的多阶段模型服务与阶段解耦提供了系统方案。",
+      "llm_tldr": "针对视觉-语言-动作模型推理延迟敏感、机器人端无法部署高端GPU，而现有服务系统难以支持多请求多模型多阶段SLO调度的问题，本文提出面向机器人工厂的VLA管理与服务系统。该系统在含多GPU的边缘服务器上支持多请求、多模型的VLA执行，并针对两阶段（VLM加动作扩散Transformer）结构优化阶段划分与资源调度。结果表明其在满足安全SLO的同时提升了资源效率，为延迟关键的多阶段模型服务与阶段解耦提供了系统方案。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "disaggregated inference",
+      "matched_requirement_id": "req-2",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.12399v1",
+      "source": "arxiv",
+      "title": "OneLA: Scaling Linear-Attention Decoding to Large Beams in Generative Recommendation",
+      "abstract": "Generative recommendation (GR) relies on large-beam decoding to generate hundreds of candidate items, creating a new scaling challenge for recurrent linear attention. Existing linear attention serving systems either materialize a full recurrent state for every beam or repeatedly replay shared history, incurring substantial memory and traffic overhead. To address this, we present OneLA, a linear-attention decoding framework that exploits the shared prompt and short divergent suffixes of GR workloads. Specifically, OneLA represents all beam states using a single shared prompt-derived state and compact, append-only records of their divergent transitions. Using this representation, OneLA computes only the state information required at each decoding step, without reconstructing a full recurrent state for every beam. Furthermore, OneLA uses a lightweight ancestry index to track the transition records that make up each beam's history, allowing beams to be updated without moving or copying existing records. A fused GPU kernel further reuses the shared state across beams. Our analysis shows that OneLA achieves 1.54-2.46x end-to-end decode speedups while substantially reducing recurrent-state memory use and data movement.",
+      "authors": [
+        "Xiangrui Yang",
+        "Cheng Peng",
+        "Yunfeng Zhao",
+        "Liang Zeng",
+        "Ao Hu",
+        "Jiawei Yang",
+        "Shengzhe Wang",
+        "Jingshan Lv",
+        "Xiao Liang",
+        "Chen Yang",
+        "Jiaqiang Liu",
+        "Yiming Qiu"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI",
+        "cs.DC",
+        "cs.IR"
+      ],
+      "published": "2026-09-11T03:41:06+00:00",
+      "link": "https://arxiv.org/pdf/2609.12399v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "linear-attention decoding service with shared state representation for large-beam serving",
+      "llm_evidence_cn": "面向大束服务型解码的线性注意力共享状态表示",
+      "llm_evidence": "面向大束服务型解码的线性注意力共享状态表示",
+      "canonical_evidence": "面向大束服务型解码的线性注意力共享状态表示",
+      "llm_tldr_en": "Large-beam decoding in generative recommendation stresses linear-attention serving, since existing systems materialize full recurrent state per beam or replay shared history. OneLA represents all beams with one prompt-derived state plus append-only divergent transitions.",
+      "llm_tldr_cn": "生成式推荐依赖大束解码产生数百个候选项，给循环线性注意力的服务带来新的扩展挑战：已有线性注意力服务系统要么为每个束物化完整循环状态，要么反复重放共享历史，造成大量内存与访存流量开销。OneLA利用生成式推荐负载中共享的提示与短分歧后缀，用单一由提示派生的状态加仅追加的分歧转移记录来表示全部束状态，从而只计算每个解码步真正需要的状态信息。该表示显著降低状态内存与流量开销，为大束线性注意力服务提供了高效解码方案，属于推理系统层面的优化。",
+      "llm_tldr": "生成式推荐依赖大束解码产生数百个候选项，给循环线性注意力的服务带来新的扩展挑战：已有线性注意力服务系统要么为每个束物化完整循环状态，要么反复重放共享历史，造成大量内存与访存流量开销。OneLA利用生成式推荐负载中共享的提示与短分歧后缀，用单一由提示派生的状态加仅追加的分歧转移记录来表示全部束状态，从而只计算每个解码步真正需要的状态信息。该表示显著降低状态内存与流量开销，为大束线性注意力服务提供了高效解码方案，属于推理系统层面的优化。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM serving",
+      "matched_requirement_id": "req-5",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.12449v1",
+      "source": "arxiv",
+      "title": "HeatCache: Thermal-aware Energy-efficient LLM Inference Scheduling for Chassis-level Liquid Cooling in Sustainable Edge Server Rooms",
+      "abstract": "LLM inference is increasingly deployed at institution-scale edges to meet service requirements. However, multi-GPU inference consumes a large amount of electricity and produces substantial heat. To improve sustainability, operators and regulations often demand raising the ambient setpoint to reduce cooling electricity. This can increase thermal throttling and hardware aging, leading to Service-Level Objective violations. In this paper, we present HeatCache, a thermal-aware, energy-efficient LLM inference scheduler for commercial chassis-level AIO liquid-cooled GPUs at sustainable ambient temperatures. HeatCache treats AIO loops as a temporary heat buffer, measured by heat budget and schedules requests to minimize energy subject to thermal safety and SLO constraints, based on an electrical-informed heat-demand estimation from HeatiTS. We implement HeatCache atop vLLM and show that it reduces computing energy by up to 18.0%, decreases thermal-throttle exposure by 81.7%, and maintains SLO violation rates below 0.9% even up to $48~^{\\circ}\\mathrm{C}$.",
+      "authors": [
+        "Rui Lu",
+        "Huanghuang Liang",
+        "Kaiqi Guan",
+        "Dan Wang"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.PF",
+        "eess.SY"
+      ],
+      "published": "2026-09-11T05:14:57+00:00",
+      "link": "https://arxiv.org/pdf/2609.12449v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "thermal-aware LLM inference scheduling for liquid-cooled multi-GPU edge serving",
+      "llm_evidence_cn": "面向液冷多GPU边缘服务的热感知LLM推理调度",
+      "llm_evidence": "面向液冷多GPU边缘服务的热感知LLM推理调度",
+      "canonical_evidence": "面向液冷多GPU边缘服务的热感知LLM推理调度",
+      "llm_tldr_en": "Multi-GPU edge LLM inference consumes much power and heat, and raising ambient setpoints to save cooling causes throttling and SLO violations. HeatCache treats the liquid-cooling loop as a heat buffer and schedules inference thermally.",
+      "llm_tldr_cn": "边缘多GPU大模型推理耗电与发热巨大，为提高可持续性常需提高环境设定温度以降低冷却电耗，但这会加剧热降频与硬件老化并导致服务目标违约。HeatCache面向商用机箱级液冷GPU，把液冷回路视为以热预算和调度度量的临时热缓冲，设计热感知、能效优先的LLM推理调度器，在调度决策中权衡散热与算力。实验表明其能在可持续环境温度下降低冷却能耗并控制服务目标违约，为边缘LLM推理的能效与热管理协同调度提供了新思路。",
+      "llm_tldr": "边缘多GPU大模型推理耗电与发热巨大，为提高可持续性常需提高环境设定温度以降低冷却电耗，但这会加剧热降频与硬件老化并导致服务目标违约。HeatCache面向商用机箱级液冷GPU，把液冷回路视为以热预算和调度度量的临时热缓冲，设计热感知、能效优先的LLM推理调度器，在调度决策中权衡散热与算力。实验表明其能在可持续环境温度下降低冷却能耗并控制服务目标违约，为边缘LLM推理的能效与热管理协同调度提供了新思路。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "Efficient LLM inference and serving systems with scheduling, continuous batching, and memory management.",
+      "matched_requirement_id": "req-10",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.12978v1",
+      "source": "arxiv",
+      "title": "SeqMoE: Toward Full-Load Performance via Predictive and Graph-Compatible MoE Offloading",
+      "abstract": "Mixture-of-Experts (MoE) creates a structural advantage for offloading: only a small fraction of activated experts need to reside in device memory, and if they can be loaded in time for computation, offloading can in principle approach full-load performance, where all model weights reside in device memory. Yet translating MoE's structural advantage into practical offloading gains remains challenging. We propose SeqMoE to bridge this gap. To maximize expert hits, we build predictive memory management: (i) Sequence-to-sequence prediction. We are the first to recast expert activation prediction as sequence modeling, enabling accurate multi-step, multi-layer forecasts that provide a long and reliable window for downstream decisions. (ii) Joint prefetch scheduling. We formulate prefetch scheduling as Job Sequencing with Deadlines to maximize expected expert hits and improve bandwidth efficiency. (iii) Forecast-driven caching. Leveraging the recursive nature of sequence modeling, we introduce a probabilistic Belady policy for future-aware eviction. To eliminate execution bottleneck, we develop (iv) Graph-compatible offloading runtime. We derive general runtime principles encompassing compute-transparent expert placement and synchronization-free orchestration disciplines for end-to-end graph capture. With 45% expert residency, SeqMoE averages a 96.97% hit rate and 80.22% of full-load performance, advancing the state of the art in MoE offloading.",
+      "authors": [
+        "Zihan Wang",
+        "Yuqi Wang",
+        "Lei Gong",
+        "Cheng Tang",
+        "Wenqi Lou",
+        "Teng Wang",
+        "Chao Wang",
+        "Xuehai Zhou"
+      ],
+      "primary_category": "cs.OS",
+      "categories": [
+        "cs.OS",
+        "cs.AI"
+      ],
+      "published": "2026-09-11T15:43:52+00:00",
+      "link": "https://arxiv.org/pdf/2609.12978v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "predictive memory management and expert offloading for efficient MoE inference",
+      "llm_evidence_cn": "预测式内存管理与专家卸载用于高效MoE推理",
+      "llm_evidence": "预测式内存管理与专家卸载用于高效MoE推理",
+      "canonical_evidence": "预测式内存管理与专家卸载用于高效MoE推理",
+      "llm_tldr_en": "Proposes SeqMoE, recasting expert activation prediction as sequence modeling to provide long multi-step forecasts, improving expert hit rate and approaching full-load performance.",
+      "llm_tldr_cn": "MoE结构天然适合卸载，只需少量被激活专家驻留设备内存，若能及时加载即可逼近满负载性能，但实际收益难以兑现。本文提出SeqMoE，构建预测式内存管理，首次将专家激活预测建模为序列问题，实现多步、多层的准确预测，为专家加载决策提供长而可靠的窗口。方法提升了专家命中率，使卸载性能更接近满负载。其贡献是为MoE大模型高效推理与内存管理提供预测式卸载方案。",
+      "llm_tldr": "MoE结构天然适合卸载，只需少量被激活专家驻留设备内存，若能及时加载即可逼近满负载性能，但实际收益难以兑现。本文提出SeqMoE，构建预测式内存管理，首次将专家激活预测建模为序列问题，实现多步、多层的准确预测，为专家加载决策提供长而可靠的窗口。方法提升了专家命中率，使卸载性能更接近满负载。其贡献是为MoE大模型高效推理与内存管理提供预测式卸载方案。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "Efficient LLM inference and serving systems with scheduling, continuous batching, and memory management.",
+      "matched_requirement_id": "req-10",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.12923v1",
+      "source": "arxiv",
+      "title": "Dissecting GPU Utilization for LLM Inference on Nvidia Hopper",
+      "abstract": "A single SM utilization percentage can make an LLM inference workload look compute-saturated while hiding how much useful work is being done. The problem is not that the counter is wrong, but that it collapses several different mechanisms into one number. This is most severe during decode, where each request contributes only one new token and dense projection GEMMs become small-row matrix multiplications. On Hopper, the bfloat16 GMMA path executes these operations in fixed 64-row matrix fragments, so small-batch decode can fill only a small fraction of each fragment with real token rows.   In this paper, we profile vLLM with FlashAttention-3 and cuBLASLt on an H100 NVL across cold prefill, warm prefill, and decode, sweeping sequence length and batch size. We replace the usual single utilization number with eight counter-validated views derived from raw Nsight Compute reports, each pinned to an NCU counter or explicit formula. Together, these views map utilization gaps to concrete mechanisms - fragment fill, occupancy limits, stall signatures, wave quantization, and kernel selection - across four production models and six per-layer kernel roles.",
+      "authors": [
+        "Mohammad Siavashi",
+        "Gerald Q. Maguire",
+        "Dejan Kostic",
+        "Marco Chiesa"
+      ],
+      "primary_category": "cs.PF",
+      "categories": [
+        "cs.PF",
+        "cs.AR",
+        "cs.DC",
+        "cs.LG"
+      ],
+      "published": "2026-09-11T14:49:05+00:00",
+      "link": "https://arxiv.org/pdf/2609.12923v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "profiling GPU utilization for LLM inference decode",
+      "llm_evidence_cn": "LLM推理解码的GPU利用率剖析",
+      "llm_evidence": "LLM推理解码的GPU利用率剖析",
+      "canonical_evidence": "LLM推理解码的GPU利用率剖析",
+      "llm_tldr_en": "This paper shows a single SM utilization counter hides how much useful work LLM inference does, profiling vLLM with FlashAttention-3 and cuBLASLt on H100 NVL across prefill and decode to reveal Hopper GMMA fragment under-filling in small-batch decode.",
+      "llm_tldr_cn": "针对单一SM利用率指标掩盖LLM推理真实有用工作量的问题，论文在H100 NVL上使用vLLM、FlashAttention-3与cuBLASLt，跨冷预填充、热预填充与解码阶段扫描序列长度与批大小进行剖析，揭示Hopper上bfloat16 GMMA以固定64行矩阵片段执行导致小批量解码填充率极低。该工作细化了GPU利用率度量，为LLM推理内核与调度优化提供了依据。",
+      "llm_tldr": "针对单一SM利用率指标掩盖LLM推理真实有用工作量的问题，论文在H100 NVL上使用vLLM、FlashAttention-3与cuBLASLt，跨冷预填充、热预填充与解码阶段扫描序列长度与批大小进行剖析，揭示Hopper上bfloat16 GMMA以固定64行矩阵片段执行导致小批量解码填充率极低。该工作细化了GPU利用率度量，为LLM推理内核与调度优化提供了依据。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM inference",
+      "matched_requirement_id": "req-6",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.13031v1",
+      "source": "arxiv",
+      "title": "Attention Quantization for Tabular Foundation Models",
+      "abstract": "With the recent rise and adoption of tabular foundation models, optimizing their inference performance becomes an emerging field for efficiency research. While the models are architecturally similar to transformer-based large language models (LLMs), the size and serving patterns differ significantly. We show that the focus should be on the attention calculation and less on weight or KV cache quantization, which are more popular in LLMs. We develop a quantization strategy for queries, keys, and values to FP8 and use explicit FP8 matrix multiplication instructions to speed up the attention calculation. We find that it is crucial to align the quantization error in the test rows with the quantization error in the training rows, as otherwise the accuracy drops drastically. Our Triton kernel achieves a speedup up to 1.7x over regular 16-bit kernels, and we show that on TabPFN-v3 and TabICLv2 there is no relevant accuracy loss across TabArena and BeyondArena.",
+      "authors": [
+        "Jonas M. Kübler",
+        "Benjamin Jäger",
+        "Klemens Flöge",
+        "Noah Hollmann",
+        "Frank Hutter"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.AI"
+      ],
+      "published": "2026-09-11T16:31:29+00:00",
+      "link": "https://arxiv.org/pdf/2609.13031v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "FP8 attention quantization for foundation model inference efficiency",
+      "llm_evidence_cn": "面向基础模型推理效率的FP8注意力量化",
+      "llm_evidence": "面向基础模型推理效率的FP8注意力量化",
+      "canonical_evidence": "面向基础模型推理效率的FP8注意力量化",
+      "llm_tldr_en": "Shows attention computation, not weight or KV-cache quantization, is the bottleneck for tabular foundation models, and applies FP8 query/key/value quantization with explicit FP8 matmul, requiring train-test quantization error alignment to avoid accuracy collapse.",
+      "llm_tldr_cn": "表格基础模型推理效率优化缺乏针对性方案，其规模与服务模式与LLM显著不同。本文指出瓶颈在注意力计算而非更流行的权重或KV缓存量化，遂对查询、键、值采用FP8量化并调用显式FP8矩阵乘指令加速注意力。实验发现必须让测试行与训练行的量化误差对齐，否则精度会急剧下降。该工作为表格基础模型给出以注意力为中心的量化路线。",
+      "llm_tldr": "表格基础模型推理效率优化缺乏针对性方案，其规模与服务模式与LLM显著不同。本文指出瓶颈在注意力计算而非更流行的权重或KV缓存量化，遂对查询、键、值采用FP8量化并调用显式FP8矩阵乘指令加速注意力。实验发现必须让测试行与训练行的量化误差对齐，否则精度会急剧下降。该工作为表格基础模型给出以注意力为中心的量化路线。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    }
+  ]
+}
