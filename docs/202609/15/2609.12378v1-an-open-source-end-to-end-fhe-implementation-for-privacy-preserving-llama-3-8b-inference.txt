@@ -1,0 +1,509 @@
+Title: An Open-Source End-to-End FHE Implementation for Privacy-Preserving Llama 3 8B Inference
+
+URL Source: https://arxiv.org/pdf/2609.12378v1
+
+Published Time: Mon, 14 Sep 2026 00:27:35 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# An Open-Source End-to-End FHE Implementation for Privacy-Preserving Llama 3 8B Inference 
+
+## Yuhang Fan, Yusi Chen, Kanyu Ye, Zhuoran Ji 
+
+School of Cyber Science and Technology, Shandong University; 
+
+# Abstract 
+
+As large language model services increasingly move to the cloud, users typically send their prompts to model providers, thereby raising the risk of privacy leakage. Fully homo-morphic encryption (FHE) enables a server to perform in-ference without decrypting the input, but representing data as ciphertexts and performing homomorphic operations on them introduce additional storage and computational over-head. In CKKS-based LLM inference, the packing scheme determines how logical tensors are mapped to ciphertexts and slots. It therefore determines the ciphertext count and the homomorphic-operation overhead of linear layers, while con-straining how data are represented and converted as they pass between linear layers, attention, and nonlinear computation. As model size and sequence length increase, inefficient lay-outs cause the overhead of encoding, computation, and layout conversion to accumulate. We present ODIN, an FHE inference system that co-designs ciphertext packing and model execution for Llama. Starting from the weight-encoding bottleneck exposed by a THOR-style baseline, we design the Odin packing scheme. Odin uses a feature-major cross-layer layout to unify residual con-nections and layer interfaces, and constructs transient intra-operator layouts that match the computation patterns of lin-ear projections and attention. This design reduces redundant plaintext encoding of weights in wide projections. Within attention, QK ⊤ produces scores that Softmax can consume directly, and P V directly consumes the resulting probabili-ties, avoiding intermediate repacking between Softmax and 
+
+P V . For nonlinear computation, we use minimax polyno-mial approximation over input intervals under a maximum approximation-error constraint. We combine input-range control with joint error allocation guided by model quality to reduce polynomial degree and multiplicative depth. To the best of our knowledge, ODIN is the first open-source end-to-end implementation of Llama-3 using GPU-accelerated CKKS. With Llama-3-8B weights and a 128-token input, ODIN sequentially evaluates all 32 Transformer layers on a single NVIDIA H100 80 GB GPU. Server-side end-to-end FHE evaluation takes 366.4 s and uses 58.9 GiB of peak device memory. With the same model, input, CKKS parameters, and hardware configuration, THOR’s online FHE evaluation takes 1651.9 s, yielding a 4.51 × speedup. 
+
+# 1 Introduction 
+
+The Transformer architecture has advanced natural language processing and other sequence-modeling tasks [13]. As model sizes and context lengths grow, the computation and GPU memory required for inference also increase. Large lan-guage models are therefore commonly deployed and served on cloud servers. To access cloud computing resources, users must send their prompts to the service provider. When a prompt contains personal, medical, commercial, or internal organizational information, the service provider has direct ac-cess to the inference input. Protecting user privacy while re-taining access to cloud-hosted models has thus become a cen-tral problem in private LLM inference. Existing private Transformer inference systems mainly use secure multi-party computation (MPC) or hybrid cryp-tographic protocols. Systems such as Iron, PUMA, BOLT, and BumbleBee combine secret sharing, oblivious transfer, and homomorphic encryption components to perform Trans-former or LLM inference without revealing the complete in-put to any single computing party [8, 6, 11, 9]. These systems support relatively large models, but they generally require a client or multiple servers to participate in multi-round pro-tocols and transmit large volumes of intermediate data dur-ing inference. Their security also relies on protocol assump-tions such as non-collusion among the participating parties. Communication volume and online interaction therefore con-stitute the main deployment costs of MPC-based systems. Fully homomorphic encryption (FHE) provides an alter-native computation model. After a client encrypts its input, the server can compute directly over the ciphertexts and re-turn only a ciphertext result for the client to decrypt [3]. This model does not require the client to participate in every op-erator during inference, nor does it require servers to main-tain secret shares. However, evaluating a Transformer under FHE requires expressing its computation using homomorphic additions, multiplications, and rotations. The ciphertext lay-out also determines how data pass from one operator to the next. When an operator’s output layout differs from the in-put layout expected by its successor, additional homomor-phic operations are required for the conversion. Ciphertext packing is therefore a fundamental design choice: it affects the numbers of ciphertexts and operations required for linear computation, determines how weights and plaintexts are en-coded, and determines the cost of layout conversions between operators. As the hidden dimension, sequence length, and number of layers increase, the ciphertext count and the over-head of weight encoding and layout conversion determined 1arXiv:2609.12378v1 [cs.CR] 11 Sep 2026 by the packing scheme increase accordingly. Packing design is therefore a key factor in the efficiency of large-scale FHE LLM inference. 
+
+## 1.1 Related Work 
+
+Early private Transformer systems primarily use interac-tive MPC or hybrid HE–MPC protocols. Iron proposes se-cure matrix multiplication based on compact HE packing and specialized protocols for Softmax, GELU, and Layer-Norm [8]. PUMA extends two-party secure inference to LLaMA-7B through high-precision approximations of GeLU and Softmax, along with secure Embedding and LayerNorm protocols [6]. BOLT further co-optimizes secure matrix multiplication and nonlinear computation [11], while Bum-bleBee designs low-communication matrix multiplication and activation-function protocols for large Transformers [9]. These systems support relatively large models while protect-ing client inputs and server models, but their online phases still require continuous communication between two parties. FHE-only private inference has gradually expanded from individual operators to complete Transformers. NEXUS pro-poses several homomorphic matrix operations and nonlinear approximations, but the composition of its different packing formats and the costs of converting among them are not incor-porated into an end-to-end execution path [15]. THOR uses diagonal-major encoding and compact ciphertext packing to perform end-to-end FHE inference for BERT-base on a single GPU [10]. MOAI further reduces layout conversions and ro-tations by coordinating packing formats across modules [16]. Recent work has extended CKKS inference to Llama-2-7B and supports longer inputs by distinguishing public tokens from encrypted tokens [12]. These advances show that the performance of an FHE Transformer depends not only on individual homomorphic operators, but also on whether the packing scheme can accommodate the model scale and re-main compatible throughout the computation pipeline. After adapting a THOR-style layout to Llama-3-8B, we further ob-serve that the online encoding of a large number of plaintext weights becomes the main bottleneck in linear computation. Section 3.4 presents the corresponding timing breakdown. Nonlinear computation constitutes another major source of cost. Because CKKS natively supports approximate arith-metic, RMSNorm, Softmax, and SiLU generally must be con-verted into polynomial or iterative circuits. Starting from a doubling-iteration formula for Softmax, Cho et al. propose a fast method for homomorphic Softmax [4]. Park et al. fur-ther apply a prepended attention-sink token [14] and the or-thogonal rotations of QuaRot [1] to FHE Llama to mitigate the expansion of approximation intervals caused by attention sinks and dimensional outliers [12]. These methods provide executable components for different nonlinear functions, but a complete model still requires the input ranges, polynomial errors, and CKKS precision to be determined jointly so that local approximations preserve model quality after propaga-tion through multiple layers. 
+
+## 1.2 Our Approach and Contributions 
+
+We present ODIN, an FHE inference system that co-designs ciphertext packing and model execution for Llama. We first construct a THOR-style Llama-3 baseline and identify the weight-encoding bottleneck through a stage-level tim-ing breakdown of this baseline. Based on this observation, Odin fixes a feature-major layout as the hidden-state interface for residual connections and inter-layer transfer, while using short-lived intra-operator layouts for linear projections and attention. A structured weight representation allows encoded weight diagonals to be reused across multiple input cipher-texts, reducing redundant weight encoding. Within attention, QK ⊤ produces scores in a representa-tion that Softmax can consume directly. Softmax preserves this representation for its output probabilities, which are then consumed directly by P V . This dataflow avoids intermedi-ate repacking between Softmax and P V . The system also applies range control and polynomial approximation to RM-SNorm, Softmax, and SiLU, and jointly searches for can-didate approximation-error budgets through model-level er-ror injection. Together, these components form a server-side FHE execution path through all Transformer layers of Llama-3. Our main contributions are as follows: • The Odin packing scheme. We propose an FHE Llama packing scheme for both linear layers and attention. Odin organizes a complete block with a stable cross-layer lay-out and short-lived intra-operator layouts. It reuses en-coded weight diagonals in the wide projections of Llama-3. Within attention, QK ⊤ produces scores that Softmax can consume directly, and P V directly consumes the re-sulting probabilities, avoiding intermediate repacking be-tween Softmax and P V .• Nonlinear computation guided by full-model quality. 
+
+Starting from a uniform 12-bit precision, we use model-level error injection to compare the sensitivity of RM-SNorm, Softmax, and SiLU to different error magnitudes and jointly search for candidate error configurations for these operators. The candidate budgets and input ranges jointly determine the degrees of the minimax polynomials, whose effects on model quality are then evaluated sepa-rately. • An open-source end-to-end FHE implementation of Llama-3. We implement and open-source the com-plete model-conversion pipeline, GPU ciphertext execu-tion, and experimental configurations. 1 To the best of our knowledge, this is the first open-source end-to-end FHE implementation of Llama-3. Using the actual Llama-3-8B weights and a 128-token input, the system sequentially evaluates all 32 Transformer layers on a single NVIDIA H100 80 GB GPU, taking 366.4 s for server-side end-to-end FHE evaluation and using 58.9 GiB of peak device memory. 
+
+> 1https://github.com/Azathoth13/easyfhe-llama3-8b
+
+22 Background 
+
+## 2.1 The CKKS Computation Model 
+
+CKKS [3] is an RLWE-based fully homomorphic encryption scheme for approximate numerical computation. CKKS en-codes a vector of real or complex values into a plaintext poly-nomial, which can then be encrypted into a ciphertext. De-cryption followed by decoding recovers an approximation to the original vector. A ciphertext can pack multiple values into slots, and homomorphic operations act on these slots in SIMD fashion. Ciphertext multiplication followed by rescal-ing progressively lowers the ciphertext level. Bootstrapping refreshes a ciphertext and restores its level budget, allowing evaluation to continue. We use the following primitive CKKS operations. 
+
+Encode (m) returns a plaintext polynomial whose slots represent the numerical vector m. Add , PCMult , and Mult 
+
+compute ciphertext addition, slot-wise plaintext–ciphertext multiplication, and slot-wise ciphertext–ciphertext multipli-cation, respectively. Rot k cyclically shifts the slot vector by k positions. KeySwitch transforms a ciphertext repre-sentation using an evaluation key and underlies rotations and relinearization after ciphertext multiplication. Rescale 
+
+adjusts the scaling factor and ciphertext modulus after multiplication while reducing the level. Bootstrap refreshes a ciphertext and restores its level budget, but incurs high latency and additional approximation error. 
+
+## 2.2 The Llama-3-8B Architecture 
+
+Llama-3 uses a decoder-only Transformer architecture [13, 7]. Compared with a standard Transformer decoder, each Llama-3 block uses RMSNorm-based pre-normalization, encodes the positional information of Q and K with RoPE, and em-ploys grouped-query attention (GQA) and a SwiGLU FFN. GQA allows multiple query heads to share key/value heads, thereby reducing the output dimensions of the K/V projec-tions and the size of the KV cache. SwiGLU replaces the single activation path in a standard FFN with a SiLU-gated branch. In our FHE execution model, the server holds the model weights in plaintext, while model activations remain en-crypted. Consequently, the Q/K/V/O and gate/up/down pro-jections become plaintext–ciphertext matrix multiplications, whereas QK ⊤ and P V multiply two encrypted operands. RMSNorm, Softmax, and SiLU must be converted into poly-nomial or iterative arithmetic circuits supported by CKKS. This division gives rise to the linear-packing and nonlinear-approximation problems discussed in Section 3. 
+
+# 3 FHE Llama-3: Problem Definition and Baselines 
+
+## 3.1 Private Inference and Threat Model 
+
+We consider a private inference setting consisting of a client and a cloud server. The client holds the prompt and the CKKS secret key, prepares the input locally, and sends the en-crypted input and the evaluation keys required by the protocol to the server. The server holds the model weights in plaintext, performs Llama-3 inference over ciphertexts, and returns the result ciphertext to the client for decryption. Apart from sub-mitting the input and receiving the result, the client does not participate in server-side homomorphic evaluation. The in-put and all prompt-dependent intermediate states remain en-crypted on the server. The client tokenizes the prompt, per-forms the embedding lookup, and encrypts the resulting input before transmission. These client-side preprocessing and en-cryption steps are excluded from FHE evaluation time. We assume an honest-but-curious server: it follows the prescribed inference protocol but may use the input cipher-texts, evaluation keys, intermediate ciphertexts, and observ-able public information to infer the client input. Under the RLWE security assumption underlying CKKS, our privacy objective is to protect the prompt and its derived intermediate states. The model architecture and weights, sequence length, cryptographic parameters, and runtime are considered pub-lic information. We do not consider a malicious server that deviates from the protocol, side-channel attacks, denial of ser-vice, or access-pattern leakage, nor do we protect the server’s model weights. Under this system and security boundary, the following subsections describe server-side nonlinear compu-tation, linear-packing baselines, and their performance bottle-necks. 
+
+## 3.2 Nonlinear Computation 
+
+3.2.1 Polynomial Approximation 
+
+CKKS can directly evaluate additions and multiplications. RMSNorm, SiLU, and Softmax contain functions such as in-verse square root, exponentiation, and division that CKKS cannot evaluate directly. These functions must be replaced by polynomial or iterative arithmetic circuits. For a function 
+
+f defined over an interval I = [ a, b ], let pd denote a poly-nomial of degree at most d. The uniform absolute error is defined as 
+
+Ed(f ; I) = min  
+
+> deg (p)≤d
+
+max  
+
+> x∈I
+
+|f (x) − p(x)|. (1) Given a maximum allowable error τ , the minimum required degree is 
+
+dτ (f ; I) = min {d : Ed(f ; I) ≤ τ }. (2) Given an approximation interval I and a candidate degree, the Remez algorithm generates an approximate minimax polyno-mial. We then search over candidate polynomial degrees and 3use the error threshold τ to determine the smallest degree that satisfies the requirement. The approximation interval and er-ror threshold are therefore the two central factors that deter-mine the polynomial degree. This dependence can be described by a standard approxi-mation bound. Let h = ( b − a)/2 , and assume that f has an rth derivative over I and that f (r) satisfies an α-Hölder condition. Define s = r + α. After scaling I to [−1, 1] , a Jackson-type bound gives [5] 
+
+Ed(f ; I) ≤ Cf hsd−s. (3) Here, Cf depends on the smoothness of the function over the interval. A sufficient degree for achieving error τ therefore satisfies 
+
+d ≥ h
+
+( Cf
+
+τ
+
+)1/ s
+
+. (4) Under the same assumptions on function regularity, this bound shows that the degree grows linearly with the interval length and grows as τ −1/ s as the allowable error becomes tighter. It is a sufficient bound rather than a strict equality for all functions: the actual minimum degree also depends on the function shape and the coefficient-generation method. Analytic functions admit faster exponential convergence, but interval scaling still changes the corresponding constants and convergence parameters. We therefore treat the approxima-tion interval and maximum error jointly as configuration pa-rameters for each nonlinear operator. FHE nonlinear circuits require two distinct design choices: how to cover the input domain and how to compose arithmetic subroutines. For the former, piecewise methods partition a wide domain using comparisons and masks and approximate each segment separately. When calibration can determine a finite interval, each scalar function can instead be approxi-mated directly by a minimax polynomial over that interval. Iterative identities such as Newton–Raphson, Goldschmidt, and Softmax doubling may then compose these scalar approx-imations; they are not alternatives to interval selection. We avoid comparison-based domain partitioning and directly ap-proximate each scalar subfunction over a calibrated interval. Softmax composes these polynomials within a doubling iter-ation. We also compare the input distributions of different nonlin-ear functions during inference on WikiText-2 and C4. Across corresponding operator positions in all 32 layers, the median C4-to-WikiText-2 ratio of p99 magnitudes is 1.0, and we ob-serve no overall scale shift between the two general-language corpora. Some layer–operator positions nevertheless deviate. This result supports using a calibration set to initialize approx-imation intervals, but does not guarantee that all inference in-puts remain within them. Section 5.1 therefore adds safety margins and out-of-range checks. 
+
+3.2.2 Input-Range and Outlier Mitigation 
+
+Intermediate activations in LLMs generally contain a small number of outliers whose magnitudes are much larger than those of the remaining elements. These outlying coordinates expand the common approximation interval used for all in-puts, causing every slot to incur the evaluation of a higher-degree polynomial. A larger dynamic range also increases the precision requirement of CKKS bootstrapping. Reducing the maximum magnitude can therefore reduce the polynomial degree required to meet the same error target. To the best of our knowledge, Scaling up Privacy-Preserving ML [12] is the first work to combine two types of outlier-mitigation methods originally developed for ordinary LLM inference in an FHE Llama setting: attention sinks are handled along the token dimension, and dimensional outliers are handled along the feature dimension. The first type of outlier is caused by attention sinks formed by special tokens during the initial stage of inference, whose magnitudes can be much larger than those of subsequent content tokens. That work prepends a fixed sink prefix to the input and precom-putes its key–value states. Because the prefix is independent of the user query, it can be deployed as a public static cache, avoiding the encryption and online-evaluation costs for these tokens. The purpose of this preprocessing is to stabilize the activation range of subsequent tokens rather than to change the definition of Softmax [14, 12]. The second type of outlier appears when a small number of feature coordinates consistently exhibit large magnitudes across multiple layers. QuaRot [1] uses computational invari-ance to insert random orthogonal Hadamard rotations into hidden states and adjacent weights, distributing magnitudes concentrated in a small number of coordinates across mul-tiple coordinates. Where they can be absorbed algebraically, the rotations can be fused offline into public weights and thus add no homomorphic operations to the online FHE circuit. Scaling adapts this rotation-based processing to FHE Llama and combines it with the prefix method to control nonlinear input ranges [12]. The two methods act on the token and fea-ture axes, respectively, and cannot replace each other. Their common goal is to reduce the dynamic range required by poly-nomial approximation and bootstrapping. We adopt this FHE adaptation as the model-preprocessing baseline and use public model weights with the QuaRot trans-formations fused offline. 
+
+3.2.3 Approximation-Error Budget 
+
+Existing FHE LLM implementations generally begin by se-lecting a uniform conservative precision for approximation errors. Through plaintext error simulation, Park et al. ob-serve that a 12-bit error budget does not degrade PPL rela-tive to their FP16 baseline, and use 12 bits as the target pre-cision for subsequent configurations [12]. We adopt this set-ting and set the maximum approximation errors of the RM-SNorm inverse square root, SiLU, and the initial exponential and normalization inverse-square-root stages of Softmax to 
+
+τ0 = 2 −12 . This uniform setting provides a reproducible starting point, but also leaves different amounts of precision margin for different nonlinear operators. If a separate tolerance τ (ℓ) 
+
+> i
+
+is assigned to every nonlinear 4function in every layer, error allocation requires a search over a continuous high-dimensional parameter space. Different operators and layers also have different sensitivities to model quality, so an appropriate configuration cannot be derived di-rectly from the uniform 12-bit starting point. To reduce the search complexity, we initially ignore differences among lay-ers for operators of the same type and assign shared operator-level tolerances separately to the two RMSNorms, Softmax, and SiLU. This simplification transforms layer-wise error al-location into allocation among four classes of nonlinear oper-ators. Based on this simplification, we divide calibration into a single-operator search and a joint search. The single-operator search keeps all other operators exact and compares the sen-sitivity of different operators and error magnitudes through bounded error injection. A uniform-tolerance search first identifies a feasible common candidate under the injection criterion; the 12-bit configuration is used as a conservative reference rather than as a mandatory starting point. The joint search then adjusts operator-level tolerances one at a time, ac-cording to a predetermined priority, while perturbations in all four nonlinear classes are present. This procedure screens candidate approximation budgets. Because injected pertur-bations are only a proxy for sensitivity, they do not guaran-tee that the corresponding Remez polynomials produce the same PPL; model quality must be evaluated separately after the final polynomials are generated. Section 5.2 describes the search method and error-interaction analysis. Relaxing the error budget can reduce not only the corre-sponding homomorphic multiplications but also affect the bootstrapping schedule. Bootstrapping positions are jointly determined by the level requirements of the complete execu-tion chain and the depths of the operators. Reducing the de-gree of RMSNorm or Softmax therefore does not necessarily reduce the number of bootstrapping operations. In contrast, SiLU is located on the FFN gating branch, which has a width of 14336 . In a single-operator pilot test, we keep the approxi-mation interval unchanged and relax the SiLU tolerance from 
+
+2−12 to 3.82 × 10 −3. The sum of the SiLU polynomial de-grees across 32 layers decreases from 2048 to 998 , allowing the subsequent FFN linear layer to use fewer limbs under the current schedule. This makes SiLU the highest-priority target in the current error budget. 
+
+## 3.3 Linear Computation and Packing Base-lines 
+
+3.3.1 Matrix Representations and Linear Computation in CKKS 
+
+CKKS slot encoding maps a vector to the SIMD slots of a plaintext polynomial, such that homomorphic addition and multiplication correspond to slot-wise addition and multipli-cation, respectively [3]. For a slot vector x ∈ RD and a matrix A ∈ RD×D (zero-padded when necessary), define 
+
+Dk(A)[ i] = A[i, (i + k) mod D] as the kth cyclic diagonal. Let ρk be the left rotation satisfying (ρk(x)) i = x(i+k) mod D .Matrix–vector multiplication can then be written as 
+
+Ax =
+
+> D−1
+
+∑
+
+> k=0
+
+Dk(A) ⊙ ρk(x), (5) where ρk denotes a slot rotation. Row, column, and di-agonal packing specify how a logical matrix is laid out in slots. BSGS is an evaluation strategy that reuses some rota-tions over a given layout rather than an independent packing scheme. A slot representation can directly support element-wise polynomials, RoPE, and masks. The cross-slot reduc-tions required by Softmax and RMSNorm can also be im-plemented using rotations and accumulation, making it con-venient for passing ciphertexts between linear and nonlinear layers. However, slot encoding alone does not define a complete linear algorithm. An executable scheme must also specify the token–feature mapping, organization of plaintext weights, rotation set, cross-ciphertext reductions, and output layout. MOAI [16] demonstrates the importance of layout compat-ibility: its projection results retain column packing, QK ⊤
+
+produces diagonal packing, Softmax preserves this represen-tation, and the result is then multiplied by column-packed V
+
+before column packing is restored. If each operator selects its layout independently, the same conversions require addi-tional rotations, masks, or repacking. The cost of slot packing therefore depends on the lifetime of a layout throughout the operator chain and cannot be assessed solely from an individ-ual matrix-multiplication kernel. Another class of methods uses coefficient encoding, which writes real values directly into the coefficients of a plain-text polynomial. Bae et al. organize coefficient-encoded RLWE/MLWE ciphertexts as matrix equations, reduce wide PCMM to a small number of plaintext matrix multiplica-tions, and use small-ring representations and BLAS imple-mentations [2]. Scaling up Privacy-Preserving ML uses this method for the QKV, output, and FFN projections in Llama while retaining slot encoding for other operations [12]. Slot-ToCoeffs and CoeffsToSlots between the two representations are homomorphic DFTs and involve level consumption, bit reversal, and RLWE/MLWE layout adjustments. These con-versions incur corresponding computation and limb costs. EasyFHE does not yet provide a complete execution path for these representation conversions. We therefore discuss co-efficient encoding as an alternative design point, but restrict the subsequent evaluation to THOR and Odin, both of which operate in the slot domain. 
+
+3.3.2 THOR Packing 
+
+THOR [10] targets non-interactive Transformer inference for BERT-base and organizes plaintext–ciphertext matrix multi-plication (PC-MM) and ciphertext–ciphertext matrix multi-plication (CC-MM) around cyclic-diagonal representations. For A ∈ Rn×m and B ∈ Rm×n, where n ≥ m and m | n,let Uk(A) and Lk(B) denote the kth upper and lower cyclic diagonals of the matrices, respectively. A lower diagonal of 5the product satisfies 
+
+Lr (AB ) = 
+
+> m−1
+
+∑
+
+> ℓ=0
+
+ρr (Uℓ−r (A)) ⊙ Lℓ(B), (6) where the diagonal indices wrap around according to the cor-responding dimension. This identity transforms matrix mul-tiplication into rotations, slot-wise multiplications, and accu-mulations of diagonal vectors, while preserving the diagonal semantics of the output. When a single matrix diagonal is shorter than the CKKS slot capacity, encrypting each diagonal separately leaves many slots unused. THOR’s multi-diagonal batched encod-ing first interleaves corresponding diagonals from multiple at-tention heads or parallel submatrices and then concatenates c
+
+adjacent batched diagonals in one ciphertext. Here, c is called the diagonal packing capacity. This layout exploits both inter-matrix parallelism and the remaining slot capacity, providing a unified diagonal input for subsequent PC-MM and CC-MM. For linear projections, THOR divides public weights and encrypted activations into smaller square blocks and com-putes in parallel the submatrix products located on the same block diagonal. It further uses a transposed data flow, for example by computing Q⊤ = W ⊤ 
+
+> Q
+
+X⊤, to absorb some ro-tations that would otherwise act on input ciphertexts into the preprocessing of public plaintext weight diagonals. For 
+
+QK ⊤ and P V in attention, THOR first organizes the inputs into replicated diagonals required by lower–lower multipli-cation. A BSGS reformulation then defers some rotations until after ciphertext multiplication and local accumulation, which allows these rotations to be merged. The diagonal rep-resentation allows row-wise Softmax and LayerNorm to be evaluated using the corresponding upper-diagonal semantics. However, the complete workflow still includes transposition, replication, masking, and format adjustments between upper and lower diagonals, and not all operators can be connected without conversion [16]. THOR’s original analysis primarily optimizes slot utiliza-tion and the numbers of rotations, multiplications, and key-switching operations. Its PC-MM interface takes encoded and internally rotated plaintext weight diagonals as input, but does not discuss how these plaintexts are generated, cached, and reused across projection blocks and computation batches. For the 4096 -dimensional hidden state and 14336 -dimensional FFN of Llama-3, the lifetime of these plaintexts becomes a system issue that must be analyzed separately. The next section therefore separates the costs of weight prepara-tion, rotations, and multiplications in the linear path and iden-tifies the primary bottleneck when scaling the THOR baseline to Llama-3. 
+
+## 3.4 The Encoding Bottleneck at Llama-3 Scale 
+
+To identify the primary performance bottleneck after scaling THOR packing to Llama-3, we profile Layer 16 of Llama-3-8B with a 128-token input and break down the runtime of each component. Table 1 lists operator-level runtimes in exe-cution order. Table 1: Median runtime breakdown over three runs for one Llama-3-8B layer using THOR packing                           
+
+> Module Operation Time (s) RMSNorm 1Normalization 0.05 Attention QKV projection 5.44
+> QK ⊤4.83 Softmax 4.82
+> P V 1.95
+> Oprojection 5.39 RMSNorm 2Normalization 0.05 FFN gate projection 11.69 up projection 8.00 SiLU 0.40 down projection 7.50
+> Linear computation QKV, O, FFN projections, QK ⊤, and P V 44.80 Nonlinear operators RMSNorm, Softmax, and SiLU 5.32
+> Other FHE operations Bootstrapping, RoPE, layout conversion, and unassigned runtime 9.12
+> Total Complete single-layer FHE evaluation 59.24
+
+A Transformer layer in Llama-3 contains both plaintext– ciphertext and ciphertext–ciphertext linear computation. The QKV, O, and FFN projections perform plaintext–ciphertext multiplication between model weights and ciphertexts, while 
+
+QK ⊤ and P V in attention perform ciphertext–ciphertext multiplication. In Table 1, the former takes 38 .02 s and the latter takes 6.78 s. Together they take 44 .80 s, accounting for 75 .6% of the single-layer runtime. Linear computation is therefore the primary cost of this baseline. Table 2: Median runtime breakdown over three runs for Llama-3-8B linear computation using THOR packing                                                        
+
+> Scope Weight pack/enc. Aux. enc. Rot. Mult. Merge Rescale Total
+> Plaintext–ciphertext multiplication
+> Q2.91 – 0.04 0.28 0.42 0.06 3.70
+> K+V1.23 – 0.04 0.14 0.10 0.03 1.53
+> O2.47 – 0.46 0.27 1.50 0.19 4.88 FFN 21.34 – 0.17 2.70 1.68 0.66 26.55
+> Ciphertext–ciphertext matrix multiplication
+> QK ⊤–0.48 3.88 0.22 0.26 0.08 4.94
+> P V –0.37 1.64 0.18 0.22 0.00 2.40 PC subtotal 28.02 – 0.70 3.40 3.71 0.94 36.76 CC subtotal –0.85 5.52 0.41 0.48 0.08 7.34 All linear comp. 28.02 0.85 6.22 3.80 4.19 1.02 44.10
+
+Table 2 breaks down the two types of linear computation through an independent operator-level profile. The two types of multiplication take 44 .10 s in total. Weight packing and encoding for plaintext–ciphertext multiplication take 28 .02 s, or 63 .5% of this time. Lower-level timers further divide this cost into 10 .99 s for packing and 17 .03 s for encoding. Encod-ing is the largest individual operation, accounting for 38 .6%of linear-computation time. Organizing and encoding weight plaintexts is therefore the primary bottleneck in the current baseline. This bottleneck arises from a mismatch between the reuse granularity of the weight representation in our THOR-style Llama-3 adaptation and the model’s wide projections. De-signed for BERT, THOR treats encoded plaintext weight di-agonals as preprocessed inputs to PC-MM and focuses pri-6marily on slot utilization and the costs of online rotations and multiplications [10]. In the page-diagonal representa-tion used by our adaptation, a plaintext weight represents not only a logical diagonal but is also bound to a particular input page, output group, real or imaginary component, and rota-tion copy. An encoding result can be reused directly only when all of these physical-layout attributes are identical. Af-ter this representation is scaled to a 4096 -dimensional hid-den state and a 14336 -dimensional FFN, the combinations of layout attributes produce 425 ,984 plaintext weight objects per layer. Pre-encoding and caching these objects incur cor-responding storage and residency costs, whereas generating them on demand repeatedly performs packing and encoding at runtime. The root cause is therefore that this THOR-style layout cannot readily amortize the encoding cost of the same logical weight across multiple compatible input ciphertexts. Odin instead organizes plaintexts by physical weight page and logical diagonal so that encoding results can be reused across token-shard inputs. Section 4 describes its layout and matrix multiplication in detail. 
+
+# 4 Odin: A New Packing Scheme for FHE LLMs 
+
+## 4.1 Design Goals and Overview of Odin 4.2 Cross-Layer Feature-Major State and Intra-Operator Layouts 4.3 Packing-Aware Homomorphic Linear Computation 4.4 C– ∆ Attention Layout and Computation 4.5 Layout Transitions in a Llama-3 Block 4.6 Complexity and Overhead Analysis 
+
+# 5 System Implementation of FHE Llama 
+
+Section 4 defines Odin’s layouts and the principles of its linear computation. This section describes the process of transforming a public Llama-3 model into an FHE execution graph. We first transform the weights and calibrate the input ranges of nonlinear functions, generate the nonlinear approx-imations and numerical configurations, connect each projec-tion layer to the homomorphic linear kernels, and finally as-semble a layer-wise execution graph. The resulting artifacts include transformed weights, measured input intervals, poly-nomial coefficients, and bootstrapping positions. Section 6 evaluates correctness, model quality, and performance after these artifacts have been fixed. 
+
+## 5.1 Model Preprocessing and Input-Range Calibration 
+
+Section 3.2.2 describes how QuaRot mitigates feature out-liers. We apply the QuaRot transformation to the public Llama-3 weights and fuse the Hadamard transformations pre-ceding the O and down projections into adjacent weights, so they add no homomorphic computation to FHE execution. The transformed model is used consistently for subsequent in-terval measurement, polynomial generation, and FHE linear computation, ensuring that the model used during calibration is identical to the model used during actual execution. Section 3.2.1 compares the distributions of intermediate values at the same layers and nonlinear positions on WikiText-2 and C4. Their p99-magnitude ratios are close to 1, and no clear scale shift is observed between the two corpora. To avoid potential out-of-bound inputs, however, we define the approximation interval for each nonlinear input in each layer by multiplying the observed extrema by a predetermined ex-pansion factor. SiLU uses a symmetric interval based on the maximum absolute value. The input to the inverse square root approximated in RMSNorm is positive, so a positive in-terval is used. The approximation intervals for Softmax are described separately in its implementation. The safety mar-gin reduces the risk of out-of-bound inputs, but also increases the polynomial degree for a given error target. The current configuration uses an expansion factor of 1.2.
+
+## 5.2 Nonlinear-Function Approximation and Error Calibration 
+
+Section 5.1 determines nonlinear input intervals for each layer. This section further determines the error budgets and converts them into executable polynomials. A theoretically optimal solution to the original problem would require se-lecting a continuous error-budget value separately for RM-SNorm 1, Softmax, RMSNorm 2, and SiLU in each of the 32 layers. These budgets interact as errors propagate across lay-ers, and there is no directly solvable analytical relationship between model quality and the error budgets. Obtaining a theoretically optimal configuration is therefore difficult. We retain layer-wise approximation intervals but let operators of the same type share one output-perturbation budget across layers, reducing the search to four coupled variables. RM-SNorm and SiLU can each be implemented by a polynomial for a single target function. Softmax must be decomposed into exponential, reduction, and inverse-square-root circuits, so its error-injection positions must be defined separately. 
+
+5.2.1 Decomposed Approximation of Softmax 
+
+Unlike RMSNorm and SiLU, Softmax includes exponentia-tion, sum reduction, and normalization and cannot be directly replaced by a single element-wise polynomial. Cho et al. pro-pose a fast homomorphic Softmax algorithm based on the Softmax doubling identity [4]. We use this algorithm as the basic computational framework for homomorphic Softmax. 7The input to Softmax is an attention-score vector x =(x1, . . . , x n) ∈ Rn of length n. Let m = max 1≤i≤n xi, let 
+
+z = x − m ∈ [−M, 0] , and set 
+
+k = ⌈log 2 M − log 2 ln n⌉ , (7) We first apply an exponential polynomial to z/2 k to obtain 
+
+u(0) = pexp (z/2 k). We then increase the input scale in each round according to the Softmax doubling identity. After k
+
+rounds, this yields Softmax (z) = Softmax (x):Softmax (2 x)i = Softmax (x)2
+
+> i
+
+∑nj=1 Softmax (x)2
+
+> j
+
+. (8) The FHE implementation uses the statistical maximum ̂ U
+
+and interval length ̂ M obtained during calibration in place of M in Equation (7). As long as ̂ U covers the maximum score in the row, the translation invariance of Softmax guar-antees Softmax (̂ z) = Softmax (x). An insufficient ̂ U causes the input to leave the approximation interval, whereas an ex-cessively large upper bound expands the exponential interval and increases k. Most layers share ̂ U and k within the layer. For positions with wider distributions, such as Layer 31, we use a head-wise ̂ U and set k = max h kh to maintain the same number of iterations within a SIMD batch. The implementation follows the wide- and narrow-track structure of the algorithm of Cho et al. The main track holds all score coordinates and performs exponentiation, slot-wise multiplication, and squaring. The auxiliary track holds only the reduction value s(j) for each score row and evaluates the inverse square root over a small number of valid slots. This structure avoids repeatedly evaluating a high-degree in-verse square root over all score slots and confines bootstrap-ping (BS) to compact auxiliary-track ciphertexts. In each round, the implementation first accumulates valid rows dis-tributed across multiple ciphertexts into one ciphertext, then computes λ(j) and performs BS on that ciphertext. It sub-sequently extracts the normalization factor for each row and broadcasts it back to the main track. Algorithm 1 gives the complete procedure. For the exponential approximation in Softmax, the above scaling restricts the input to [− ln n, 0] . The inverse-square-root polynomial required for normalization in each round takes the reduction value s(j) as input. The first-round re-duction value s(1) = ∑
+
+> i
+
+(u(0)  
+
+> i
+
+)2 satisfies s(1) ∈ [1/ n, n ],while subsequent normalized rounds satisfy s(j) ∈ [1/ n, 1] .The theoretical upper bound grows with n, but actual Llama inputs generally cover only a narrower range. Direct approxi-mation over the theoretical interval increases the degree of the inverse-square-root polynomial. We therefore measure the actual range of s(j) for each layer and iteration and generate the corresponding polynomial after multiplying by a safety factor. 
+
+5.2.2 Approximation-Error Proxy and Uniform Toler-ance 
+
+Let τ denote a candidate upper bound on the local approxi-mation error, let ˜Mτ denote the plaintext model that indepen-
+
+Algorithm 1 Homomorphic Softmax using a public statisti-cal shift 
+
+Require: Score vector x, public parameters ̂ U and k, expo-nential polynomial pexp , and inverse-square-root polyno-mial p(j) 
+
+> rsqrt
+
+for round j
+
+Ensure: Softmax approximation u(k) 
+
+> 1:
+
+z ← x −̂ U 
+
+> 2:
+
+u(0) ← pexp (z/2 k) ▷ Slot-wise computation on the main track  
+
+> 3:
+
+for j = 1 , . . . , k do  
+
+> 4:
+
+s(j) ← ∑ni=1 (u(j−1)  
+
+> i
+
+)2 ▷ Reduce to the auxiliary track  
+
+> 5:
+
+λ(j) ← p(j)
+
+> rsqrt
+
+(s(j)) ▷ Auxiliary track  
+
+> 6:
+
+u(j) ← (λ(j)u(j−1) )2 ▷ Slot-wise squaring on the main track  
+
+> 7:
+
+end for  
+
+> 8:
+
+return u(k)
+
+dently injects e ∼ U [−τ, τ ] at each approximation position, and let M0 denote the reference model using exact nonlinear functions. We use 
+
+∆PPL inj (τ ) = PPL ( ˜Mτ ) − PPL (M0) (9) to measure the model’s sensitivity to this error magnitude, and use ∆PPL inj (τ ) ≤ δPPL as the search criterion. Previ-ous work uses similar plaintext error simulation to show that, when τ0 = 2 −12 , the perplexity of Llama does not degrade relative to FP16 inference [12]. We use τ0 as a conservative reference and comparison baseline, rather than as a manda-tory starting point, and test the error magnitude that the model can tolerate under a given δPPL .Directly generating 32 layers of polynomials for every can-didate tolerance requires repeated Remez approximation and full-model evaluation and is computationally expensive. We therefore replace polynomial generation in each round with bounded perturbations that follow the candidate maximum-error range, simplifying the search from “generate polyno-mials and evaluate” to “inject errors and evaluate.” Error injection compares the relative sensitivity of the model to different operators and error magnitudes. It does not repro-duce the deterministic residuals of a particular Remez poly-nomial, nor does it guarantee that the two produce the same PPL. The search results are used only to select candidate bud-gets; model quality must still be evaluated separately after the final polynomials are generated. Specifically, we inject errors at the RMSNorm rsqrt out-puts, Softmax ex outputs, and SiLU outputs in all 32 layers. Because the Softmax auxiliary track necessarily undergoes BS during computation, the inverse-square-root approxima-tions for j1/j2 retain 12-bit precision and are excluded from tolerance relaxation. We first let the four nonlinear classes share a common tol-erance τc and search, under different δPPL values, for the max-imum value satisfying the above injection-test criterion. Ta-ble 3 reports the search results for the current 32-layer model. 8Even when the perplexity increase in the injection test is limited to 0.001 , the candidate common tolerance reaches 
+
+2.258 ×10 −3, which is 9.25 times 2−12 . Under the current ex-perimental protocol, this result indicates that the 12-bit refer-ence configuration is conservative for bounded perturbations and motivates further testing of operator-level error budgets. Table 3: Common approximation tolerances under different injection-test thresholds. All 32 layers share τc; the injection positions for RMSNorm, Softmax, and SiLU are the rsqrt out-put, ex output, and SiLU output, respectively.                          
+
+> δPPL τcvs. 2−12 Measured ∆PPL inj
+> 0.001 2.258 ×10 −39.25 ×−0.00161 0.005 2.354 ×10 −39.64 ×0.00455 0.010 2.403 ×10 −39.84 ×0.00798 0.050 2.838 ×10 −311 .62 ×0.04732
+
+5.2.3 Cost-Aware Joint Error Allocation 
+
+The common tolerance confirms that the 12-bit configuration can be relaxed, but does not exploit differences in error sensi-tivity among operators. Let τ denote the tolerance vector of the four nonlinear classes. The τc1 obtained in the previous section is a common starting point that satisfies the injection-test criterion. To refine it for different operators, we fix the current budgets of all other operators and relax only opera-tor i. We define the maximum tested value that satisfies the joint-injection criterion as the conditional upper bound ̂
+
+τi(τ −i) = max {t ∈ [τi, c i] | ∆PPL inj (τ −i, t ) ≤ δPPL } ,
+
+(10) where τ −i denotes the current budgets excluding operator i,and ci is a predetermined upper bound for the search. This conditional upper bound characterizes the error that can still be allocated to operator i under the current joint configura-tion, rather than an independent upper bound measured while all other operators remain exact. Algorithm 2 directly takes the τc obtained in the previous section as input. It first initializes all four operator classes to τc, then evaluates Equation (10) coordinate by coordinate according to cost priority. Each candidate value is evalu-ated over the complete model while perturbations in the other three classes are also present. Each update therefore becomes the joint starting point for the next search. The entire proce-dure uses only the bounded uniform-perturbation proxy; the polynomials corresponding to the final budgets are generated in Section 5.2.4. 
+
+Algorithm 2 Cost-aware joint allocation of approximation er-rors 
+
+Require: Injection-test threshold δPPL , common tolerance 
+
+τc, operator search upper bounds ci, priority order π =[SiLU , RMSNorm2 , RMSNorm1 , Softmax ], and search precision ϵ
+
+Ensure: Candidate joint perturbation budget τ 
+
+> 1:
+
+τi ← τc for all operators i 
+
+> 2:
+
+for i in π do  
+
+> 3:
+
+l ← τi, r ← ci 
+
+> 4:
+
+while r − l > ϵ do  
+
+> 5:
+
+m ← (l + r)/2 ; τ ′ ← τ ; τ ′ 
+
+> i
+
+← m 
+
+> 6:
+
+if ∆PPL inj (τ ′) ≤ δPPL then  
+
+> 7:
+
+l ← m 
+
+> 8:
+
+else  
+
+> 9:
+
+r ← m 
+
+> 10:
+
+end if  
+
+> 11:
+
+end while  
+
+> 12:
+
+τi ← l 
+
+> 13:
+
+end for  
+
+> 14:
+
+return τ
+
+Because errors from the four operator classes propagate through residual connections, normalization, and subsequent layers, the value of Equation (10) depends on the current τ −i.The conditional upper bounds of the operators therefore can-not be measured independently and then directly combined. The error-allocation result of the operator-wise search also depends on the priority order π.The current strategy first relaxes SiLU. SiLU operates on the FFN intermediate state of width 14336 , and its polyno-mial depth also affects the number of limbs that must be car-ried by the subsequent wide linear layer. When tolerance relaxation causes the polynomial to cross a multiplicative-depth boundary, it can reduce the costs of both nonlinear evaluation and adjacent linear computation. In contrast, a re-duction in the degree of an RMSNorm polynomial does not necessarily change the BS positions in the current execution graph. We therefore search SiLU, RMSNorm2, RMSNorm1, and Softmax in this order. Table 4 reports the joint-search result for δPPL = 0 .001 .The common starting point is τc = 2.258 × 10 −3.The coordinate-wise search successively relaxes SiLU, RM-SNorm2, RMSNorm1, and Softmax to the conditional upper bounds shown in the table. Table 4: Candidate joint approximation-error budget under an injection-test threshold of δPPL = 0 .001 .                          
+
+> Operator Injection site Tolerance τivs. 2−12
+> RMSNorm1 rsqrt output 9.881 ×10 −340 .47 ×
+> Softmax exoutput 3.093 ×10 −312 .67 ×
+> RMSNorm2 rsqrt output 9.881 ×10 −340 .47 ×
+> SiLU SiLU output 1.993 ×10 −281 .65 ×
+
+95.2.4 Polynomial-Coefficient Generation 
+
+The operator-level budgets obtained from the joint search can be used directly as the maximum-error targets for the corre-sponding approximation positions. For layer l of operator 
+
+i, the coefficient generator reads the input interval Ii,l deter-mined in Section 5.1 and solves 
+
+d∗ 
+
+> i,l
+
+= min 
+
+{
+
+d | max 
+
+> x∈Ii,l
+
+|fi(x) − pi,l,d (x)| ≤ τi
+
+}
+
+, (11) Here, τi is the operator budget given in Table 4, and pi,l,d is a degree-d polynomial generated over the interval Ii,l . Because this budget is derived from an error-perturbation proxy, the generated polynomials must still be verified using complete operator outputs and model-perplexity evaluation. Given an interval and degree, the Remez algorithm gener-ates an approximate minimax polynomial, but the required de-gree cannot be directly derived from a target error. We there-fore search for d outside the Remez algorithm: we progres-sively increase the candidate degree and check the maximum absolute error at the extrema. After Equation (11) is satisfied for the first time, we additionally check adjacent lower de-grees and finally determine d∗
+
+> i,l
+
+. For each operator, layer, and Softmax substep, the generated coefficient package records the target function, approximation interval, error threshold, actual degree, and coefficients for use during FHE execution. Over the current approximation intervals for all 32 layers, the joint budget reduces the sum of SiLU polynomial degrees from 2048 to 736 relative to a uniform 12-bit error target. It also reduces the sum of multiplicative depths under the cur-rent evaluation strategy from 199 to 155 . This result shows that relaxing model-level error budgets can translate into re-ductions in polynomial degree and evaluation depth. Sec-tion 6 evaluates its effects on operator latency and end-to-end performance. 
+
+5.2.5 Treatment of CKKS Noise 
+
+The preceding budget search considers only polynomial ap-proximation errors and does not treat CKKS numerical er-ror as an independent search variable. Pilot tests show that, under the current parameters and ordinary signal ranges, the absolute error of a single operation at a regular bootstrapping position is approximately 10 −4 (and can be as low as 10 −6 un-der a higher-precision configuration). This is lower than the 
+
+10 −3–2 × 10 −2 approximation budgets obtained by the cur-rent joint search. This single-point result indicates only the magnitude of CKKS error in the tested configuration and can-not replace an evaluation of cumulative error over the com-plete model. We therefore do not include it in the model-level budget search at present. Instead, Section 6.5 separately mea-sures its incremental effect through the difference between Poly-only and FHE execution. The scheduler in Section 5.4 determines the specific bootstrapping positions and levels. 
+
+## 5.3 Runtime Implementation of Odin Packing 5.4 Assembly and Scheduling of an FHE Transformer Layer 
+
+5.4.1 From Operator Contracts to a Single-Layer Com-putation Graph 5.4.2 Limb-Budget-Based Bootstrapping Schedule 
+
+# 6 Evaluation 
+
+## 6.1 Experimental Setup 
+
+All experiments are conducted on a server equipped with an AMD Ryzen 9 9950X CPU, 128 GB of host memory, and one NVIDIA H100 80 GB GPU. The open-source EasyFHE library provides the underlying CKKS primitives and GPU execution kernels. The model-conversion and experiment drivers are written in Python; PyTorch is used for tensor preparation and reference evaluation, while the Odin packer invokes dedicated GPU kernels. We use Meta-Llama-3-8B with a default input length of S = 128 . The CKKS ring di-mension is N = 2 16 , the modulus chain has a depth of 37, the first and remaining moduli are 60 bits and 59 bits, respec-tively, and dnum = 5 . THOR and Odin use the same model weights, CKKS parameters, and bootstrapping configuration; each scheme uses a linear data path and computational ker-nels matched to its packing scheme. 
+
+## 6.2 Linear-Computation Performance 
+
+This section compares the performance of THOR and Odin on the main linear operators in Llama-3. Table 5 reports plaintext–ciphertext projections, including the QKV, WO ,gate/up, and down projections. Table 6 reports ciphertext– ciphertext computations, including QK ⊤ and P V in atten-tion and the SwiGLU gating product. We further divide the online latency of plaintext– ciphertext projections into packing/encoding, homomorphic evaluation, and rescaling. Both sets of experiments measure Layer 0 with the same model, input, and CKKS parameters. THOR and Odin use computational kernels matched to their respective packing schemes. The results therefore reflect the overall performance of each packing scheme and its corre-sponding linear implementation, rather than only the speedup due to encoding reuse. Table 5: Online latency of THOR and Odin for plaintext– ciphertext projections in Layer 0                                                          
+
+> Pack/Encode (s) Evaluation (s) Rescale (s) Total (s) Speedup Projection THOR Odin THOR Odin THOR Odin THOR Odin QKV 6.72 0.18 3.62 0.91 0.16 0.00 10.50 1.10 9.5×
+> WO2.45 0.06 1.86 0.17 0.19 0.00 4.50 0.24 18 .8×
+> gate/up 14.83 0.55 3.90 2.47 0.52 0.01 19.24 3.02 6.4×
+> down 6.33 0.28 0.66 0.69 0.14 0.00 7.13 0.97 7.4×
+> Total 30.33 1.07 10.03 4.25 1.00 0.01 41.37 5.32 7.8×
+
+10 In Table 5, the total time for plaintext–ciphertext computa-tion decreases from 41 .37 s with THOR to 5.32 s with Odin, corresponding to a 7.8× speedup. The original Pack/Encode bottleneck decreases from 30 .33 s to 1.07 s ( 28 .3×), and its proportion of the total decreases from 73 % to 20 %. Homomorphic-evaluation time decreases from 10 .03 s to 
+
+4.25 s ( 2.4×). In terms of static operation counts, Odin re-duces the number of weight encodings for QKV and gate/up to 1/16 of that required by diagonal packing without reuse, and reduces that for WO and down to 1/8 . These ratios com-pare Odin with the no-reuse diagonal-packing formula as a static reference, rather than with THOR’s measured Encode invocations; they should not be interpreted as an isolated end-to-end THOR–Odin speedup. In the ciphertext–ciphertext path, Odin uses a C–∆ lay-out designed for attention access patterns. This layout pre-aligns Q and K/V , allowing QK ⊤ to directly produce S∆
+
+and allowing P V to directly consume the Softmax output 
+
+P∆. It thereby reduces the rotations required for ciphertext re-arrangement and eliminates intermediate repacking between the two kernels. Because the layout and the correspond-ing computational kernels jointly determine data access and homomorphic operations, we report the complete computa-tion path formed by both and do not attribute the observed speedup to either factor alone. Table 6: Latency of THOR and Odin for ciphertext– ciphertext operations. SiLU (g) ⊙ u includes only element-wise multiplication and excludes SiLU polynomial evalua-tion.                  
+
+> Operator THOR (s) Odin (s) Speedup
+> QK ⊤9.88 0.34 29 .1×
+> P V 2.38 0.46 5.2×
+> SiLU (g)⊙u0.04 0.02 2.1×
+> Total 12.30 0.82 15 .0×
+
+In addition to the linear-computation time reported in the table, THOR uses 0.54 s to adjust the attention input layout and 0.85 s to repack the diagonal Softmax output into the probability copies required by P V . Odin’s S∆ → P∆ →
+
+P V path eliminates the latter intermediate repacking while retaining the QKV input adaptation and the PairFM conver-sion at the attention output. This layout difference and the associated kernels jointly constitute the execution paths com-pared in Table 6. 
+
+## 6.3 Ablation of Nonlinear Precision Allocation 
+
+We use two progressive ablations to evaluate the computa-tional costs of the candidate error budgets obtained in Sec-tion 5.2. The first tests whether replacing uniform 12-bit pre-cision with a common tolerance τc reduces polynomial de-gree and multiplicative depth. Under the same injection-test threshold, the second tests whether joint operator-wise allo-cation of τ further reduces computation over the common-tolerance configuration. We compare three configurations: uniform 12-bit precision, a common tolerance, and joint al-location. All three use the same QuaRot weights, layer-wise approximation intervals, and Remez coefficient-generation procedure, changing only the approximation-error budgets. Softmax-rsqrt is fixed at 12-bit precision in all configurations. Table 7: Nonlinear-polynomial costs under three error bud-gets                                                                          
+
+> Uniform 12-bit Common tolerance Joint allocation Operator τi
+> ∑d∑Lτi
+> ∑d∑Lτi
+> ∑d∑L
+> RMSNorm 12−12 8,032 269 τc8,011 267 9.881 ×10 −37,962 265 RMSNorm 22−12 6,848 269 τc6,806 267 9.881 ×10 −36,741 264 SiLU 2−12 2,048 199 τc1,076 174 1.993 ×10 −2736 155
+> Softmax-ex2−12 544 160 τc288 127 3.093 ×10 −3279 127
+> Softmax-rsqrt 2−12 6,976 479 2−12 6,976 479 2−12 6,976 479 Total –24,448 1,376 –23,157 1,314 –22,694 1,290
+
+Table 7 reports the actual polynomial costs generated by the three configurations. ∑ d and ∑ L denote the sums of polynomial degrees and multiplicative depths, respectively, over 32 layers. After uniform 12-bit precision is relaxed to 
+
+τc = 2 .258 × 10 −3, the total degree of all nonlinear poly-nomials decreases from 24,448 to 23,157, and the total mul-tiplicative depth decreases from 1,376 to 1,314. With joint allocation, the total degree further decreases from 23,157 to 22,694, and the total depth decreases from 1,314 to 1,290. For the highest-priority operator, SiLU, the total degree over 32 layers decreases from 2,048 to 736, and the total depth decreases from 199 to 155. To quantify the observed runtime trend associated with these reductions in degree and depth, we use the polynomials generated under the three error budgets and measure the on-line computation times of each nonlinear stage and the com-plete FFN with the same input and CKKS parameters. Table 8: Online time of each computation stage under three error budgets with Odin packing                         
+
+> Stage Uniform 12-bit (s) Common (s) Joint (s) RMSNorm 10.01 0.01 0.00 Softmax-ex0.11 0.07 0.07
+> Softmax-j10.01 0.01 0.01 Softmax-j20.04 0.05 0.05 RMSNorm 20.01 0.01 0.01 SiLU 0.36 0.22 0.15
+> Tunable stages 0.49 0.30 0.23
+
+Table 8 presents the two progressive comparisons in terms of runtime. The total time of the four nonlinear stages par-ticipating in error allocation decreases from 0.49 s under uni-form 12-bit precision to 0.30 s under the common tolerance, and further to 0.23 s under joint allocation. The runtimes of Softmax-j1 and Softmax-j2, which retain 12-bit precision, re-main nearly unchanged across the three configurations. The reduction in SiLU degree also reduces the FFN execution cost: the complete FFN time decreases from 4.30 s to 4.05 s and then to 3.98 s. These measurements show the correspond-ing runtime reductions under the tested configuration; they are not intended to characterize run-to-run variance. 11 6.4 Single-Layer and Full-Model Performance 
+
+We measure steady-state performance for a representative in-termediate layer. Table 9 reports the runtime of each main stage. The same nonlinear-polynomial configuration and bootstrapping policy are used when profiling both schemes. The breakdown therefore includes the linear projections, lay-out conversions, and implementation-dependent auxiliary work; it is a full-path comparison rather than an attribution of the total difference to one stage. Odin reduces the single-layer linear stage from 38.38 s to 5.65 s and the complete-layer time from 60.87 s to 11.12 s. Table 9: Runtime breakdown of Layer 16                                
+
+> Stage THOR (s) Odin (s) Speedup RMSNorm 0.22 0.49 0.4×
+> QKV projection 5.71 1.09 5.2×
+> QK–Softmax–PV 11.70 1.40 8.4×
+> WOprojection 5.42 0.24 22 .6×
+> gate/up–SiLU–down 27.24 4.32 6.3×
+> Layout conversion 0.92 1.27 0.7×
+> Bootstrap 5.10 2.30 2.2×
+> Other 4.56 0.01 –Total 60.87 11.12 5.5×
+
+To extend from one layer to the complete model, the sys-tem connects 32 Transformer layers in sequence. Each layer receives and outputs FM ciphertexts, so no additional layout conversion is required between layers. After the MLP resid-ual of a layer is completed, the system performs inter-layer bootstrapping to restore the limb budget required by the RM-SNorm and subsequent computation in the next layer. Each layer uses the number of Softmax iterations k deter-mined during calibration, so the computational depths are not identical across layers. Most intermediate layers use k = 2 ;Layers 0–1 use k = 4 , Layers 2 and 14 use k = 3 , and Layer 31 uses k = 5 . A larger k requires more Softmax it-erations and consumes additional depth, so the system adds bootstrapping operations within these layers. We refer to the consecutive server-side FHE evaluation of all 32 Transformer layers as end-to-end online computation. With the same model, 128-token input, CKKS parameters, and hardware configuration, the end-to-end online time is 
+
+1651 .9 s for THOR and 366 .4 s for Odin, corresponding to a 4.51 × speedup. 
+
+## 6.5 Correctness and Model Quality 
+
+This section evaluates model quality after Llama-3 is con-verted into an FHE computation graph. We compare Exact, Poly-only, and FHE execution on the same model and inputs. Exact directly executes the original model and serves as the quality baseline. Poly-only replaces nonlinear functions with fixed Remez polynomials and executes them in plaintext to measure the quality loss caused by polynomial approxima-tion; we report coefficients for both uniform 12-bit precision and joint allocation. FHE performs complete CKKS infer-ence with the same polynomial configuration to further mea-sure the errors introduced by homomorphic operations and bootstrapping. Table 10: Model quality under different polynomial configu-rations and execution paths.                
+
+> Execution path NLL PPL ∆PPL (vs. Exact) Exact 2.539 12.67 –Poly-only 12-bit 2.549 12.79 0.122 Poly-only joint allocation 2.549 12.79 0.119 FHE XXX XXX XXX
+
+We compute perplexity over eight WikiText-2 samples of length 128 , comprising 1016 evaluation tokens. Exact has a PPL of 12 .67 . The uniform 12-bit and joint-allocation Poly-only paths both have a PPL of 12 .79 , with ∆PPL values of 
+
+0.122 and 0.119 relative to Exact, respectively. This result shows that after relaxing approximation tolerances by opera-tor, the plaintext-polynomial quality is comparable to that of the 12-bit baseline. This result directly evaluates the fixed Remez polynomials. Error injection is used only to com-pare sensitivity and select candidate budgets, so its ∆PPL need not numerically match the ∆PPL of the final polynomi-als. With the same polynomial configuration, the final FHE PPL is XXX, a further change of XXX relative to Poly-only; this difference measures the incremental error introduced by CKKS operations and bootstrapping. In a separate 128-token prefill regression case, all three FHE repetitions decode the expected next token. 
+
+## 6.6 Comparison with Existing FHE LLM Sys-tems 
+
+Table 11 compares Odin with representative non-interactive FHE Transformer/LLM systems. THOR and MOAI evalu-ate BERT-base, whereas Scaling up Privacy-Preserving ML evaluates Llama-2-7B and encrypts the final 128 tokens of a 4096-token input. Because the models, encrypted-input ranges, hardware counts, and timing boundaries differ, the values in the table illustrate implementation scale and exe-cution protocols and are not used to compute cross-paper speedups. In comparison, Odin evaluates a 128-token pre-fill protocol for Llama-3-8B on a single H100 with an online latency of 366 .4 s. Table 11: Comparison with existing FHE Transformer/LLM systems. Latencies are not directly comparable because the models, encrypted ranges, and hardware differ.                        
+
+> System Model Input protocol Hardware Latency THOR [10] BERT-base 128 encrypted 1×A100 602.26 s MOAI [16] BERT-base 128 encrypted 1×H200 141.3 s Scaling [12] Llama-2-7B 4096 total, 128 en-crypted 8×RTX 4090 85 s ODIN Llama-3-8B 128-token Prefill 1×H100 366 .4s
+
+12 7 Conclusion 
+
+We present ODIN, a non-interactive FHE inference system for Llama-3. To address the large amount of redundant weight encoding produced by THOR-style packing in wide linear projections, Odin uses a feature-major layout to unify resid-ual and inter-layer interfaces and constructs short-lived spe-cialized layouts for linear projections and attention. This design reuses encoded weight diagonals. Within attention, 
+
+QK ⊤ produces scores that Softmax can consume directly, and P V directly consumes the resulting probabilities. The system further combines input-interval calibration, minimax polynomial approximation, and model-level joint error allo-cation to implement RMSNorm, Softmax, and SiLU, and as-sembles these operators into a complete CKKS computation graph for Llama-3. For Llama-3-8B with a 128-token input on a single NVIDIA H100 80 GB GPU, Odin reduces the single-layer plaintext–ciphertext projection time from 41 .37 s to 5.32 sand the execution time of an intermediate layer from 60 .87 sto 11 .12 s. The online time for the complete 32-layer ci-phertext computation decreases from 1651 .9 s with THOR to 
+
+366 .4 s with Odin, corresponding to a 4.51 × speedup, with peak device memory usage of 58 .9 GiB. These results show that the packing scheme for an FHE LLM determines not only the operation counts of an individual matrix multipli-cation, but also whether weight encoding, inter-operator rep-resentations, and layer-level scheduling can form an efficient complete execution path. Future work can extend this cross-layer interface to more models and input scales and further co-optimize packing, nonlinear precision, and bootstrapping schedules. 
+
+# References 
+
+[1] Saleh Ashkboos, Amirkeivan Mohtashami, Maximil-ian L. Croci, et al. QuaRot: Outlier-free 4-bit inference with rotation of LLMs. In NeurIPS , 2024. PDF: refer-ences/QuaRot.pdf. [2] Youngjin Bae, Jung Hee Cheon, Guillaume Hanrot, Jai Hyun Park, and Damien Stehlé. Plaintext-ciphertext matrix multiplication and FHE bootstrapping: Fast and fused. In Advances in Cryptology – CRYPTO 2024 ,2024. [3] Jung Hee Cheon, Andrey Kim, Miran Kim, and Yong-soo Song. Homomorphic encryption for arithmetic of approximate numbers. In Advances in Cryptology – ASI-ACRYPT 2017 , 2017. [4] Wonhee Cho, Guillaume Hanrot, Taeseong Kim, Minje Park, and Damien Stehlé. Fast and accurate homomor-phic softmax evaluation, 2024. [5] Ronald A. DeVore and George G. Lorentz. Constructive Approximation , volume 303 of Grundlehren der mathe-matischen Wissenschaften . Springer-Verlag, 1993. [6] Ye Dong, Wen-jie Lu, Yancheng Zheng, Haoqi Wu, Derun Zhao, Jin Tan, Zhicong Huang, Cheng Hong, Tao Wei, and Wenguang Chen. PUMA: Secure inference of LLaMA-7b in five minutes, 2023. [7] Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, et al. The Llama 3 herd of models, 2024. [8] Meng Hao, Hongwei Li, Hanxiao Chen, Pengzhi Xing, Guowen Xu, and Tianwei Zhang. Iron: Private infer-ence on transformers. In Advances in Neural Infor-mation Processing Systems , volume 35, pages 15718– 15731, 2022. [9] Wen-jie Lu, Zhicong Huang, Zhen Gu, Jingyu Li, Jian Liu, Cheng Hong, Kui Ren, Tao Wei, and Wenguang Chen. BumbleBee: Secure two-party inference frame-work for large transformers. In Network and Distributed System Security Symposium , 2025. [10] Jungho Moon, Dongwoo Yoo, Xiaoqian Jiang, and Mi-ran Kim. THOR: Secure transformer inference with ho-momorphic encryption, 2025. Local reference PDF; fi-nal publication metadata to verify before submission. [11] Qi Pang, Jinhao Zhu, Helen Möllering, Wenting Zheng, and Thomas Schneider. BOLT: Privacy-preserving, ac-curate and efficient inference for transformers. In 2024 IEEE Symposium on Security and Privacy , pages 4753– 4771, 2024. [12] Jaiyoung Park, Sejin Park, Jai Hyun Park, Jung Ho Ahn, Jung Hee Cheon, Guillaume Hanrot, Jung Woo Kim, Minje Park, and Damien Stehlé. Scal-ing up privacy-preserving ML: A CKKS im-plementation of Llama-2-7B, 2026. PDF: refer-ences/Park_et_al_Llama2_FHE_arxiv2601.18511.pdf; complete author list. [13] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in Neural Information Processing Systems ,2017. [14] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient streaming language models with attention sinks. In International Confer-ence on Learning Representations , 2024. [15] Jiawen Zhang, Jian Liu, Xinpeng Yang, Yinghao Wang, Kejia Chen, Xiaoyang Hou, Kui Ren, and Xiaohu Yang. Secure transformer inference made non-interactive. In 
+
+Network and Distributed System Security Symposium ,2025. [16] Linru Zhang, Xiangning Wang, Jun Jie Sim, Zhicong Huang, Jiahao Zhong, Huaxiong Wang, Pu Duan, and Kwok-Yan Lam. MOAI: Module-optimizing architec-ture for non-interactive secure transformer inference, 2025. Local reference PDF: references/MOAI.pdf; fi-nal publication metadata to verify before submission. 13

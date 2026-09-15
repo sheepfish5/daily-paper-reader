@@ -1,0 +1,214 @@
+Title: Trillion-Parameter MoE in a Box: Decoupling Memory Provisioning with High-Bandwidth Flash
+
+URL Source: https://arxiv.org/pdf/2609.15636v1
+
+Published Time: Tue, 15 Sep 2026 02:37:04 GMT
+
+Number of Pages: 4
+
+Markdown Content:
+1
+
+# Trillion-Parameter MoE in a Box: Decoupling Memory Provisioning with High-Bandwidth Flash 
+
+Pengfei Xia, Tuo Hao, Shengwei Li, Jinjing Chen, Shiru Wei, Wenjun Zou, Rui Zhang, and Hui Zang 
+
+Abstract —An MoE appliance for trillion-parameter models at low concurrency must host terabytes of weights on one node and serve prefill and decode with fixed resources. Combining operator analysis of two trillion-parameter MoE models, a measured expert routing trace, and agentic serving traces over multiple turns, we explore a design space spanning High-Bandwidth Flash (HBF) and DRAM configurations, bandwidth exposure, and near-data compute. We find that state bandwidth and HBF transport form two largely orthogonal knees and address two provisioning questions. Q1: Once weights move to HBF, what bandwidth-to-capacity ratio does DRAM require? With a 256-GB floor for the state tier, both models meet a 1.10 × completion time target at ratios of only 1.4–4.0 s −1,roughly an order of magnitude below HBM3e’s 33 .3 s −1. Q2: As HBF internal bandwidth scales with capacity, must bandwidth to the host scale proportionally? Six HBF packages expose 384 GB/s per package to the host, 2.30 TB/s aggregate and 62.5% below the 6.14 TB/s full exposure reference, while more packages reduce required bandwidth per package at the same target. 
+
+Index Terms —High-bandwidth flash, mixture-of-experts, LLM inference, memory hierarchy, compact inference systems 
+
+✦
+
+1 INTRODUCTION 
+
+# DATACENTER LLM serving commonly relies on contin-uous batching and Prefill–Decode disaggregation so that large request pools can amortize model residency and independently provision the two phases [1]. We study a dif-ferent deployment regime: a compact, low-concurrency trillion-parameter MoE appliance . The entire model must remain resident in one node, concurrency is typical 1–8, and cold prefill, cache-hit incremental prefill, speculative verification, and decode must share one fixed resource set. In this regime, the first-order challenge is model resi-dency. Quantized trillion-parameter MoE weights occupy TB scale [2], [3], making an HBM-only appliance difficult to scale within a compact system. High-Bandwidth Flash (HBF) provides a high density tier well matched to the read-dominant access pattern of model weights, offering hun-dreds of GB per package and TB/s-class read bandwidth [4], [5], [6]. HBF makes trillion-parameter residency practical in a compact node; once weights are separated from runtime state, however, DRAM provisioning and HBF bandwidth delivery must both be reconsidered. An HBM-centric organization couples resources driven by different workload behaviors: weight capacity by model size, weight delivery by expert activation and reuse, and runtime-state demand by context length and attention be-havior. Once weights move to HBF, DRAM no longer scales with model residency. And as model scale grows, more HBF packages host weights and their aggregate internal bandwidth grows, so proportional exposure would make host I/O scale with model size as well. This separation leads to two provisioning questions. Q1: Once weights move to HBF, what bandwidth-to-capacity ratio does the state-storage DRAM require? Q2: As HBF internal bandwidth scales with capacity, must host-facing bandwidth scale proportionally? Prior HBF studies cover 
+
+The authors are with Huawei Technologies Co., Ltd. 
+
+TABLE 1 Model architecture and memory characteristics.                                   
+
+> Metric DSV4-Pro Kimi-K3
+> Total / activated parameters 1.6T / 49 B2.8T / 104 BLayers 61 93
+> Routed experts 384 , Top-6896 , Top-16
+> Expert core dims 7168 →3072 →7168 3584 →3072 →3584
+> Attention 30 CSA + 31 HCA 69 KDA + 24 Gated MLA Quantized weights 865 .0 GB 1560 .0 GB
+> State, 1M tokens, B=1 4.66 GB 28 .99 GB
+
+device characterization, HBM–HBF placement, system in-tegration, and direct HBF data paths [7], [5], [6], [8]. This work quantifies the state-tier and host-transport provision-ing knees that emerge after model weights reside in HBF. We explore a design space covering HBF and DRAM configurations, HBF bandwidth exposure, and near-data compute. With model weights in HBF, both models meet a 1.10 × completion time target at DRAM bandwidth-to-capacity ratios of 4.0 and 1.4 s −1 for DSV4-Pro and Kimi-K3, respectively, well below HBM3e’s 33 .3 s −1. An LPCAMM2 ×8 tier reaches the required bandwidth at 
+
+1.09 TB /s, whereas similar 256 -GB configurations fall short for DSV4-Pro. For HBF, six packages remain within 10% 
+
+of the high bandwidth reference with 384 GB /s exposed per package, or 2.30 TB /s in aggregate, 62 .5% below the 
+
+6.14 TB /s reference. More packages increase aggregate in-ternal bandwidth and reduce required host bandwidth per package at the same target. 
+
+2 WORKLOAD AND DESIGN SPACE 
+
+We use DSV4-Pro [2] and Kimi-K3 [3] as representative trillion-parameter MoE workloads. As summarized in Ta-ble 1, both models combine TB-scale weights with sparse expert activation and long-context attention, but differ sub-stantially in MoE and attention organization. arXiv:2609.15636v1 [cs.AR] 14 Sep 2026 21 2 3 4 5 6 7 8 9 10 11 12 13           
+
+> Tokens per active routed expert, Te
+> 1510 15 20 25 30 35 40 43
+> MoE layer Speculative decoding with one accepted token and three draft tokens
+> 40 50 60 70 80 90 100
+> Fraction of active experts (%)
+> Te= 1 Te≤ 4
+> 0.05 0.1 0.3 124816 32
+> Number of active experts (log scale)
+> Fig. 1. Per-layer routed-expert occupancy of DSV4-Flash [2].
+
+Weight and runtime state have different scaling behavior. At a 
+
+1M-token context, persistent state occupies only 4.66 GB 
+
+for DSV4-Pro and 28 .99 GB for Kimi-K3. At concurrency eight, weights account for 95 .9% and 87 .1% of total resi-dency. The TB-scale capacity requirement of an appliance is thus imposed primarily by model weights; the DRAM left after weight migration serves a smaller dynamic-state working set. This separation motivates Q1: the bandwidth-to-capacity ratio appropriate for state storage need not in-herit that of the memory selected to host the model. 
+
+Sparse routing makes weight traffic difficult to reuse. A router trace from a SPEED-Bench code [9] session shows that 16 
+
+effective tokens activate 51 .6 experts on average, with 57 .8% 
+
+of activated experts receiving one token (Figure 1). Routed-expert execution often operates with a small effective M
+
+dimension, limiting weight reuse and making decode sensi-tive to weight delivery, the behavior behind Q2. 
+
+Dynamic-state traffic is less bandwidth intensive. Compression and sparsity reduce attention state traffic, while speculative verification increases computation per state read. For ex-ample, Kimi-K3’s absorbed MLA core reads about 9.7 GB 
+
+of latent KV per layer at batch size 8 and a 1M-token sequence length; increasing effective tokens per verification step from 1 to 6 changes state traffic by less than 0.1% , while arithmetic intensity rises from 182 .3 to 1092 .9 FLOP /B.
+
+System model. We model the appliance as a central com-pute die connected to a DRAM state tier and multiple HBF packages hosting model weights. The compute die is held fixed at 450 TFLOP /s FP8 throughput with an M -dimension partition of 16 as modeling constants, isolating memory-system effects. The state tier sweeps three represen-tative module points (HBM3e: 36 GB , 1.2 TB /s per stack; SOCAMM2: 128 GB , 153 .6 GB /s per module; LPCAMM2: 
+
+64 GB , 136 .5 GB /s per module), whose bandwidth-to-capacity ratios are 33 .3, 1.20 , and 2.13 s −1. Each modeled HBF provides 512 GB and Bint = 1 .6 TB /s read band-width, with 16 NAND dies, 96 planes per die, 4 KB pages, and tR = 4 μs [6], [4], modeling page granularity, die–plane parallelism, and read amplification. Part of Bint is exposed as Bext , defining the exposure ratio ηexp = Bext /B int . We sweep Bext in host-link quanta of 96 GB /s (1–16 per HBF); at 
+
+16 GT /s one quantum equals one x64-equivalent payload group at 75% efficiency. Optionally, each HBF may carry an FP8 engine ( 8 × 1024 MAC /cycle at 1 GHz , 16 .8 MB LHB [5]) for low-use routered experts. 
+
+Methodology. We enumerate DRAM technology and count, HBF count ( {1, 2, 4, 6, 8, 10 , 12 }), host-link quanta per HBF, and near-HBF compute ( {Off , On }), removing designs that violate weight capacity, runtime-state capacity, or execu-tion constraints. Completion time denotes the end-to-end completion time of a complete multi-turn conversation. Evaluation uses three multi-turn agentic traces with distinct execution compositions: Trace A is more mixed and prefill-heavy ( 32 turns, 68 K– 261 K-token contexts, 94 .1% cache-hit rate), Trace B combines cached contexts with a larger decode share ( 29 turns, 18 K– 106 K-token inputs, 94 .6% hit rate), and Trace C has the largest pure-decode fraction ( 52 
+
+turns, 18 K– 141 K-token inputs, 96 .6% hit rate). Each trace is replicated into 8 sessions with mean 100 ms exponential inter-arrival gaps. Serving is modeled with LLMServingSim 2.0 [10], using continuous batching, chunked prefill beyond 
+
+8,192 tokens, and speculative verification with 6 effective tokens per step and acceptance length 4.27 [11]. Routed-expert occupancy is modeled by a P ´ olya-urn calibrated on the SPEED-Bench traces and instantiated with each model’s expert count and Top-K.
+
+3 EVALUATION 
+
+All times are normalized to a DRAM-bandwidth-saturated reference, circled in Figure 2: HBM3e ×2 with HBF ×4 at full host exposure and near-HBF execution off. Its 2.4 TB /s ag-gregate state bandwidth lies in the saturated region, where additional DRAM bandwidth yields little improvement; we use this point to define 1.00 × and the 1.10 × provision-ing contour, a target allowing up to 10% completion-time degradation. The figure spans aggregate DRAM bandwidth (vertical) and per-HBF host-link quanta (horizontal) over both models, three HBF counts, and three traces; markers show realizable HBM3e/LPCAMM2/SOCAMM2 points, with hatching denoting near-HBF execution off. Vertical sweeps expose the state-bandwidth knee at sufficient host exposure; horizontal sweeps expose the HBF host-link knee at sufficient state bandwidth. The dominant structure in every panel is an L-shaped iso-performance landscape. Completion time degrades sharply when either resource falls into its severely starved region, roughly one to two host-link quanta per HBF or 0.14 –
+
+0.31 TB /s of DRAM, and the two legs of the L barely inter-act: raising DRAM bandwidth to 9.6 TB /s cannot rescue a one-quantum design, and opening all sixteen quanta cannot rescue a 0.14 TB /s state tier. We describe the two knees as largely orthogonal : after one resource leaves its severely starved region, additional bandwidth in that dimension has little effect on the knee of the other. The goal of provisioning is therefore the lower-left knee of the 1.10 × contour, the lowest-resource operating point at which neither bandwidth dimension is substantially over-provisioned. 
+
+3.1 The State-Tier Knee Sits Far Below HBM 
+
+Reading the vertical direction at adequate exposure ( ≥ 8
+
+quanta), the landscape is steep below 0.61 TB /s, moderate up to 1.2 TB /s, and nearly flat beyond: the worst-case state-bandwidth threshold for the 1.10 × target sits around 
+
+1 TB /s, while all HBM3e rows ( 2.4–9.6 TB /s) lie deep in the saturated region. An HBM-inherited state tier is thus massively over-provisioned once weights move to HBF, and the LPDDR rows already straddle the knee. 30.14 0.31 0.61 1.2 2.4 4.8 9.6 HBF×4 HBF×6 HBF×8 HBF×4 HBF×6 HBF×8                                               
+
+> 0.14 0.31 0.61 1.2 2.4 4.8 9.6
+> 1 2 46810 12 14 16
+> 0.14 0.31 0.61 1.2 2.4 4.8 9.6
+> 1 2 46810 12 14 16 1 2 46810 12 14 16 1 2 46810 12 14 16 1 2 46810 12 14 16 1 2 46810 12 14 16
+> 0.85 0.90 1.00 1.20 1.50 2.00
+> Normalized time
+> Trace A Trace B Trace C
+> Aggregate DRAM bandwidth (TB/s)
+
+DSV4-Pro Kimi-K3 
+
+Host-Link quanta per HBF       
+
+> HBM3e LPCAMM2 SOCAMM2 NDP on NDP off 1.00x contour Performance baseline
+
+Fig. 2. Completion-time landscape over state-tier bandwidth and per-HBF host-link bandwidth. Contours are normalized to the circled DRAM-bandwidth-saturated reference. 0 256 512 1024 128 512 2048 8192    
+
+> Aggregate DRAM bandwidth (GB/s)  DSV4-Pro
+> capacity bound ×6 ×4 ×2
+> 33.33 s −1
+> 2.13 s −1
+> 1.20 s −1
+> 1.00× 1.10×
+> B/C=14.1s −1
+> B/C=4.0s −1
+> 0256 512 1024
+> Kimi-K3
+> capacity bound ×6 ×4 ×2
+> 33.33 s −1
+> 2.13 s −1
+> 1.20 s −1
+> 1.00× 1.10×
+> B/C=23.4s −1
+> B/C=1.4s −1
+> 1.0 1.1 1.2 1.3 1.4 1.5
+> Norm. time
+> Installed DRAM capacity (GiB)
+
+Fig. 3. State-tier bandwidth–capacity provisioning for Trace A at HBF ×4.
+
+Figure 3 quantifies this at HBF ×4 on Trace A by placing every feasible module count on its technology’s bandwidth– capacity curve. Two constraints structure the space. First, 
+
+capacity : the first feasible module-count point lies in the 
+
+256 -GB class (shaded bound), which excludes HBM3e ×6
+
+(216 GB ) despite its 7.2 TB /s. It is set by the stricter Kimi-K3 case, where a 1M-token sequence occupies about 29 GB 
+
+of persistent state and eight concurrent sequences require about 232 GB before serving overhead. Second, performance :at the 256 -GB provisioning floor, the 1.10 × performance boundary corresponds to bandwidth-to-capacity ratios of 
+
+4.0 s −1 for DSV4-Pro and 1.4 s −1 for Kimi-K3 (star markers), versus 33 .3 s −1 for HBM3e, an 8×–24 × relaxation. Because each device has a fixed bandwidth-to-capacity ratio rdev , bandwidth demand translates into excess ca-pacity: Cinstall ≥ max( Cmin , B 1.10 /r dev ). LPCAMM2 ×4
+
+and SOCAMM2 ×2 meet the capacity floor, yet for DSV4-Pro they remain outside the 1.10 × line (SOCAMM2 ×2 at 
+
+≈ 1.5×): their ratios of 2.13 and 1.20 s −1 undershoot the required 4.0 s −1 at that capacity, so LPCAMM2 reaches the boundary only at ×8 (512 GB , 1.09 TB /s). Kimi-K3 requires less bandwidth: LPCAMM2 ×4 already sits at the boundary, and both ×8 LPDDR configurations lie within it. The state tier is sized by the knee, capacity first and then aggregate bandwidth; the ratio of the weight-hosting memory no longer enters the decision. 
+
+3.2 Host Bandwidth Need Not Track Internal Bandwidth 
+
+Reading the horizontal direction, time improves steeply from one to two to four quanta per HBF, the knee sits at four to eight quanta depending on model and trace, and from twelve to sixteen quanta the contours are flat: exposing the full 1.6 TB /s internal bandwidth is unnecessary. Concretely, at HBF ×6 with four quanta per HBF each package exposes 
+
+4 × 96 = 384 GB /s, ηexp = 0 .24 , or 2.30 TB /s in aggregate, 
+
+62 .5% below the 6.14 TB /s full-exposure reference ( 4 HBF 
+
+× 16 quanta per HBF × 96 GB /s per quantum); yet with an LPDDR-class state tier both models remain at or inside the 
+
+1.10 × boundary across traces. 
+
+HBF count is itself a performance dimension. From HBF ×4
+
+to ×6 to ×8, the green region expands toward the lower-left: completion time is reached with fewer quanta per package. HBF ×4 at sixteen quanta and HBF ×8 at eight quanta deliver the same 6.14 TB /s host-facing aggregate, yet on Trace C for DSV4-Pro the former remains at ≈ 1.05 –1.10 × while the latter enters the 0.90 × region; the packages contribute internal read bandwidth, die–plane parallelism, and near-HBF compute that no per-link widening of four packages can replicate. Capacity alone requires HBF ×2 for DSV4-Pro ( 865 GB ) and HBF ×4 for Kimi-K3 ( 1560 GB , beyond three packages’ 1536 GB ), yet capacity-minimal provision-ing, NHBF = ⌈model size /package capacity ⌉, leaves perfor-mance on the table. 
+
+3.3 The Knees Are Model- and Trace-Dependent 
+
+The two models exhibit different state-bandwidth land-scapes because their attention organization, MoE structure, 4
+
+and runtime operator composition differ. On Trace A, the 
+
+1.10 × contour lies at approximately 0.6–1.2 TB /s for DSV4-Pro and 0.4–0.6 TB /s for Kimi-K3, corresponding to 4.0
+
+and 1.4 s −1 at the common 256 -GB state-capacity floor. Prefill is Cube-dominated ( 63 –74% of operator time) for both workloads, whereas decode contains different fractions of fused attention and Cube kernels: Kimi-K3 shifts toward long fused attention ( ≈ 48% Fused versus ≈ 50% Cube) while DSV4-Pro remains ≈ 86% Cube. Speculative verifica-tion further amortizes attention-state reads across multiple effective tokens. A smaller fraction of Kimi-K3’s makespan is therefore sensitive to central DRAM bandwidth, matching its flatter contours. DSV4-Pro Kimi-K3 DSV4-Pro Kimi-K3 DSV4-Pro Kimi-K3 020 40 60 80 100          
+
+> Fraction of makespan (%)
+> Trace A Trace B Trace C Prefill DSV4-Pro Kimi-K3 Decode
+> Trace-level phase composition Trace A: operator composition
+> Prefill P/D Mixed Decode Fused Vector Cube
+
+Fig. 4. Workload composition across traces and operators. 
+
+The landscape is equally trace-dependent. The pure-decode share of makespan grows from ≈ 11% (Trace A) to 
+
+≈ 28% (Trace B) and ≈ 50% (Trace C), and because mixed phases batch many tokens per activated expert while pure decode strains weight delivery, the link knee shifts right-ward and steepens from Trace A to Trace C: configurations that sit comfortably inside 1.10 × on Trace A fall outside it on Trace C, while HBF-rich designs on Traces B and C open sub-1.00 × regions ( 0.90 ×) against the capacity-stressed ref-erence. The traces differ simultaneously in context length, cache-hit rate, and phase composition, and context length alone does not explain these shifts. The provisioning knee thus depends on end-to-end phase composition in addition to context length and cache-hit behavior. 
+
+3.4 Packaging Implications 
+
+The two bandwidth knees reduce pressure on package I/O. The state tier can be provided by board-level LPCAMM2 or SOCAMM2 modules; an LPCAMM2 ×8 tier supplies the required 512 GB and 1.09 TB /s (SOCAMM2 ×8: 1,024 GB ,
+
+1.23 TB /s), removing state capacity and bandwidth from compute-die shoreline competition. On the HBF side, the 
+
+1.10 × operating point requires only partial exposure of each package’s internal bandwidth, and the per-package link width falls further as HBF capacity scales. UCIe-S provides a standard-package integration path on organic substrates, while UCIe-A provides higher link density for advanced packaging [12]. The reduced host-exposure requirement moves the HBF appliance toward a regime that can be served by lower-density package links. Final package feasibility still depends on die place-ment, routing, reach, signal integrity, and power delivery. The design-space exploration therefore shows that host-I/O bandwidth density need not scale proportionally with HBF capacity, relaxing one of the key pressures that motivates advanced packaging. 
+
+4 CONCLUSION 
+
+HBF changes more than model capacity. Once weights and runtime state are separated, three resources can follow three workload drivers: HBF capacity follows resident weights, state bandwidth follows runtime state, and host transport follows activated-expert traffic. State bandwidth and HBF host transport exhibit largely separable performance knees, so the two resources can be provisioned independently once severe starvation is avoided. Across two trillion-parameter models, a common 256 -GB state tier needs only 1.4–4.0 s −1,and six HBF packages expose only 384 GB /s each at a 1.10 ×
+
+target; added packages further reduce per-package expo-sure. Partial exposure in turn relaxes package-I/O pressure, making standard organic-substrate packaging a viable path for a trillion-parameter appliance. 
+
+REFERENCES 
+
+[1] Y. Zhong, S. Liu, J. Chen, J. Hu, Y. Zhu, X. Liu, X. Jin, and H. Zhang, “{DistServe }: Disaggregating prefill and decoding for goodput-optimized large language model serving,” in 18th USENIX sympo-sium on operating systems design and implementation (OSDI 24) , 2024, pp. 193–210. [2] A. Xu, B. Lin, B. Xue, B. Wang, B. Xu, B. Wu, B. Zhang, C. Lin, C. Dong, C. Ling et al. , “Deepseek-v4: Towards highly efficient million-token context intelligence,” arXiv preprint arXiv:2606.19348 , 2026. [3] K. Team, T. Bai, Y. Bai, Y. Bao, J. Cai, X. Cai, P. Cao, Y. Cao, Z. Chai, Y. Charles et al. , “Kimi k3: Open frontier intelligence,” 
+
+arXiv preprint arXiv:2607.24653 , 2026. [4] “High bandwidth flash high-level base die specification,” Open Compute Project, Tech. Rep. Version 0.7.0, Aug. 2026, released Au-gust 3, 2026. [Online]. Available: https://www.opencompute.org/ documents/ocp-hbf-architecture-specification-v0-7-0-final-pdf [5] M. Ha, E. Kim, and H. Kim, “H 3: Hybrid architecture using high bandwidth memory and high bandwidth flash for cost-efficient llm inference,” IEEE Computer Architecture Letters , 2026. [6] X. Wang, Y. Xue, X. Sun, X. Zhang, C. Dou, X. Li, and X. Chen, “Flashaccel: Leveraging high-bandwidth flash for high-throughput llm inference,” arXiv preprint arXiv:2607.10186 , 2026. [7] D. Son, Y. Park, H. Cho, H. Ham, O. Mutlu, S. Lee, G. Kim, and J. Park, “Exploring high-bandwidth flash for modern llm infer-ence: Opportunities and challenges,” IEEE Computer Architecture Letters , 2026. [8] S. Kim et al. , “Beyond capacity: Scalable MoE LLM inference via high-bandwidth flash with direct GPU and HBM paths,” arXiv preprint arXiv:2608.14333 , 2026. [9] T. Abramovich, M. Ashkenazi, I. Putterman, B. Chislett, T. Mitra, B. D. Rouhani, R. Zilberstein, and Y. Geifman, “Speed-bench: A unified and diverse benchmark for speculative decoding,” arXiv preprint arXiv:2604.09557 , 2026. [10] J. Cho, H. Choi, G. Heo, and J. Park, “Llmservingsim 2.0: A unified simulator for heterogeneous and disaggregated llm serving in-frastructure,” in 2026 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) . IEEE, 2026, pp. 1–14. [11] X. Cheng, X. Yu, C. Shao, J. Li, Y. Xiong, Y. Qian, J. Zhu, S. Ma, X. Zhang, J. Ye et al. , “Dspark: Confidence-scheduled specula-tive decoding with semi-autoregressive generation,” arXiv preprint arXiv:2607.05147 , 2026. [12] UCIe Consortium, “UCIe 3.0 specification,” https://www. uciexpress.org/specifications, 2025, standard (organic substrate) package data-rate table includes 4–32 GT/s since UCIe 1.0.

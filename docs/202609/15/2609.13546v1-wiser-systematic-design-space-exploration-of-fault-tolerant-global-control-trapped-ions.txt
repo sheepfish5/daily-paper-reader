@@ -1,0 +1,1098 @@
+Title: WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions
+
+URL Source: https://arxiv.org/pdf/2609.13546v1
+
+Published Time: Tue, 15 Sep 2026 00:19:51 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 
+
+## Scott Jones 
+
+Department of Computer Science and Technology University of Cambridge Cambridge, United Kingdom 
+
+sj665@cam.ac.uk 
+
+## Song-qing-hao Yang 
+
+Department of Physics University of Cambridge Cambridge, United Kingdom 
+
+sqhy2@cam.ac.uk 
+
+## Prakash Murali 
+
+Department of Computer Science and Technology University of Cambridge Cambridge, United Kingdom 
+
+pm830@cam.ac.uk 
+
+## Abstract 
+
+Trapped-ion quantum computers are a leading candidate for scalable fault-tolerant quantum computing, but conventional Quantum Charge-Coupled Device (QCCD) architectures face severe wiring and power constraints as systems scale. The recently proposed WISE promise orders-of-magnitude reductions in wiring complexity but fundamentally alter the hardware–software interface, making it unclear whether such restrictive architectures can feasibly execute quantum error correction (QEC) and eventually support fault-tolerant workloads. We present WISER, a cross-layer architectural design-space exploration framework for globally controlled trapped-ion systems, to determine whether WISE can support early FTQC, and what hardware/compiler/QEC choices are needed. WISER combines novel WISE-specific compilation, noise modelling, and simulation and integrated them into a unified framework. WISER provides compar-ative lower-bound estimates of logical clock speed and logical error rate, rather than absolute hardware prediction, enabling us to identify viable operating regions while ruling out infeasible ones. To our knowledge, it is the first systematic design space exploration study targeted at WISE and scalable architectures beyond QCCD. Using WISER, we identify a narrow feasible design space requiring two-ion traps, moderate control multiplexing, aggressive recooling, and high-rate bivariate-bicycle codes. Even under ∼ 10 ×
+
+improvements in physical errors, the lower-bound cycle time to achieve < 10 −8 logical error is ≈ 100 𝑚𝑠 , which is 3 × slower than local control. These results expose a fundamental trade-off between wiring scalability and logical throughput, suggesting that practical early fault-tolerant operation requires complementary > 10 × physical error rate reductions along with substantial > 100 × reduction in fault-tolerant circuit-depth. 
+
+## 1 Introduction 
+
+Quantum computing has the potential to transform fields such as cryptography, chemistry, material science, and op-timisation by solving computational problems beyond the practical reach of classical computers [30, 40, 103], e.g. RSA factoring [37], elliptic-curve cryptanalysis [39], or quantum chemistry [7, 63]. However, practical quantum advantage is a formidable challenge, with minimum requirements of ≈ 10 2–10 3 logical qubits operating at error rates ≪ 10 −8 [12, 121], while state-of-the-art physical error rates are > 10 −4 [48]. To bridge this gap, we require quantum error correction (QEC). Multiple platforms are racing toward this goal with recent demonstrations of QEC on superconducting [3], trapped-ions [11, 93, 99, 125] and neutral atom qubits [17, 94]. One issue is fault-tolerant qubits encode the information of a single qubit across ∼ 100s of physical qubits, leading to pro-hibitive qubit-counts for practical workloads, with recent estimates indicating millions of qubits are needed [12, 37, 87]. As we transition early fault-tolerant quantum computing, improving these resource requirements through efficient, platform-specific QEC architecture design is becoming in-creasingly important [13, 25, 39, 117, 128]. Trapped-ion QCCD architectures are among the leading candidates for fault-tolerant processors [51, 91, 119], offering the world-record gate fidelities and coherence times [92, 124], and mobile qubits that can be physically rearranged to pro-vide all-to-all connectivity with much lower loss than neu-tral atoms. TI systems, as the name suggests, have ion qubits which are confined into a potential well, known as a trap [64]. Using a single trap to house all qubits [61, 66, 67] does not be-yond ≈50 qubits due to qubit addressing, crosstalk and gate serialisation challenges [80]. The Quantum Charge-Coupled Device (QCCD) is a more scalable architecture [58, 89], in which ions are distributed across many small traps and shut-tled between them to enable modular scaling [79]. This par-adigm [58, 65] now underpins the most advanced trapped-ion systems [52, 79, 89, 92] and has already scaled to 98 qubits [92]. The challenge now is therefore no longer demon-strating quantum computation, but engineering trapped-ion architectures capable of scaling to large fault-tolerant quantum computers. Substantial progress has been made in trapped-ion hardware[28, 48, 52, 59, 69, 78, 92, 109, 110, 120], compiler infrastructures [57, 80, 84, 97, 100, 101, 129], con-troller architectures [71, 82, 112, 116], and QEC [8, 18, 20, 25, 33, 34, 68, 88, 114], but these areas have largely evolved independently. Ion transport in QCCD requires coordinated manipula-tion of ∼ 10 −100 electrode channels per ion, which is imple-mented using a large number of digital-to-analog converters arXiv:2609.13546v1 [quant-ph] 11 Sep 2026 Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+(DAC) that individually control each channel [71, 82]. This leads to significant I/O wiring and power constraints that limit these architectures to a few hundred qubits [71]. Malinowski et al. proposed the Wiring using Integrated Switching Electronics (WISE) to operate ≈ 1000 qubits using only ∼ 200 DACs [71]. WISE separates waveform genera-tion from waveform distribution by routing a small set of shared waveforms through integrated cryogenic switching electronics rather than assigning dedicated control hardware to each electrode. Dynamic transport control is provided by a small number of globally distributed DAC buses, with local bit-select registers determining which waveform class drives each electrode zone. Quasi-static trapping voltages are sup-plied through a shared sample-and-hold network. This state-of-the-art proposal is expected to scale beyond 10 , 000 qubits and is being actively pursued by IonQ/Oxford Ionics [51, 85]. WISE is one of several concurrent multiplexed-control pro-posals [5, 82]; we focus on it because it is the most aggressive in terms of wiring reduction and is the only one that exposes control-consistent routing primitives at the compiler level. In global control architectures, movement primitives must be executed as bounded sequences of local control actions that are distributed to many zones simultaneously. WISE has 2 such primitives for each zone, which are do nothing or swap with neighbour. Recent work reports that this restriction leads to infeasible ( ≈ 25 × reductions) in logical clock speed compared with QCCD for surface-code QEC [54]. However, compiler quality and architecture choices can substantially influence such comparisons. Our objective is to understand whether this WISE-QCCD performance gap is intrinsic to shared-control architectures, or whether improved compila-tion and co-design can bring WISE to a feasible regime. The first challenge in architecture co-design for WISE is the lack of hardware-specific noise models (which are essential to accurately understand higher-level logical qubit behaviour). Prior resource estimation works rely on simple qubit models and model control noise through techniques that ignore detailed trapped-ion system physics [43, 54, 80, 117]. As a result, important error channels such as the electric field fluctuations [23, 113], heating and cooling [10, 118], noise from shared control lines [5, 27, 71], and shuttling errors are not quantitatively integrated, even in the original architectural analysis [71]. Second, existing TI compilers [54, 57, 80, 101, 104] are designed primarily for single-trap or QCCD architectures. They ignore WISE-specific properties such as global odd-even control of ion movement, and limited DAC parallelism. Third, although there are many QEC codes that can exploit the all-to-all connectivity of TI systems, long range connectivity through ion transport is noisy and slow [79, 92, 120]. We lack understanding of how these codes behave in realistic all-to-all architectures such as WISE; we likely need to tune architecture specifically for each QEC choice, making manual architecture optimisation painful. We ask, “ How can we model the dominant error sources unique to WISE? How does a more pragmatic noise model change our understanding of QEC choices and hardware design? How well can optimal compilation recover the loss in logical clock speed in WISE? How much of the reported WISE–QCCD performance gap is an inherent consequence of WISE’s multiplexed-control architecture, rather than compiler quality or other co-design choices? Does all-to-all connectivity enable better QEC performance? Which code families are feasible under WISE constraints, and what factors ultimately limit logical qubit quality? ”To answer these questions, we present the WISER frame-work in Figure 1. WISER takes a specification of a QEC code and a WISE architecture as input and produces statistics about code performance, logical qubit quality and device behaviour. It is enabled by two core contributions: (1) a com-prehensive set of noise models tailored for WISE architec-tures, based on prior works that model individual device components; (2) a SAT-based compiler that optimally maps a wide range of QEC schemes to WISE architectures. To our knowledge, it is the first compiler for WISE architectures. Using WISER, we perform an extensive design space explo-ration across several families of QEC codes and a range of WISE configurations. Our contributions are as follows. Our work sits between two styles of trapped-ion archi-tecture proposal. On one side, theory-driven architecture papers fix a small number of QEC codes, adopt a simplified hardware abstraction, and report scaling numbers that are intentionally robust to short-term device evolution; on the other side, experimental papers characterise individual de-vice components without committing to a code or a system-level workload. By using a hardware-aware compiler and a physics-grounded noise model in the same loop, we can re-evaluate the assumptions made by the theory side using mechanisms drawn from the experimental side. 1. Our work is the first to perform physical-level archi-tectural evaluation of early fault-tolerant trapped-ion systems. 2. Multiplexing choices: [71] proposed WISE architec-ture with 𝑀 = 128-way multiplexing. In contrast, we show that 𝑀 = 16 balances logical clock speed (53Hz) with power per logical qubit (0.5W) and offers the ideal design point for early fault-tolerance. 3. Trap capacity: Our work shows that trap capacity of two ions per trap is ideal across QEC schemes on WISE. Surprisingly, this matches prior results on QCCD hard-ware [54], even with WISE’s highly restrictive control constraints. 4. QEC choices: Bivariate-bicycle codes are the only scheme that can offer low logical error rates with low power on WISE and we recommend this choice for future implementations. WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions       
+
+> recompile (§3.2) resim (§4.5)
+> QEC Code Spec.
+> (§5;)
+> WISE Architecture Config (§2.2) Chip params: 𝑁 , 𝑘 (recompile)
+> Control params: 𝑀, ¯𝑛 th , tier (resim only)
+> Ideal Stim Circuit
+> (§3.1)
+> Gate Decomposition
+> (§3.1)
+
+★ SAT-Based QMR 
+
+> (§3.2)
+
+★ Noise Model 
+
+> (§4.3) Phonon tracker + noise model
+
+★ Physics-Aware Scheduler (§3.3) error rates, idle schedule, cooling, timing        
+
+> Stim-based Simulation (§4.5) noise injection +sampling +decoding →𝑝 𝐿
+
+Figure 1. Overview of WISER ( ★ = new tool contributions). A QEC code and a WISE configuration are fed as inputs. Output includes logical error rate 𝑝 𝐿 and QEC cycle time. The QEC spec is first converted to an architecture-agnostic, noiseless Stim circuit. Then it is lowered to the gate set supported by WISE and mapped and scheduled on the architecture. Following this, a WISE noise model-specific Stim simulation is run to determine QEC parameters. Changing chip parameters requires recompilation through the red dashed box; changing control parameters requires re-simulation through the dotted box, bypassing the SAT solver. 
+
+Our open-source framework provides a foundation for ex-ploring globally controlled trapped-ion architectures beyond logical memory experiments. 
+
+## 2 Design Choices and Tradeoffs 
+
+2.1 Background on WISE Architecture 
+
+Figure 2 shows an example WISE qubit chip. In WISE, an array of 𝑚 ×𝑛 ions are stored in a 2D array of traps. Each trap contains 𝑘 ions each. The fundamental layout unit in WISE is a zone : a region of control lines (that generate electric fields to confine, position, and move ions) holding at most one ion. 
+
+Traps are a group of 𝑘 consecutive zones. Traps enable the execution of gates. Entanglement between two trapped ions is generated through their shared motional coupling, known as a Mölmer–Sörensen (MS) interaction [107, 108]. Between traps sit single-zone transport segments and junc-tions enabling two-axis routing [71]. Routing is performed through ion swapping. WISE uses switchable swaps : two ions in neighbouring zones are physically exchanged when both on-chip switches are set to 1; otherwise ions remain station-ary. To orchestrate a parallel swap step, we set an 𝑁 -bit word appropriately and broadcast it to the QPU.    
+
+> trap (k=3) seg junc odd even odd-H even-H odd-V even-V
+
+Figure 2. WISE chip layout [71] . Each small square is one zone . All zones follow an odd ( ) / even ( ) checkerboard with odd zones hav-ing even zones as neighbors. Four global reconfiguration primitives exist: parallel-odd-H , parallel-even-H , parallel-odd-V and parallel-even-V . parallel-odd-H swaps the marked red adjancent ions within every trap (shown here) and swaps edge ions between traps using the segments and junctions. Similarly, parallel-odd-V swaps ions between at odd junction positions through the vertical columns. 
+
+The WISE reconfiguration network implements odd-even transposition sorting [44, 60]. WISE labels a row of zones by alternating between odd and even, and then uses parallel 
+
+odd/even horizontal swaps between adjacent ions within rows and odd/even vertical swaps between adjacent ions that are both right next to a junction, as shown in Figure 2. Vertical swaps differ because they serialise within traps, since there are only 𝑘 > 1 qubits per junction. Arbitrary reconfiguration of an 𝑁 = 𝑚 × 𝑛 grid completes in at most 2 𝑚 + 𝑘𝑛 swap steps ( ≈ √8𝑘𝑁 steps [71]). 
+
+2.2 WISE Design Choices 
+
+Multiplexing Order. In QCCD, electrodes (metal conduc-tors) carry voltage signals and create electric fields that are used to control ions; digital-to-analog converters (DACs) are used to generate waveforms to send to these control lines. Each zone contains ≈ 10 static electrodes for ion trapping and ≈ 10 −20 dynamic electrodes for ion movement. In a conventional QCCD system, every electrode that is used to control and position ions requires its own dedicated DAC and physical wire routed into the vacuum system that houses the device, meaning, at the scale of a thousand qubits, this demands tens of thousands of high power DACs. WISE separates waveform generation from waveform distribution by routing a small set of shared waveforms through inte-grated cryogenic switching electronics rather than assign-ing dedicated control hardware to each electrode. Dynamic transport of ions is provided by a small bank of globally distributed DACs, with local bit-select registers determining which waveform class drives each zone. Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+Quasi-static trapping voltages are supplied through time-division multiplexing, where a single DAC is used to sequen-tially charges 𝑀 electrodes through an on-chip switching network. The multiplexing order 𝑀 determines how many static trap electrodes share a single control line ( e.g., DAC). Higher 𝑀 serializes electrode charging because every gate layer must wait for all 𝑀 electrodes to be sequentially set, injecting a fixed latency overhead that lengthens every gate and increases exposure to dephasing. Further, while elec-trodes are disconnected from their DAC, their stored voltages drift due to charge leakage, introducing control errors that grow with 𝑀 . Finally, all 𝑀 electrodes sharing a DAC expe-rience identical voltage noise from that shared source. This creates spatially correlated errors across physically distant qubits. This is precisely the failure mode that QEC is least equipped to handle since QEC codes are designed under the assumption that qubit errors are independent. Increasing 
+
+𝑀 reduces I/O requirements at the expense of more correlated errors and QEC quality. 
+
+Trap Capacity. The trap capacity 𝑘 is the number of ions (qubits) housed in each trap. This parameter’s choice controls a parallelism vs. communication trade-off similar to classical multi-cores [54]. Smaller traps increase the number of inde-pendent execution sites, enabling more two-qubit gates to fire in parallel across the chip. However, fewer qubits per trap means more inter-trap data movement through junctions. Every gate between qubits in different traps requires physi-cal ion transport, which is both slow and error-prone. Con-versely, larger traps reduce communication but pack ions closer together, increasing spectator crosstalk (un-intended coupling to non-target ions sharing the trap) be-tween neighbouring qubits during gate execution [80]. Prior work optimised 𝑘 for NISQ workloads (optimal 𝑘 ≈ 15 [80]) and surface code (optimal 𝑘 = 2 [54]) on QCCD, but it is unclear whether the same choices hold under WISE’s global control. For WISE, 𝑘 introduces an additional asymmetric penalty not seen in QCCD. Vertical reconfiguration, i.e., mov-ing ions between rows, requires ions to cross through shared junction hardware, and this crossing must be serialized into 𝑘 sequential column buckets. Each ad-ditional qubit per trap adds another serial phase to every vertical routing step, yielding a vertical-to-horizontal cost ra-tio of ≈ 2.4𝑘 +𝑘 /2, so QEC codes whose syndrome-extraction circuits demand frequent vertical communication are dispro-portionately penalized. 
+
+Cooling Protocol. Trapped-ion qubits accumulate excess motional energy as computation progresses (quantified as phonon number ¯ 𝑛 , which measures how vigorously each ion vibrates in its trap; higher phonon numbers degrade gate fidelity) [76, 118]. Because two-qubit gate fidelity degrades with increasing ¯ 𝑛 [80], we must periodically apply cooling pulses to return ions to near their motional ground state. Current systems adopt the most conservative policy, cool-ing before every gate ( ¯ 𝑛 th = 0) [79, 92]. Our framework parametrises this choice through a configurable phonon threshold ¯ 𝑛 th . A per-ion phonon tracker estimates and mon-itors motional excitation accumulated through transport, gates, and idle periods, and triggers cooling only when ¯ 𝑛 >
+
+¯𝑛 th . Raising this threshold eliminates unnecessary cool-ing stalls and directly reduces QEC cycle time, but po-tentially at the cost of higher motional excitation and lower fidelity. 2.3 QEC Design Choices for WISE 
+
+2D local codes (high qubit cost). Surface codes [34] involve only nearest-neighbour qubits, making them the cheapest to route on WISE. Colour codes [18] obey the same locality constraint but offer richer logical gate sup-port (transversal Cliffords), at the cost of moderately deeper error-correction circuits. However, a fundamental bound (BPT [21]) forces the encoding efficiency of all 2D geometri-cally local codes to drop as ∼1/𝑑 2 with increasing protection strength 𝑑 , meaning qubit costs grow rapidly. 
+
+2D subsystem codes (reduced check weight). Subsys-tem codes such as Bacon-Shor [9] measure weight-2 gauge operators rather than weight-4 stabilizers. Each weight-2 check requires only two two-qubit gates per ancilla (com-pared to four for a surface code check), reducing individual circuit depth per measurement round and simplifying local routing. However, inferring full stabilizers requires combin-ing two gauge measurements (totaling four two-qubit gates), which introduces gauge-freedom overheads and lowers fault-tolerance thresholds [4, 81]. Whether these shorter measure-ment circuits yield faster QEC cycle times that offset weaker per-round error suppression is an open co-design question that depends directly on the routing fabric and hardware noise mechanisms. 
+
+High-rate qLDPC codes (low qubit cost, long-range connectivity). At the opposite extreme, qLDPC codes (e.g., bivariate bicycle [20], hypergraph product [115]) circumvent the BPT bound via long-range interactions, encoding 5–10 ×
+
+more logical qubits per physical qubit. While less practi-cal on fixed 2D grids, mobile-qubit architectures natively support these non-local stabilizer graphs. Indeed, a recent QCCD study demonstrated that a Q102 [[ 102 , 22 , 9]] qLDPC architecture can support 110 logical qubits using just 2 , 514 physical qubits at ≈ 10 6 T gates per day [117]. Likewise, resource estimates for neutral atoms suggest that high-rate qLDPC codes could reduce factoring requirements to as few as 10 ,000 reconfigurable atoms [25]. However, ∼ 10 𝜇 s transport latencies [117] and projected 
+
+∼ 100-day execution times [25] call into question whether these theoretical gains survive under realistic hardware, and in our case, global control constraints from WISE. Will WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 
+
+qLDPC efficiency survive these transport and control over-heads? Each additional routing pass required to establish long-range connections accumulates idle dephasing and mo-tional heating across all non-participating qubits; thus, a code requiring half the physical qubits but twice the routing depth may yield worse overall logical performance. Over-all, the optimal code family depends on the interplay between routing overhead (governed by the controller, the compiler, and routing fabric), noise accumulation (dictated by modality and switching dynamics), and per-round error suppression (dictated by code struc-ture). 
+
+## 3 SAT-based WISE Compiler 
+
+We develop the first WISE-specific compiler that performs optimal qubit mapping and routing (QMR) for QEC circuits. Existing QCCD compilers [54, 56, 57, 62, 74, 80, 84, 97, 100, 101, 104, 129] target ring or fully-independent traps and do not support WISE’s global odd-even routing primitives. We chose a SAT approach to remove compiler quality ef-fects in architecture-level comparisons. Qubit mapping and routing (QMR) is NP-hard in general [35, 75]. Recent SAT-based formulations have shown that exact compilation is practical for many quantum circuits and substantially im-proves mapping quality over heuristic approaches [53, 75, 102, 126]. However, existing SAT formulations cannot ex-press global control models. In WISE, a single broadcast word fires an entire parity class of comparators simultane-ously, so swaps within a pass are globally coupled; prior solver-based formulations [53, 75] assume independently addressable SWAPs and optimise SWAP-count/depth. More-over, WISE’s vertical-to-horizontal cost asymmetry means minimising swap count is not time-optimal; our objective minimises execution time under multiplexed-control and odd-even constraints. Consequently, WISE requires a new formulation that jointly models global odd-even routing, multiplexed control, and asymmetric transport costs. Although exact SAT compilation is exponential in the worst case, as part of the work, we realised that SAT is also practical within WISE’s targeted early-FTQC regime, in particular due to the regular partitioning-friendly structure available in QEC circuits admitting effective decomposition and parallel search strategies. Further, beyond distance ≈ 4, the architecture itself becomes throughput-limited ( < 1Hz logical clock speed), making substantially larger instances architecturally irrelevant under both current and optimistic hardware assumptions. 
+
+Overview. The compiler takes as input a QEC circuit, code distance 𝑑 , trap capacity 𝑘 , and hardware timing parameters, and produces a schedule of operations (native two-qubit MS gates, transport, reconfigurations). Our QEC circuits repre-sent memory experiments i.e., they test the ability to preserve an encoded logical qubit over time and typically consist of 
+
+𝑑 repeated rounds of syndrome extraction. QEC circuits are represented in the Stim format [36]. The compiler decom-poses the Stim circuit into native operations supported by WISE (§3.1), then the SAT solver finds mapping and routing that places iteracting ion pairs into the same trap within the minimum number of passes (§3.2). The scheduler inter-leaves reconfiguration passes with gate operations, inserting cooling when the tracked phonon number exceeds ¯ 𝑛 th . The compiler minimises two proxy metrics for logical error rate: overall circuit runtime (primary, minimising idle noise) and number of routing operations (secondary, minimising ion heating). Figure 3 shows an example of a schedule for the 
+
+𝑑 =2 rotated surface code on a 𝑘 =2 WISE grid. 
+
+3.1 From Stim Circuit to Native Operations 
+
+The abstract Stim circuits for each code we study are gener-ated from the qldpc Python library [95] for standard codes and provide internal implementations for specialized codes that are not supported by standard toolkits. The compiler translates abstract Stim [36] circuits (( H,
+
+CNOT , CZ , S, SWAP ), measurements ( M, MR , MRX )) into native WISE operations: Gnative = {MS , 𝑅 𝑋 , 𝑅 𝑌 , 𝑅 𝑍 , 𝑀 𝑍 , 𝑀 𝑋 , 𝑅 }.This is a straightforward IR transformation in our compiler (Appendix C for circuit identity details). Since execution time is a bottleneck in WISE, we use one ancilla per QEC stabiliser unlike prior works which reuse ancillas [57]. 
+
+3.2 SAT-based Qubit Mapping and Routing 
+
+To map and route QEC qubits onto physical qubits, this stage of the compiler accepts a sequence of 𝑅 MS-gate rounds as input. Each round includes is specified by a set of ion pairs that need to be entangled i.e., P𝑟 = {( 𝑖 1, 𝑗 1), (𝑖 2, 𝑗 2), . . . }. The compiler produces a reconfiguration schedule and mapping where a sequence of parallel swap layers are determined such that for each round, the ion pairs involved in that round are placed within the same trap, allowing the two-qubit gates to happen on them. 
+
+Variables and Clauses. Intuitively, the SAT encoding answers: “at each time step, where is every ion, and which swaps fire?” This is captured by Boolean variables for an 𝑛 ×𝑚 
+
+grid with 𝑛𝑖𝑜𝑛𝑠 ions, 𝑅 rounds, and up to 𝑝𝑚𝑎𝑥 = 2(𝑛 + 𝑚 )
+
+parallel swaps per round (this is a worst-case bound to en-sure that any target ion permutation is reachable). Three primary variable families encode the full ion trajectory: 1) 
+
+placement variables 𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ), true iff ion 𝑖 occupies grid cell (𝑑, 𝑐 ) at round 𝑟 after 𝑝 swap passes. Here, 𝑝 ranges over 0 . . . 𝑝𝑚𝑎𝑥 −1 swap passes and 𝑖 over all 𝐼 ions. 2) swap vari-ables 𝑠 ℎ (𝑟, 𝑝, 𝑑, 𝑐 ) and 𝑠 𝑣 (𝑟, 𝑝, 𝑑, 𝑐 ), true iff a horizontal (resp. vertical) comparator fires at round 𝑟 , pass 𝑝 , exchanging ions between cells (𝑑, 𝑐 ) ↔ ( 𝑑, 𝑐 +1) (resp. (𝑑, 𝑐 ) ↔ ( 𝑑 +1, 𝑐 )), and 3) phase variables 𝜙 (𝑟, 𝑝 ) ∈ 0, 1, selecting whether pass 𝑝 of round 𝑟 applies horizontal ( 𝜙 =0) or vertical ( 𝜙 =1) swaps. Helper variables track pass activity: 𝑢 (𝑟, 𝑝 ) is true iff at least Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+one comparator fires at round 𝑟 , pass 𝑝 , and 𝑣 active (𝑟, 𝑝 ) =
+
+𝑢 (𝑟, 𝑝 ) ∧ 𝜙 (𝑟, 𝑝 ) flags passes that are both active and verti-cal. The per-round pass counts from the objective are then 
+
+𝑛 (𝑟 ) 
+
+> 𝐻
+
+= Í𝑝 (𝑢 (𝑟, 𝑝 ) − 𝑣 active (𝑟, 𝑝 )) and 𝑛 (𝑟 ) 
+
+> 𝑉
+
+= Í𝑝 𝑣 active (𝑟, 𝑝 ).We also use variables to enforce that paired ions are co-located at the end of the round. We use clauses to enforce three high-level invariants: (i) ions form a permutation (no ion is cloned or lost), (ii) swaps respect WISE’s global odd-even parity rules, and (iii) paired ions end each round co-located in the same trap for their MS gate. Table 1, Appendix A, includes full details. 
+
+Objective. Our goal is to minimise the total time ions spend being reconfigured between MS-gate rounds. The total reconfiguration time of the execution schedule is: ∑︁  
+
+> 𝑟 =1..𝑅
+
+𝑇 𝑟 =∑︁  
+
+> 𝑟 =1..𝑅
+
+𝑛 (𝑟 ) 
+
+> 𝐻
+
+· 𝑡 row + 𝑛 (𝑟 ) 
+
+> 𝑉
+
+· 𝑡 col (1) where 𝑛 (𝑟 ) 
+
+> 𝐻
+
+and 𝑛 (𝑟 ) 
+
+> 𝑉
+
+are the number of horizontal and vertical 
+
+sub-passes (each either odd or even parallel ion swaps) used before MS round 𝑟 , 𝑡 row is the time for one horizontal swap-pass (a single odd or even parallel swap layer), and 𝑡 col is the time for one vertical swap-pass. Our compiler optimises all 𝑅 rounds of a complete stabilizer cycle in a single SAT call, finding globally optimal ion placements that minimise 
+
+Í𝑟 𝑇 𝑟 across the entire QEC cycle. 𝑛 (𝑟 ) 
+
+> 𝐻
+
+and 𝑛 (𝑟 ) 
+
+> 𝑉
+
+are decision variables as described in the formulation above. The compiler searches over all valid swap schedules to find the assignment that minimises total reconfiguration time. The costs 𝑡 row and 𝑡 col are obtained using timings for primitive hardware operations, based on real experiments. Since ion swapping is a fundamental WISE movement prim-itive, we denote its time by 𝑡 0 and model row and column movement times based on it. A horizontal swap consists of five sequential primitives (shuttle–merge–rotate–split– shuttle [19, 24, 123]), giving 𝑡 odd r = 2.12 𝑡 0 per sub-pass 
+
+𝑡 row = 𝑡 odd r + 𝑡 even r = 4.24 𝑡 0. A vertical swap moves ions through junctions, organised into 𝑘 serialised column buck-ets. Each bucket costs 𝑡 (1 bucket) col = 5.10 𝑡 0, with an inter-bucket horizontal repositioning step, yielding 𝑡 (pair) col = 𝑘 ·
+
+ 2 𝑡 (1 bucket) col + 𝑡 odd,r 
+
+. The amortised per-pass cost is 𝑡 col =
+
+𝑘 · 𝑡 (1 bucket) col + 𝑘  
+
+> 2
+
+𝑡 odd r , giving a vertical-to-horizontal cost ratio of ≈ 2.4𝑘 + 𝑘 /2. Therefore, it is not sufficient to sim-ply minimize raw swap count; ignoring this asymmetry can produce sub-optimal schedules. Because the SAT solver requires integer arithmetic, we discretise the objective as 𝑊 𝑟 = 𝑛 (𝑟 ) 
+
+> 𝐻
+
++ 𝑤 · 𝑛 (𝑟 ) 
+
+> 𝑉
+
+, where the vertical cost weight 𝑤 = ⌊𝑡 col /𝑡 odd,r ⌉ captures the vertical-to-physical cost asymmetry as an integer cardinality constraint. The compiler minimises 𝐵 subject to Í𝑟 =1..𝑅 𝑊 𝑟 ≤ 𝐵 , obtain-ing a time-optimal schedule within the rounding tolerance of one 𝑡 odd,r unit. The bound Í𝑟 𝑊 𝑟 ≤ 𝐵 is encoded as a totaliser-based cardinality constraint [29, 49, 50], and 𝐵 is tightened by parallel search. 
+
+Optimal Circuit Decomposition. Encoding all gate rounds in a single SAT formula is intractable at practical code distances. We exploit the fact that QEC memory experiments are dominated by a short cycle of MS rounds that repeats 𝐶 times (typically 𝐶 =𝑑 ), with a small number of initial and final rounds. Rather than encoding all 𝐶 
+
+repetitions, we decompose into two SAT calls. Call 1 encodes one copy of the repeating cycle plus any non-repeating start rounds, and adds a route-back round that forces the end-of-cycle ion layout to match the cycle start, enabling the solution to be replayed 𝐶 times without re-solving. Cycle rounds carry higher weight ( 𝐶 ) in the objective so the solver preferentially optimises the repeated portion. Call 2 routes any non-repeating end rounds. This makes SAT complexity independent of code distance. The solver searches over candidate values of 𝐵 in parallel and it proves that no schedule within the odd-even sort-ing model achieves lower weighted cost (proof in Appendix A). To inform architecture design, WISER needs to scale large QEC codes and code distances. In raw form, however, the SAT instance encodes all ions, all rounds, and the full 
+
+grid simultaneously. To intelligently minimise the cost func-tion defined above, we implemented a parallel SAT solving framework using a portfolio of parallel workers that explore different regions of the solution space simultaneously. Scal-ability techniques from exact mappers [102, 126] motivate our novel, QEC-specific, decomposition and parallel search. These tooling optimizations are available in Appendix B. SAT allows us to compile small and medium-scale QEC and improve upon heuristics up to ≈ 150 qubits. Given a time budget, the solver returns the best schedule found along with optimality bounds. Exact QMR/convergence only for small circuits ( ≈ 20 qubits); in larger circuits, the bounds quantify compiler suboptimality and identify points beyond which architecture comparisons cannot be isolated from compilation quality. 
+
+3.3 Physics-Aware Scheduling 
+
+The scheduler processes the mapped and routed Stim circuit. It inserts cooling operations by using a simulation where it walks operations required in the Stim circuit and tracks motional excitation rates for each trap based on the device’s noise models. If any trap’s ¯ 𝑛 trap > ¯𝑛 th before an MS gate or rotation, a cooling operation is inserted for all traps si-multaneously (light-blue bars in Fig. 3). Cooling resets the motional excitation state of the trap. Further, since the WISE architecture uses SIMD control where the same type of con-trol pulse is applied to all traps simultaneously, the scheduler also batches operations into blocks that are composed of the same operation type. In Figure 3, these SIMD operations are shown as color-coded bands in the same timestep. We WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 0 2 4 6 8 10              
+
+> Time (ms)
+> T0 (0,0) T3 (0,1) T6 (1,0) T9 (1,1)
+> RESET RX RY MS MEASURE H_SWAP V_SWAP COOL SPLIT IDLE
+
+Figure 3. Compiled schedule for the [[ 4, 1, 2]] rotated surface code ( 𝑘 =2, ¯ 𝑛 th =1.5), two syndrome-extraction rounds. The 7 qubits occupy 8 zones in a 2 × 2 grid of traps (trap coordinates given on y-axis); 8 MS gates per syndrome-extraction round must be scheduled across global odd-even reconfiguration passes. Per-trap Gantt chart with horizontal-swap (red) and vertical-swap (blue) passes from SAT-compiled reconfiguration (§3.2) interleaving with type-homogeneous gate blocks. Light-blue cooling bars appear when ¯ 𝑛 exceeds ¯ 𝑛 th ; grey bars show idle dephasing windows. 
+
+compute error correction cycle time as the time required to execute the full set operations for a QEC scheme after scheduling. 
+
+## 4 WISER: Architectural Model 
+
+This section presents the WISER architectural model: how the hardware parameters (𝑁 , 𝑘, 𝑀 ) and fabrication quality determine grid geometry, gate timing, and physical error rates. 
+
+4.1 Architecture Instantiation and Grid Optimisation 
+
+Given a qubit count 𝑁 and trap capacity 𝑘 , the grid dimen-sions 𝑚 ×𝑛 must be chosen to minimise reconfiguration time. Because vertical swap passes are physically ≈3𝑘 times more expensive than horizontal ones (§3.2), a naive square grid selection will be suboptimal. A candidate grid must satisfy 
+
+𝑚 × 𝑛 ≥ 𝑁 and 𝑚 ≡ 0 (mod 𝑘 ) (so that junction chains align with the trap structure). We search candidates near the idealised column count 𝑚 ideal = √𝑁 · 𝑣 𝑤 , where 𝑣 𝑤 = 3𝑘 
+
+is the vertical-to-horizontal cost multiplier and select the grid minimising cost (𝑚, 𝑛 ) = 𝑚 + 𝑣 𝑤 ·𝑛, which approximates worst-case reconfiguration depth. Ties are broken by fewest spectator (unused) cells 𝑚 · 𝑛 − 𝑁 . The result is wider-than-square grids that exploit the cheaper horizontal axis. 
+
+4.2 Gate Time Model 
+
+Every WISE operation must wait for the multiplexed control hardware to charge all 𝑀 electrode groups before execut-ing. This sample-and-hold overhead adds a fixed latency 
+
+𝑡 sc = 𝑀 · 𝑡 ec to every gate [71], giving effective gate times 
+
+𝑡 eff,1q = 𝑡 sc + 𝑡 1q and 𝑡 eff,2q = 𝑡 sc + 𝑡 2q . The system speed is bounded between 1 /𝑡 eff,1q (fastest: only 1Q gates, no reconfig-uration) and 1 /( 𝑡 eff,2q + 𝑡 𝑟 + 𝑡 cool ) (slowest: 2Q gate followed by full reconfiguration and cooling), where 𝑡 𝑟 is the actual reconfiguration time computed by the compiler for a given schedule. 
+
+4.3 Noise Modelling 
+
+We implement a physics-grounded noise model that traces ev-ery error rate back to the architectural parameters (𝑁 , 𝑘, 𝑀 )
+
+and the technology tier. Unlike prior studies that either as-sume simple depolarising noise [12, 117, 121] or highly ab-stracted hardware-derived noise [43, 54, 80], our model cap-tures how errors arise from and scale with low-level hard-ware parameters. To our knowledge, this is the first comprehensive noise model for the WISE architecture. The hardware-level er-ror mechanisms (heating, shared-control noise, crosstalk) are derived from device physics; their projection onto Pauli channels follows standard convention, consistent with the lit-erature [122, 127] that parametrises depolarising noise from gate infidelities, extended here with WISE-specific shared-control noise. Fully calibrated channel models would require experimental device characterisation or intractable simula-tion [42]. We summarise the dominant noise mechanisms and their scaling behavior below. Exact equations and de-tailed physics are in Appendix D. 
+
+Motional heating. Electric-field noise from the trap sur-face continuously drives the ions’ vibrational modes, increas-ing the phonon number over time. We assume a WISE lay-out in which ions form a linear chain with normal modes. The heating rate scales as Γ𝑚 = 𝑒 2
+
+> 4𝑚 ℏ𝜔 𝑚
+
+Í𝑙 |E 𝑙 →𝑚 |2𝑆 𝐸 𝑙 (𝜔 𝑚 )
+
+with 𝑆 𝐸 (𝜔 ) ∝ 1/𝜔 𝛽 , as shown in [23]. Each mode 𝑚 has frequency 𝜔 𝑚 and eigenvector ®𝜈 𝑚 normalized such that 
+
+Í𝑖 (𝜈 (𝑖 ) 
+
+> 𝑚
+
+)2 = 1. The coupling of electrode 𝑙 to mode 𝑚 is 
+
+E𝑙 →𝑚 = Í𝑁 𝑖 =1 E(𝑖 ) 
+
+> 𝑙
+
+· ® 𝜈 (𝑖 ) 
+
+> 𝑚
+
+, where E(𝑖 ) 
+
+> 𝑙
+
+is the electric field at ion 
+
+𝑖 on electrode 𝑙 . This coupling coefficient determines how voltage noise on an electrode translates into motional exci-tation or frequency shifts. Architecturally, the heating rate determines how often cooling must be applied. Accumulated Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+phonons also cause over/under-rotation of entangling gates (e.g., MS gate). With operation time dentoted as 𝜏 op , the heat-ing error scales as 𝜖 heating ∝ Γ𝑚 𝜏 op which translates to, for example, pauli dephasing errors. 
+
+Operational phonon generation. Noise in the operation resonantly drive ion motion during transport, junction cross-ing, and swapping, resulting residual phonons. For WISE, each cooling operation for the heating has finite scattering efficiency, where a scattered photon can decohere the qubit. The total cooling error scales with respect to the number of times cooling is performed. 
+
+Correlated noise. Unintended entanglement between non-target ion pairs arises from shared motional modes dur-ing parallel gates. The crosstalk phase scales proportion-ally to the product of the Lamb-Dicke parameters (defined in the Appendix D) between different ions in the trap. For WISE’s zone architecture, this limits parallel gate density: non-interacting qubit pairs must be assigned to different traps to reduce the correlation noise. 
+
+Device control noise (shared DACs). Charge injection from switch openings and voltage decay on the control lines create correlated electric field errors. The voltage step scales with the extra charge fluctuation, and drop exponentially in time. Because WISE shares DACs across multiple controls, this noise couples across the entire zone [83]. 
+
+Single-qubit, measurement, and reset penalties. 
+
+These arise from residual physical errors not explicitly mod-eled at the physical level, with state-of-the-art single-qubit infidelity as low as 10 −7 per operation [106]. Architecturally, these constant penalties set the baseline below which all other noise sources (heating, crosstalk, device noise) must be suppressed to avoid dominating the total infidelity. 
+
+4.4 Per-Gate Error Computation 
+
+Unlike prior QEC studies that assign fixed error rates per gate type, our model evaluates each gate at the live phonon state ¯ 𝑛 trap of its trap at the instant it executes. Each trap’s phonon number is updated in-place throughout the sched-ule. For instance, transportation of the ions will increase it, while cooling of the ion resets it (so two identical MS gates at different schedule points have different fidelities). Each MS gate’s infidelity is decomposed into the noise con-tributions described in §4.3, evaluated at the current phonon number, and mapped to Pauli error channels. For example, device-control error is mapped onto a two-qubit depolarising channel (a noise model that randomly applies one of the 15 non-identity two-qubit Pauli errors per Pauli pair), heating error onto depolarising noise, and crosstalk onto 𝑍 errors on spectator ions [32, 66]. Single-qubit rotation gates ( 𝑅 𝑋 , 𝑅 𝑌 ) incur heating and device-control errors computed at the current ¯ 𝑛 , combined into a single-qubit depolarising channel. Measurement operations incur a fixed bit-flip error 𝑝 𝑀 (technology-tier-dependent) modelled as an 𝑋 error before the projective measurement, so that the classical outcome is flipped with probability 𝑝 𝑀 . Qubit reset incurs a fixed preparation error 
+
+𝑝 𝑅 modelled as an 𝑋 error after the reset, representing imperfect state initialisation. Cooling operations incur a per-ion error 𝜖 cool /3 on each Pauli axis, representing decoherence from the cooling laser interaction. 
+
+4.5 Stim Noise Injection 
+
+The final pipeline stage translates the compiled schedule into a noisy Stim circuit [36] for QEC simulation. The noise injector walks through the schedule and, for each operation, (i) computes the idle duration each ion experienced since its last operation (grey bars in Fig.3), converting idle time to 
+
+𝑍 -dephasing errors from ion-chain frequency fluctuations and voltage drift, (ii) inserts pre- and post-gate Pauli errors at the rates computed by the noise model (§4.3), and (iii) at-taches cooling-induced errors where cooling was inserted by the scheduler. Idling during transport accumulates motional heating rather than dephasing, which is tracked separately. We sample syndrome histories using Stim’s detector sam-pler and decode them using the highest-quality tractable decoder for each experiment to minimise decoder quality as a confounding factor in architectural comparisons. We use ex-act maximum-likelihood decoding via exhaustive syndrome-table lookup [90] where tractable, and scalable decoders (BP-OSD variants, MWPM, or Tesseract [2, 38, 45, 96]) oth-erwise. This best-effort policy provides lower-bound logical error-rate estimates under the adopted noise model. We exclude classical decoder runtime from logical clock-speed estimates because decoding is not the architectural bottleneck in the regime considered here. Under current hardware assumptions, WISE logical clock speeds fall < 1 Hz beyond distance 4, making physical execution several orders of magnitude slower than representative classical decod-ing times [46]. This is unlike superconducting architectures, where the ∼ 1 𝜇 s syndrome-extraction cycle imposes strin-gent real-time throughput and latency requirements on the decoder, and insufficient decoder throughput can lead to an accumulating syndrome backlog and substantial computa-tional slowdown [1, 26, 105]. 
+
+## 5 Experimental Setup 
+
+Recent demonstrations have brought QEC below threshold on superconducting hardware [1, 3], while neutral-atom processors have operated up to 48 logical qubits [16] and demonstrated fault-tolerant computation on 256 atoms [94]; concurrently, trapped-ion experiments have validated small-distance QEC [11, 99]. We ask whether WISE-class architectures can extend these gains to higher distances and more diverse code families. The experimental methodology is designed as a sensitiv-ity analysis: architectural parameters and hardware/noise assumptions are systematically varied to determine whether WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 
+
+the resulting design recommendations remain consistent across plausible operating regimes. 
+
+5.1 Control Parameter Space 
+
+The WISE architecture exposes compile-time parameters (𝑘 ∈
+
+𝐾 , grid geometry) that require SAT recompilation, and post-hoc parameters (𝑀 ∈ 𝑀𝑢𝑙𝑡 , 𝑇 = 3 technology tier, ¯ 𝑛 ∈ ¯𝑁 
+
+phonon threshold) that affect timing and noise but not rout-ing. The framework is built such that the control param-eters(§2.2) can be changed without requiring SAT recom-pilation of the ion-routing schedule. The scheduler is re-run with the same SAT routing but updated physics, po-tentially redistributing cooling events and idle durations. A new noisy Stim circuit is produced and decoded, yielding the logical error rate under the updated parameters. This separation enables efficient sensitivity analyses: each rout-ing solution is compiled once and then rapidly re-evaluated across a large range of hardware assumptions, reducing a naïve |𝐾 | · | 𝑀𝑢𝑙𝑡 | · | 𝑀 | · | 𝑇 | · | ¯𝑁 |-configuration sweep to just 
+
+|𝐾 | SAT solves per code, with the remaining configurations evaluated at negligible cost. 
+
+5.2 Code Selection Space 
+
+Code selection is structured around the architectural questions above. We evaluate 25 codes across five families from code distance 2 to 9: (1) Surface codes [34] (rotated, 
+
+[[ 2𝑑 2 − 1, 1, 𝑑 ]] ) as the conventional baseline with strictly local connectivity; (2) Colour codes [18] (4.8.8) with transversal Clifford gates and moderately higher routing demands; (3) Subsystem codes [9] (Bacon-Shor) whose low weight stabiliser checks yield the lowest per-round gate count; (4) Small codes ([[ 4, 2, 2]] , [[ 6, 2, 2]] , Steane, Shor, [[ 5, 1, 3]] , [[ 8, 3, 2]] , [[ 15 , 1, 3]] , Hamming CSS), motivated by recent trapped-ion demonstrations of real-time QEC [11, 93, 99, 125], to test near-term feasibility; and (5) qLDPC codes [20, 22, 88, 115] (Bivariate Bicycle, Hypergraph Product) to test whether high encoding rates compensate for non-local routing overhead. 
+
+5.3 Sweep Methodology 
+
+We treat architectural parameter sweeps as sensitivity anal-yses rather than optimisation procedures. Rather than reporting results at a single operating point, we sweep each architectural knob across three fabrication-maturity tiers (Current, Optimistic, and Pessimistic; Appen-dix D: Table 2 to stress-test whether observed trends (e.g., 
+
+𝑘 =2, 𝑀 =16 or preference for BB codes) remain robust across the full parameter range. These tiers vary gate timing, transport latency, and physi-cal error rates, providing a coarse-grained sensitivity analysis of architectural conclusions to fabrication quality. Appendix D, Figure 3 independently varies the underlying physical-model parameters to quantify finer-grained sensitivity. Our conclusions are robust to changes in most model parameters, except design parameters ( 𝑘, 𝑀, ¯𝑛 ), for which we deliberately explored in Figures 5, while Figure 6 reports relative changes in QEC-performance across codes when changing timing, transport, and physical error parameters by varying technol-ogy tier. The parameter sweep targets logical error rate 𝑝 𝐿 ≤ 10 −8
+
+via sequential greedy optimisation: (A) sweep trap capacity 
+
+𝑘 ∈ { 2, 4, 6, 8, 16 } (requires SAT recompilation), selecting 𝑘 ∗
+
+maximising logical clock speed 𝑓 𝐿 ; (B) sweep multiplexing factor 𝑀 ∈ { 1, 4, 16 , 64 , 256 } via resimulation, selecting 𝑀 ∗
+
+subject to power budget; (C) sweep technology tier across Pessimistic, Current, and Optimistic scenarios to construct the Pareto frontier of (𝑓 𝐿 , 𝑝 𝐿 ) pairs. 
+
+5.4 Compilation Metrics. 
+
+Performance Metrics. we set the following performance metrics in our work: (1) 𝑇 logical = 𝑑 · 𝑇 ec in 𝜇 s, comparative lower-bound estimate of logical clock period (time for 𝑑 
+
+rounds of syndrome extraction); (2) 𝑓 𝐿 = 1/𝑇 logical : logical clock speed; (3) 𝑃 = 𝑁 sDAC ×30 mW: Power consumption (W), where 𝑁 sDAC = 10 𝑁 /( 𝑀 − 1). Also we have the error metrics as the following: (1) 𝑝 𝐿 : comparative lower-bound estimate of logical error rate under the adopted architectural model; (2) 𝐷 ∗: Minimum distance to achieve target 𝑝 𝐿 ≤ 10 −8.
+
+## 6 Experimental Results 
+
+6.1 Result 1: SAT Compiler Scalability 
+
+Methodology. For each QEC scheme, we compile twice: 1. SAT : Full WISE SAT solver with 2D parallel search (Sec-tion 3.2). 2. Heuristic Baseline : a greedy target layout is constructed that co-locates paired ions in the same trap block, and an odd-even transposition sort schedule from the current layout to the target is generated using heuristics. 
+
+Analysis. We use SAT to minimise compiler quality as a confounding factor in architecture-level comparisons by producing optimal or bounded-optimal routing schedules. Figure 4 evaluates the compiler across all QEC workloads considered, up to distance-9 surface and Bacon–Shor codes (161 physical qubits). SAT reduces routing time by 1 .8–12 .2×
+
+relative to the greedy heuristic and correspondingly lowers logical cycle time. Results use 𝑘 = 2, 𝑀 = 4, and the Opti-mistic hardware tier, a near-optimal WISE operating point; the resulting gains are therefore conservative, since greater routing contention or slower hardware would increase rout-ing’s contribution to execution time. Figure 4 shows we can extend practical compilation from roughly 17 to 160 qubits through our adaptive branch-and-bound strategy, together with QEC-specific decomposition. Provers (no decomposition) provide certified optimal routing but exceed the 12-hour timeout beyond 17-qubits. Hunters (branch-and-bound w/o decomposition) give unbiased global solutions up to 49-qubits. Spatial and temporal slicers domi-nate above ∼ 50 qubits through aggressive decomposition. Scott Jones, Song-qing-hao Yang, and Prakash Murali 12510 20 50 100 200 500 1000 2000   
+
+> Routing Time (ms)
+> 0.7 40.7 20.8 5114 114 221 111 112 16316 316 211 12 55 418 12 52 720 12 40 22 59 49 124 20 37 24 76 31 75 32 64
+> 5.6× 3.4× 7.1× 12.1× 11.2× 12.2× 7.6× 8.8× 5.2× 5.5× 4.8× 5.3× 4.7× 4.3× 4.3× 2.8× 3.3× 2.7× 2.5× 1.8× 3.2× 2.4× 2.0×
+> 6710 13 13 13 17 17 17 25 29 31 32 36 49 49 72 81 97 97 100128144161161
+> Number of Qubits
+> Spatial Temp. Hunter Prover
+> 1x 1.5x 3x 6x 20x 10 50 100 200 500 1000 2000
+> Cycle Time (ms)
+> 422 Srf D=2 622 Ham 832 Ste Shor Sub D=3 Srf D=3 HGP-R D=3 RM Srf D=4 Col D=4 BB D=2 Sub D=5 Srf D=5 BB D=3 HGP-R D=5 Sub D=7 Srf D=7 HGP-H D=4 Col D=8 BB D=4 Sub D=9 Srf D=9 Optimal SAT Compiler (Routing) Heuristic Compiler (Routing) Optimal Total Cycle Time Heuristic Total Cycle Time Non-Viable ( ≤ 10 Hz) SAT pool converged SAT pool timed out Routing speedup factor
+
+Figure 4. Top: SAT vs. greedy routing across 6–161-qubit QEC workloads: routing time (bars, left axis) and logical cycle time (lines, right axis). Blue labels show SAT speedup; green ticks mark proven optima and red crosses 12-hour timeouts. Shading marks designs below 10 Hz logical clock speed. Bottom: contribution of SAT portfolio worker classes (Appendix B); lighter cells indicate larger routing improvements, white cells no contribution. SAT improves routing by 2 −12 × across the architecturally relevant WISE design space. Results use 𝑘 = 2, 𝑀 = 4, optimistic hardware tier, a near-optimal operating point that makes these gains conservative. 
+
+Medium-sized codes (10–50 qubits) benefit most because non-local routing overhead in the greedy heuristic is high, while the overheads of decomposition is low. The largest workloads achieve 1 .8–3 .2× routing reductions, showing that the formulation remains effective beyond the regime where optimality can routinely be certified. Compiler scalability (significant improvement versus heuristic) exceeds the architecturally useful WISE regime, so our SAT compiler therefore covers the full architecturally relevant design space. Even under optimistic hardware assumptions, larger workloads either fall below 𝑓 𝐿 < 10 Hz logical clock speed ( 𝑇 logical > 100 ms cycle time), and worse, exceed 4W per logical qubit. 
+
+6.2 Result 2: Full Parameter Sweep 
+
+We next perform a full architecture sweep to identify ar-chitecturally feasible operating points for WISE. For every combination of code family, trap capacity, multiplexing fac-tor, phonon threshold, and technology tier, WISER computes logical cycle time, logical error rate, and power consumption. Throughout this section, logical clock speed and logical error rate should be interpreted as comparative architectural met-rics rather than absolute hardware predictions. Logical clock speed assumes near-optimal mapping and routing, while logical error rate depends on the adopted physics-informed noise model. Consequently, our objective is not to identify universally optimal architecture parameters, but rather to determine which regions of the WISE design space remain feasible while balancing logical reliability, throughput, and power consumption. Our conclusions are robust to changes in most model parameters, except design parameters ( 𝑘, 𝑀, ¯𝑛 ), for which we deliberately explored in Figure 5, while Figure 6 reports relative changes in QEC-performance across codes when changing timing, transport, and physical error parameters by varying technology tier, although the precise feasible region naturally depends on the underlying hardware assumptions. For each trap capacity 𝑘 ∈ { 2, 4, 6, 8, 16 } and multiplex-ing factor 𝑀 ∈ { 1, 4, 16 , 64 , 256 } combination, we select the 
+
+( ¯𝑛, code , distance ) combination that either maximises logi-cal clock speed or minimises power per logical qubit, while achieving < 10 −8 logical error rates. This isolates the ar-chitectural effect of trap capacity and multiplexing factor, while avoiding bias from suboptimal cooling policies or code choices. Figure 6(left) shows 𝑘 = 2, 𝑀 = 16 gives the best trade-off between high clock speeds (53Hz and low power 0.5W) under the optimistic hardware tier. Across all code families, 𝑘 = 2 consistently provides the most favourable trade-off between logical reliability and logical clock speed. Although larger trap capacities reduce transport operations, they also increase gate serialisation and cooling overhead, resulting in slower logical cycles despite modest improvements in routing efficiency. Lower multiplexing factors reduce control contention and therefore improve logical clock speed, but require substan-tially higher power because of the increased number of DAC channels. Conversely, aggressive multiplexing signifi-cantly reduces power consumption at the expense of slower logical execution. Across all code families, 𝑀 = 16 consis-tently emerges as a favourable operating point that balances throughput against power consumption, making it an attrac-tive design point for early fault-tolerant WISE systems. Since conclusions are sensitive to hardware/noise assump-tions, Figure 6(right) sweep the best 𝑘, 𝑀, ¯𝑛, code , distance choices across target logical error rates and hardware tiers, showing low 𝑘 is consistently preferable, while high 𝑀 is WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 
+
+preferable from a power point-of-view, but is limited to small values when operating under realistic logical clock > 50Hz and error < 10 −8 targets. 
+
+6.3 Result 3: QEC Code Family Sweep 
+
+Trajectory-level interpretation (Figure 6). To isolate technology improvements from architecture choices, Fig-ure 6 fixes (𝑘, 𝑀, 𝑛 𝑡 ) = (2, 16 , 0) and tracks each (code , 𝑑 )
+
+pair across fabrication tiers. Varying technology tier there-fore provides an architecture-level sensitivity study, while Figure 3 in the Supplementary separately varies individual physical-model parameters, identifying the spectral expo-nent, axial frequency and cooling time as dominant. Only tra-jectories satisfying the worst-case power constraint ( 𝑃 LQ ≤
+
+1 W) are retained on the left axis, allowing the comparison to focus on deployment-feasible operating points rather than unconstrained performance. Most retained trajectories ex-hibit a consistent diagonal improvement towards lower logi-cal error rates and higher logical clock speeds, indicating that advances in hardware simultaneously improve reliability and throughput without changing the qualitative ordering of the code families. 
+
+Do the benefits of WISE’s all-to-all connectivity im-prove logical-qubit performance for QEC codes that ex-ploit richer connectivity? Figure 6 shows that the answer depends on the performance metric being considered. Across all technology tiers, surface codes consistently achieve the highest logical clock speeds at a given logical error rate, reflecting their comparatively low execution overhead de-spite WISE’s globally controlled routing constraints. In con-trast, code families that exploit richer connectivity, particu-larly qLDPC, incur additional scheduling and reconfigura-tion overhead, reducing logical throughput. Consequently, WISE’s all-to-all connectivity alone does not translate into faster logical execution. Instead, its primary benefit is en-abling high-connectivity QEC codes that would otherwise be impractical on nearest-neighbour architectures, allow-ing them to trade execution time for substantially improved logical-qubit density and power efficiency. 
+
+Which QEC code families remain feasible under WISE constraints? We define feasibility as simultaneously satis-fying the application-level logical error-rate target ( < 10 −8)while remaining within the adopted power budget ( 𝑃 LQ ≤
+
+1 W per logical qubit). Under current technology assump-tions, the bivariate-bicycle (BB) family is the only code family that consistently satisfies these constraints. This is primarily due to its high encoding rate, which substantially reduces the power required per logical qubit and allows larger code dis-tances to remain feasible despite slower logical clock speeds than surface codes. Surface, colour, subsystem and HGP codes generally exceed the power budget before reaching the target logical error rate, limiting their practical deploy-ment within the current hardware assumptions, but allowing a more modest power budget shows us surface codes can achieve the highest logical throughput and lowest logical error rates. 
+
+6.4 Result 4: Comparison with QCCD 
+
+To isolate architectural effects, we performed a normalised comparison using the same distance-7 surface code, common noise model, and identical logical-error target across original WISE, WISER-optimised WISE, and QCCD. Replacing the original heuristic compiler with our SAT compiler improves WISE’s logical clock speed from 1 .94 Hz to 4 .28 Hz while reducing the logical error rate from 3 .3 × 10 −6 to below 10 −8,albeit with increased power consumption (3.86 W to 13.6 W). Under the same assumptions, QCCD achieves 12 .8 Hz at the same logical-error target, confirming that compiler improve-ments substantially improve WISE but do not eliminate the architectural latency imposed by globally multiplexed con-trol. Our findings are consistent with [54], which also reports slower logical clock speeds for WISE. Although SAT com-pilation could also improve QCCD baselines, it cannot re-move the control-wiring bottlenecks that motivate WISE. We therefore focused on whether improved compilation can close WISE’s intrinsic performance gap to QCCD. The remaining gap appears to arise primarily from the execution model itself rather than from compiler quality, ar-chitectural parameter tuning, or the specific error-correcting code. Closing this gap is therefore unlikely to be achieved through incremental optimisation alone; instead, it would require a fundamentally different control and execution par-adigm that relaxes or removes the serialisation inherent in globally multiplexed operation. 
+
+6.5 Scope, limitations and future work. 
+
+To obtain lower bounds, we intentionally use logical mem-ory rather than computation. Logical memory is a standard first benchmark for QEC architectures because it isolates encoded-qubit performance without gate-specific assump-tions, providing a common baseline for comparing code fam-ilies [12]. Our objective is comparative architectural eval-uation rather than absolute hardware prediction: WISER provides lower-bound estimates of logical cycle times and logical error rate under optimal compilation/decoding and optimistic noise/workload assumptions. This lets us rule out surface codes (high power per logical qubit even under this optimistic baseline), while BB’s advantage is per-logical-qubit: [[144,12,6]] encodes 12 logical qubits, giving lower power and physical-qubit cost per logical qubit; it is the only family within the power budget achieving application-level logical error rates at current hardware assumptions. Our conclusions therefore concern the relative merits of different architectural design choices under a consistent modelling framework, rather than precise predictions of future hard-ware performance. Scott Jones, Song-qing-hao Yang, and Prakash Murali 1 4 16 64 256                                                   
+
+> Multiplexing Order M
+> 246816
+> Trap Capacity k
+> 54 54 53 28 23 40 40 29 27 7.9 20 20 20 19 16 1.1 1.1 10 15 1.0 14 1.1 14 13 1.1
+> 1416 64 256
+> Multiplexing Order M
+> 3.9 1.5 0.5 0.4 0.3 3.9 1.5 0.5 0.4 3.7 21.6 9.6 4.8 3.9 3.7 20.4 9.2 5.5 3.9 3.7 22.8 10.0 4.9 3.9 3.7
+> 10 20 30 40 50
+> Clock (Hz)
+> 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.0
+> Power / Logical Qubit (W)
+> did not achieve target LER (1e-08); value shown is the best-resolved point 10 −5 10 −6 10 −7 10 −8
+> Target Logical Error Rate
+> Pes Cur Opt
+> Technology Tier
+> k=2 M=1 nt=0.0 Srf d=5 k=2 M=1 nt=0.0 Srf d=7 k=2 M=1 nt=0.0 Srf d=7
+> infeasible
+> k=4 M=1 nt=1.0 Sub d=3 k=2 M=1 nt=0.0 Srf d=5 k=2 M=4 nt=0.0 Srf d=5 k=2 M=1 nt=0.0 Srf d=7 k=4 M=1 nt=100.0 Srf d=3 k=2 M=1 nt=100.0 Srf d=3 k=2 M=4 nt=0.0 Srf d=4 k=2 M=1 nt=0.0 Srf d=5
+> 10 −5 10 −6 10 −7 10 −8
+> Target Logical Error Rate
+> k=2 M=256 nt=0.0 Srf d=7 k=2 M=256 nt=0.0 Srf d=7 k=2 M=16 nt=0.1 Srf d=7
+> infeasible
+> k=2 M=256 nt=0.0 BB d=4 k=2 M=256 nt=0.0 BB d=4 k=2 M=256 nt=0.0 Srf d=7 k=2 M=256 nt=0.0 Srf d=7 k=2 M=256 nt=0.0 BB d=4 k=2 M=256 nt=0.0 BB d=4 k=2 M=256 nt=0.0 BB d=4 k=2 M=256 nt=0.0 BB d=4
+> 12345
+> Best Power/Logical Qubit (W)
+> 50 100 150 200 250 300 350
+> Best Logical Clock Speed (Hz)
+
+Figure 5. Left: Architecture-level decision maps over (𝑘, 𝑀 ) under the Optimistic technology tier, 10 −8 logical error rate target. 1: 
+
+maximum logical clock speed achievable for each (𝑘, 𝑀 ) pair after selecting the feasible (code , 𝑛 𝑡 ) combination. 2: minimum power per logical qubit under the same feasibility criterion. Cell annotations report the numerical values used for ranking. Configurations with 𝑘 = 16 are omitted because no feasible operating point satisfies the logical error-rate target. Right: sensitivity sweep of the best 𝑘, 𝑀, ¯𝑛 , code, distance choices across target logical error rates and hardware tiers . 1. ≈ 1W per logical qubit is achieved only up to 10 −6 error-rates with BB codes and 𝑀 = 256 multiplexing under current hardware. 2. ≈ 50Hz is the best we can do under current hardware, while more practical > 300Hz clock speeds are only possible with low 10 −6 targets, small surface codes and minimal multiplexing. < 1 W / logical qubit 1–4 W / logical qubit > 4 W / logical qubit 
+
+10 −8 
+
+10 −5 
+
+10 −2 
+
+110 100 
+
+> Logical Clock Speed (Hz) — better →
+
+BB-D2 BB-D3 HGP-D4 BB-D4 
+
+10 −8 
+
+10 −5 
+
+10 −2 
+
+Srf-D2 Srf-D3 Sub-D3 Srf-D4 HGP-D3 Srf-D5 Sub-D5 Col-D4 Col-D6 
+
+10 −8 
+
+10 −6 
+
+Srf-D7 HGP-D5 Sub-D7 
+
+Logical Error Rate — better → 
+
+BB Colour HGP Subsystem Surface Pes Cur Opt Trajectory (Pess. → Curr. → Opt.) Target LER = 1e-08 
+
+Figure 6. QEC tier-trajectories at fixed hardware settings (𝑘 ∗, 𝑀 ∗, 𝑛 ∗
+
+𝑡 ) = (2, 16 , 0.0). Each connected trajectory corresponds to one (code , 𝑑 )
+
+pair and links technology tiers in order Pessimistic → Current → Optimistic (square, diamond, circle markers). The horizontal axis is logical error rate (LER, log scale, inverted so rightward is better), and the vertical axis is logical clock speed (Hz, log scale, upward is better). Colors denote code families. Left axis shows codes consuming ≤ 1𝑊 per logical-qubit, while right axis shows codes consuming prohibitive > 1W per logical-qubit. BB distance-4 under the optimistic tier is the only code family to exceed the target logical-error-rate (10 −8, dashed-red line) with feasible power-per-logical-qubit. 
+
+Memory experiments are particularly appropriate for WISE-class architectures. Under current trapped-ion scaling assumptions, wiring and power constraints limit monolithic QCCD systems to approximately 10 4 physical qubits [54, 71], restricting near-term systems to a small number of logical qubits at moderate code distances. In this regime, logical-memory performance dominates overall system capability. Furthermore, optimising logical memory on WISE-class devices is relevant to near-term quantum networking applications such as quantum key distribution and quantum repeaters [6], where small fault-tolerant nodes must sustain encoded states over communication timescales. Logical computation using lattice surgery or code defor-mation introduces additional boundary-qubit routing and scheduling overheads [33, 47, 68], increasing absolute execu-tion time while leaving the dominant intra-patch syndrome-extraction workload unchanged. Achieving systems of this scale with trapped-ions will likely require modular archi-tectures [73, 111] rather than single monolithic devices (e.g. MUSIQC [77] qccd modules connected using photonic inter-connects). In such modular systems, each node must inde-pendently maintain high-quality logical memory, making the intra-module optimisations studied here directly applica-ble. We expect our architectural conclusions: the dominance of execution time as the key bottleneck, the advantage of small trap capacity, and the viability of high-rate qLDPC codes to generalise, although quantitative predictions on logical cycle time and error rate will increase once computa-tion is included. Extending WISER to full logical computa-tion, including lattice surgery, magic-state distillation and algorithm-level resource estimation, is an important direc-tion for future work [13, 117, 128]. WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 
+
+## References 
+
+[1] Rajeev Acharya et al. 2024. Quantum error correction below the surface code threshold. Nature 634 (2024), 834–840. doi: 10.1038/ s41586-024-08449-y 
+
+[2] Laleh Aghababaie Beni, Oscar Higgott, and Noah Shutty. 2025. Tesseract: A Search-Based Decoder for Quantum Error Correction. arXiv:2503.10988 [quant-ph] doi: 10.48550/arXiv.2503.10988 
+
+[3] Google Quantum AI. 2023. Suppressing quantum errors by scaling a surface code logical qubit. Nature 614 (2023), 676–681. doi: 10.1038/ s41586-022-05434-1 
+
+[4] Panos Aliferis and Andrew W. Cross. 2007. Subsystem Fault Tolerance with the Bacon–Shor Code. Physical Review Letters 98 (2007), 220502. doi: 10.1103/PhysRevLett.98.220502 arXiv:quant-ph/0610063. [5] F. Anmasser, M. Abu Zahra, K. Schüppert, M. Pototschnig, J. Wahl, M. Dietl, M. Pfeifer, Y. Colombe, J. Repp, M. Brandl, P. Schindler, and C. Rössler. 2026. Demonstration of a Multiplexing Trapped Ion Quantum Processing Unit. arXiv:2605.16010 [quant-ph] https: //arxiv.org/abs/2605.16010 
+
+[6] Koji Azuma, Sophia E. Economou, David Elkouss, Paul Hilaire, Liang Jiang, Hoi-Kwong Lo, and Ilan Tzitrin. 2023. Quantum repeaters: From quantum networks to the quantum internet. Reviews of Modern Physics 95 (2023), 045006. doi: 10.1103/RevModPhys.95.045006 
+
+[7] Ryan Babbush et al. 2018. Encoding Electronic Spectra in Quantum Circuits with Linear T Complexity. Physical Review X 8 (2018), 041015. doi: 10.1103/PhysRevX.8.041015 
+
+[8] Dave Bacon. 2006. Operator quantum error-correcting subsystems for self-correcting quantum memories. Physical Review A 73, 1 (Jan. 2006). doi: 10.1103/physreva.73.012340 
+
+[9] Dave Bacon. 2006. Operator quantum error-correcting subsystems for self-correcting quantum memories. Physical Review A 73 (2006), 012340. doi: 10.1103/PhysRevA.73.012340 
+
+[10] C. J. Ballance, T. P. Harty, N. M. Linke, M. A. Sepiol, and D. M. Lucas. 2016. High-Fidelity Quantum Logic Gates Using Trapped-Ion Hyperfine Qubits. Physical Review Letters 117 (2016), 060504. doi: 10.1103/PhysRevLett.117.060504 
+
+[11] Noah Berthusen, Joan Dreiling, Cameron Foltz, John P. Gaebler, Thomas M. Gatterman, Dan Gresh, Nathan Hewitt, Michael Mills, Steven A. Moses, Brian Neyenhuis, Peter Siegfried, and David Hayes. 2024. Experiments with the 4D Surface Code on a QCCD Quan-tum Computer. Physical Review A 110 (2024), 062413. doi: 10.1103/ PhysRevA.110.062413 
+
+[12] Michael E. Beverland, Prakash Murali, Matthias Troyer, Krysta M. Svore, Torsten Hoefler, Vadym Kliuchnikov, Guang Hao Low, Math-ias Soeken, Aarthi Sundaram, and Alexander Vaschillo. 2022. As-sessing requirements to scale to practical quantum advantage. arXiv:2211.07629 [quant-ph] https://arxiv.org/abs/2211.07629 
+
+[13] Aditya Bhardwaj, Muzhou Ma, Nadine Meister, Robbie King, Dolev Bluvstein, John Preskill, Madelyn Cain, Qian Xu, and Hsin-Yuan Huang. 2026. High-rate qLDPC processors. arXiv:2607.28795 [quant-ph] https://arxiv.org/abs/2607.28795 
+
+[14] R. B. Blakestad, C. Ospelkaus, A. P. VanDevender, J. M. Amini, J. Brit-ton, D. Leibfried, and D. J. Wineland. 2009. High-Fidelity Transport of Trapped-Ion Qubits through an X-Junction Trap Array. Physical Re-view Letters 102 (2009), 153002. doi: 10.1103/PhysRevLett.102.153002 
+
+[15] R. B. Blakestad, C. Ospelkaus, A. P. VanDevender, J. H. Wesenberg, M. J. Biercuk, D. Leibfried, and D. J. Wineland. 2011. Near-ground-state transport of trapped-ion qubits through a multisegmented linear Paul trap. Physical Review A 84 (2011), 032314. doi: 10.1103/PhysRevA. 84.032314 
+
+[16] Dolev Bluvstein, Simon J. Evered, Alexandra A. Geim, Sophie H. Li, Hengyun Zhou, Tom Manovitz, Sepehr Ebadi, Madelyn Cain, Marcin Kalinowski, Dominik Hangleiter, et al. 2024. Logical quantum processor based on reconfigurable atom arrays. Nature 626 (2024), 58–65. doi: 10.1038/s41586-023-06927-3 
+
+[17] Dolev Bluvstein, S. J. Evered, A. A. Geim, S. H. Li, H. Zhou, T. Manovitz, S. Ebadi, S. Maskara, N. Bluvstein, J. Keefe, I. Borish, M. Kalinowski, and M. D. Lukin. 2025. A fault-tolerant neutral-atom architecture for universal quantum computation. Nature 649 (2025), 39–45. doi: 10.1038/s41586-024-08107-1 
+
+[18] H. Bombin and M. A. Martin-Delgado. 2006. Topological Quantum Distillation. Phys. Rev. Lett. 97 (Oct 2006), 180501. Issue 18. doi: 10. 1103/PhysRevLett.97.180501 
+
+[19] R. Bowler, J. Gaebler, Y. Lin, T. R. Tan, D. Hanneke, J. D. Jost, J. P. Home, D. Leibfried, and D. J. Wineland. 2012. Coherent Diabatic Ion Transport and Separation in a Multizone Trap Array. Physical Review Letters 109 (2012), 080502. doi: 10.1103/PhysRevLett.109.080502 
+
+[20] Sergey Bravyi, Andrew W. Cross, Jay M. Gambetta, Dmitri Maslov, Patrick Rall, and Theodore J. Yoder. 2024. High-threshold and low-overhead fault-tolerant quantum memory. Nature 627 (2024), 778–782. doi: 10.1038/s41586-024-07107-7 
+
+[21] Sergey Bravyi, David Poulin, and Barbara Terhal. 2010. Tradeoffs for Reliable Quantum Information Storage in 2D Systems. Physical Re-view Letters 104 (2010), 050503. doi: 10.1103/PhysRevLett.104.050503 
+
+arXiv:0909.5200. [22] Nikolas P. Breuckmann and Jens N. Eberhardt. 2021. Balanced prod-uct quantum codes. IEEE Transactions on Information Theory 67, 10 (2021), 6653–6674. doi: 10.1109/TIT.2021.3097347 
+
+[23] M. Brownnutt, M. Kumph, P. Rabl, and R. Blatt. 2015. Ion-trap mea-surements of electric-field noise near surfaces. Reviews of Modern Physics 87 (2015), 1419–1482. doi: 10.1103/RevModPhys.87.1419 Alias of Brownnutt2015. [24] William Cody Burton, Brian Estey, Ian M. Hoffman, Abigail R. Perry, Curtis Volin, and Gabriel Price. 2023. Transport of Multispecies Ion Crystals through a Junction in a Radio-Frequency Paul Trap. 
+
+Physical Review Letters 130 (2023), 173202. doi: 10.1103/PhysRevLett. 130.173202 
+
+[25] Madelyn Cain, Qian Xu, Robbie King, Lewis R. B. Picard, Harry Levine, Manuel Endres, John Preskill, Hsin-Yuan Huang, and Dolev Bluvstein. 2026. Shor’s algorithm is possible with as few as 10,000 reconfigurable atomic qubits. arXiv:2603.28627 [quant-ph] https: //arxiv.org/abs/2603.28627 
+
+[26] Laura Caune, Luka Skoric, Nick S. Blunt, Archibald Ruban, Jimmy McDaniel, Joseph A. Valery, Andrew D. Patterson, Alexander V. Gramolin, Joonas Majaniemi, Kenton M. Barnes, Tomasz Bialas, Okan Buğdaycı, Ophelia Crawford, György P. Gehér, Hari Krovi, Elisha Matekole, Canberk Topal, Stefano Poletto, Michael Bryant, Kalan Snyder, Neil I. Gillespie, Glenn Jones, Kauser Johar, Earl T. Camp-bell, and Alexander D. Hill. 2024. Demonstrating real-time and low-latency quantum error correction with superconducting qubits. arXiv:2410.05202 [quant-ph] https://arxiv.org/abs/2410.05202 
+
+[27] Fang Cheng, Dripto M. Debroy, and Kenneth R. Brown. 2024. Crosstalk in Simultaneously Driven Multi-Qubit Gates in Trapped Ions. Physical Review A 109 (2024), 062607. doi: 10.1103/PhysRevA. 109.062607 
+
+[28] Sabrina M. Corsetti, Ashton Hattori, Ethan R. Clements, Felix W. Knollmann, Milica Notaros, Reuel Swint, Tal Sneh, Patrick T. Calla-han, Gavin N. West, Dave Kharas, Thomas Mahony, Colin D. Bruzewicz, Cheryl Sorace-Agaskar, Robert McConnell, Isaac L. Chuang, John Chiaverini, and Jelena Notaros. 2026. Integrated-photonics-based systems for polarization-gradient cooling of trapped ions. Light: Science & Applications 15, 1 (Jan 2026). doi: 10.1038/s41377-025-02094-4 
+
+[29] Niklas Eén and Niklas Sörensson. 2003. An Extensible SAT-solver. In Theory and Applications of Satisfiability Testing (SAT) . Springer, Berlin, Heidelberg, 502–518. doi: 10.1007/978-3-540-24605-3_37 
+
+[30] Richard P. Feynman. 1982. Simulating Physics with Computers. 
+
+International Journal of Theoretical Physics 21, 6/7 (1982), 467–488. doi: 10.1007/BF02650179 Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+[31] Caroline Figgatt. 2018. Building and Programming a Universal Ion Trap Quantum Computer . Ph. D. Dissertation. University of Maryland. [32] Caroline Figgatt, Aaron Ostrander, Norbert M Linke, Kevin A Lands-man, Daiwei Zhu, Dmitri Maslov, and Christopher Monroe. 2019. Parallel entangling operations on a universal ion-trap quantum com-puter. Nature 572, 7769 (2019), 368–372. [33] Austin G. Fowler and Craig Gidney. 2018. Low overhead quantum computation using lattice surgery. arXiv:1808.06709 [quant-ph] [34] Austin G. Fowler, Matteo Mariantoni, John M. Martinis, and An-drew N. Cleland. 2012. Surface codes: Towards practical large-scale quantum computation. Physical Review A 86 (2012), 032324. doi: 10.1103/PhysRevA.86.032324 
+
+[35] Michael R. Garey and David S. Johnson. 1979. Computers and In-tractability: A Guide to the Theory of NP-Completeness . W. H. Freeman, New York. [36] Craig Gidney. 2021. Stim: a fast stabilizer circuit simulator. Quantum 
+
+5 (2021), 497. doi: 10.22331/q-2021-07-06-497 
+
+[37] Craig Gidney and Martin Ekerå. 2021. How to factor 2048 bit RSA integers in 8 hours using 20 million noisy qubits. Quantum 5 (2021), 433. doi: 10.22331/q-2021-04-15-433 
+
+[38] Craig Gidney and Cody Jones. 2023. New circuits and an open source decoder for the color code. arXiv:2312.08813 [quant-ph] [39] Google Quantum AI. 2026. Safeguarding Cryptocurrency by Disclos-ing Quantum Vulnerabilities Responsibly. White paper, March 2026. Available at https://quantumai.google/static/site-assets/downloads/ cryptocurrency-whitepaper.pdf .[40] Lov K. Grover. 1996. A fast quantum mechanical algorithm for database search. arXiv:quant-ph/9605043 [quant-ph] https://arxiv. org/abs/quant-ph/9605043 
+
+[41] Nikodem Grzesiak, Reinhold Blümel, Kenneth Wright, Kristin M. Beck, Neal C. Pisenti, Ming Li, Vandiver Chaplin, Jason M. Amini, Shantanu Debnath, Jwo-Sy Chen, and Yunseong Nam. 2020. Efficient arbitrary simultaneously entangling gates on a trapped-ion quantum computer. Nature Communications 11, 1 (2020). doi: 10.1038/s41467-020-16790-9 
+
+[42] Cica Gustiani, Tyson Jones, and Simon C. Benjamin. 2025. The Virtual Quantum Device (VQD): A tool for detailed emulation of quantum computers. Quantum 9 (2025), 1642. arXiv:2306.07342 doi: 10.22331/q-2025-02-25-1642 University of Oxford; Quantum Motion. [43] M. Gutiérrez et al. 2019. Transversality and lattice surgery: Ex-ploring realistic routes toward coupled logical qubits with trapped-ion quantum processors. Physical Review A 100 (2019), 012339. doi: 10.1103/PhysRevA.100.012339 
+
+[44] A. Nico Habermann. 1972. Parallel neighbor-sort (or the glory of the induction principle) . Technical Report AD-759 248. Carnegie-Mellon University. [45] Oscar Higgott. 2022. PyMatching: A Python package for decoding quantum codes with minimum-weight perfect matching. ACM Trans-actions on Quantum Computing 3, 3 (2022), 1–16. doi: 10.1145/3505637 
+
+[46] Oscar Higgott and Craig Gidney. 2025. Sparse Blossom: correcting a million errors per core second with minimum-weight matching. 
+
+Quantum 9 (Jan. 2025), 1600. doi: 10.22331/q-2025-01-20-1600 
+
+[47] Clare Horsman, Austin G. Fowler, Simon Devitt, and Rodney Van Me-ter. 2012. Surface code quantum computing by lattice surgery. New Journal of Physics 14 (2012), 123011. doi: 10.1088/1367-2630/14/12/ 123011 
+
+[48] A. C. Hughes, R. Srinivas, C. M. Löschnauer, H. M. Knaack, R. Matt, C. J. Ballance, M. Malinowski, T. P. Harty, and R. T. Sutherland. 2025. Trapped-ion two-qubit gates with >99.99% fidelity without ground-state cooling. arXiv:2510.17286 [quant-ph] https://arxiv.org/abs/ 2510.17286 
+
+[49] Alexey Ignatiev, Antonio Morgado, and Joao Marques-Silva. 2018. PySAT: A Python Toolkit for Prototyping with SAT Oracles. In In-ternational Conference on Theory and Applications of Satisfiability Testing (SAT) . Springer, Cham, 428–437. [50] Alexey Ignatiev, Antonio Morgado, and Joao Marques-Silva. 2019. RC2: An Efficient MaxSAT Solver. Journal on Satisfiability, Boolean Modeling and Computation 11, 1 (2019), 53–64. [51] IonQ. 2024. IonQ Forte: Technical Specifications. https://ionq.com/ quantum-systems/forte 
+
+[52] IonQ. 2025. IonQ Tempo. https://ionq.com/quantum-systems/tempo .Accessed: 10 June 2026. [53] Anna B. Jakobsen, Anders B. Clausen, Jaco van de Pol, and Irfansha Shaik. 2025. Depth-Optimal Quantum Layout Synthesis as SAT. arXiv:2506.06752 [quant-ph] https://arxiv.org/abs/2506.06752 
+
+[54] Scott Jones and Prakash Murali. 2026. Architecting Scalable Trapped Ion Quantum Computers using Surface Codes. In Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 . ACM, 175–190. doi: 10.1145/3779212.3790128 
+
+[55] H. Kaufmann, S. Ulm, G. Jacob, U. Poschinger, H. Landa, A. Retzker, M. B. Plenio, and F. Schmidt-Kaler. 2017. Fast ion swapping applied to the creation of entangled states. Physical Review A 95 (2017), 052319. doi: 10.1103/PhysRevA.95.052319 
+
+[56] Sahil Khan, Abhinav Anand, Kenneth R. Brown, and Jonathan M. Baker. 2026. Cyclone: Designing Efficient and Highly Parallel QCCD Architectural Codesigns for Fault Tolerant Quantum Memory. In 
+
+Proceedings of the IEEE International Symposium on High-Performance Computer Architecture (HPCA) . arXiv:2511.15910 [quant-ph] [57] Sahil Khan, Suhas Vittal, Kenneth Brown, and Jonathan Baker. 2025. Moveless: Minimizing Overhead on QCCDs via Versatile Execution and Low Excess Shuttling. arXiv preprint arXiv:2508.03914 (2025). [58] D. Kielpinski, C. Monroe, and D. J. Wineland. 2002. Architecture for a large-scale ion-trap quantum computer. Nature 417 (2002), 709–711. doi: 10.1038/nature00784 
+
+[59] F. W. Knollmann, E. Clements, P. T. Callahan, M. Gehl, J. D. Hunker, T. Mahony, R. McConnell, R. Swint, C. Sorace-Agaskar, I. L. Chuang, J. Chiaverini, and D. Stick. 2024. Integrated photonic structures for photon-mediated entanglement of trapped ions. Optica Quantum 2, 4 (Aug. 2024), 230. doi: 10.1364/opticaq.522128 
+
+[60] Donald E. Knuth. 1998. The Art of Computer Programming, Volume 3: Sorting and Searching (2nd ed.). Addison-Wesley, Reading, MA. [61] K. A. Landsman, Y. Wu, P. H. Leung, D. Zhu, N. M. Linke, K. R. Brown, L. Duan, and C. Monroe. 2019. Two-qubit entangling gates within arbitrarily long chains of trapped ions. Physical Review A 100, 2 (Aug. 2019). doi: 10.1103/physreva.100.022332 
+
+[62] Tyler LeBlond, Ryan S Bennink, Justin G Lietz, and Christopher M Seck. 2023. Tiscc: A surface code compiler and resource estimator for trapped-ion processors. In Proceedings of the SC’23 Workshops of The International Conference on High Performance Computing, Network, Storage, and Analysis . 1426–1435. [63] Joonho Lee, Dominic W. Berry, Craig Gidney, William J. Huggins, Jarrod R. McClean, Nathan Wiebe, and Ryan Babbush. 2021. Even more efficient quantum computations of chemistry through ten-sor hypercontraction. PRX Quantum 2 (2021), 030305. doi: 10.1103/ PRXQuantum.2.030305 
+
+[64] D. Leibfried, R. Blatt, C. Monroe, and D. Wineland. 2003. Quantum dynamics of single trapped ions. Rev. Mod. Phys. 75 (Mar 2003), 281–324. Issue 1. doi: 10.1103/RevModPhys.75.281 
+
+[65] Bjoern Lekitsch, Sebastian Weidt, Austin G. Fowler, Klaus Mølmer, Simon J. Devitt, Christof Wunderlich, and Winfried K. Hensinger. 2017. Blueprint for a microwave trapped ion quantum computer. 
+
+Science Advances 3, 2 (2017), e1601540. doi: 10.1126/sciadv.1601540 
+
+[66] Pak Hong Leung and Kenneth R. Brown. 2018. Entangling an arbi-trary pair of qubits in a long ion crystal. Physical Review A 98, 3 (sept 2018). doi: 10.1103/physreva.98.032318 
+
+[67] G.-D. Lin, S.-L. Zhu, R. Islam, K. Kim, M.-S. Chang, S. Korenblit, C. Monroe, and L.-M. Duan. 2009. Large-scale quantum computation in WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 
+
+an anharmonic linear ion trap. EPL (Europhysics Letters) 86, 6 (June 2009), 60004. doi: 10.1209/0295-5075/86/60004 
+
+[68] Daniel Litinski. 2019. A Game of Surface Codes: Large-Scale Quantum Computing with Lattice Surgery. Quantum 3 (2019), 128. doi: 10.22331/ q-2019-03-05-128 
+
+[69] C. M. Löschnauer, J. Mosca Toba, A. C. Hughes, S. A. King, M. A. Weber, R. Srinivas, R. Matt, R. Nourshargh, D. T. C. Allcock, C. J. Bal-lance, C. Matthiesen, M. Malinowski, and T. P. Harty. 2025. Scalable, High-Fidelity All-Electronic Control of Trapped-Ion Qubits. PRX Quantum 6 (2025), 040313. doi: 10.1103/PRXQuantum.6.040313 
+
+[70] Yao Lu, Shuaining Zhang, Kuan Zhang, Wentao Chen, Yangchao Shen, Jialiang Zhang, Jing-Ning Zhang, and Kihwan Kim. 2019. Global entangling gates on arbitrary ion qubits. Nature 572, 7769 (July 2019), 363–367. doi: 10.1038/s41586-019-1428-4 
+
+[71] M. Malinowski, D. T. C. Allcock, and C. J. Ballance. 2023. How to wire a 1000-qubit trapped-ion quantum computer. PRX Quantum 4(2023), 040313. doi: 10.1103/PRXQuantum.4.040313 
+
+[72] D. L. Moehring, C. Highstrete, D. Stick, K. M. Fortier, R. Haltli, C. Tigges, and M. G. Blain. 2011. Design, fabrication and experimental demonstration of junction surface ion traps. New Journal of Physics 
+
+13 (2011), 075018. doi: 10.1088/1367-2630/13/7/075018 
+
+[73] Masoud Mohseni, Artur Scherer, K. Grace Johnson, et al. 2024. How to Build a Quantum Supercomputer: Scaling from Hundreds to Millions of Qubits. arXiv:2411.10406 [quant-ph] [74] Abtin Molavi, Amanda Xu, Ethan Cecchetti, Swamit Tannu, and Aws Albarghouthi. 2024. Generating Compilers for Qubit Mapping and Routing. Proceedings of the ACM on Programming Languages 8, PLDI, Article 78 (2024). doi: 10.1145/3656415 arXiv:2508.10781. [75] Abtin Molavi, Amanda Xu, Martin Diges, Lauren Pick, and Swamit Tannu. 2022. Qubit Mapping and Routing via MaxSAT. In Proceedings of the 55th IEEE/ACM International Symposium on Microarchitecture (MICRO) . 1078–1091. doi: 10.1109/MICRO56248.2022.00077 
+
+[76] C. Monroe, D. M. Meekhof, B. E. King, S. R. Jefferts, W. M. Itano, and D. J. Wineland. 1995. Resolved-sideband Raman cooling of a bound atom to the 3D zero-point energy. Physical Review Letters 75 (1995), 4011–4014. doi: 10.1103/PhysRevLett.75.4011 
+
+[77] C. Monroe, R. Raussendorf, A. Ruthven, K. R. Brown, P. Maunz, L.-M. Duan, and J. Kim. 2014. Large-scale modular quantum-computer architecture with atomic memory and photonic interconnects. Phys. Rev. A 89 (Feb 2014), 022317. Issue 2. doi: 10.1103/PhysRevA.89.022317 
+
+[78] Carmelo Mordini, Alfredo Ricci Vasquez, Yuto Motohashi, Mose Müller, Maciej Malinowski, Chi Zhang, Karan K. Mehta, Daniel Kien-zler, and Jonathan P. Home. 2025. Multizone Trapped-Ion Qubit Control in an Integrated Photonics QCCD Device. Physical Review X 
+
+15, 1 (Feb. 2025). doi: 10.1103/physrevx.15.011040 
+
+[79] S. A. Moses, C. H. Baldwin, M. S. Allman, et al. 2023. A Race-Track Trapped-Ion Quantum Processor. Physical Review X 13 (2023), 041052. doi: 10.1103/PhysRevX.13.041052 
+
+[80] Prakash Murali, Dripto M. Debroy, Kenneth R. Brown, and Margaret Martonosi. 2020. Architecting Noisy Intermediate-Scale Trapped-Ion Quantum Computers. In Proceedings of the 47th Annual International Symposium on Computer Architecture (ISCA) . 529–542. doi: 10.1109/ ISCA45697.2020.00051 
+
+[81] John Napp and John Preskill. 2013. Optimal Bacon–Shor codes. arXiv:1209.0794 [quant-ph] [82] Ryutaro Ohira, Shinichi Morisaka, Yoshinori Kurimoto, Toshiaki Inada, Ippei Nakamura, Takefumi Miyoshi, and Atsushi Noguchi. 2026. Cryogenic Time-Division-Multiplexed Voltage Control for Scalable Trapped-Ion Quantum Processors. arXiv:2605.17824 [quant-ph] https://arxiv.org/abs/2605.17824 
+
+[83] Ryutaro Ohira, Shinichi Morisaka, Ippei Nakamura, Atsushi Noguchi, and Takefumi Miyoshi. 2025. Multiplexed Control at Scale for Elec-trode Arrays in Trapped-Ion Quantum Processors. In 2025 IEEE Inter-national Conference on Quantum Computing and Engineering (QCE) ,Vol. 1. IEEE, Piscataway, NJ, USA, 1351–1359. [84] Anabel Ovide, Andreu Anglés-Castillo, and Carmen G. Almudever. 2026. Adaptive Parallelism-Aware Qubit Routing for Ion Trap QCCD Architectures. arXiv:2603.19969 [quant-ph] doi: 10.48550/arXiv.2603. 19969 
+
+[85] Oxford Ionics. 2026. Our Technology. https://www.oxionics.com/our-technology/ Accessed: 10 June 2026. [86] R. Ozeri, C. Langer, J. D. Jost, R. B. Blakestad, J. Britton, J. Chiaverini, D. Hume, W. M. Itano, E. Knill, D. Leibfried, R. Reichle, S. Seidelin, J. H. Wesenberg, and D. J. Wineland. 2007. Errors in Trapped-Ion Quantum Gates Due to Spontaneous Photon Scattering. Physical Review A 75 (2007), 042329. doi: 10.1103/PhysRevA.75.042329 
+
+[87] Joe O’Gorman and Earl T. Campbell. 2017. Quantum computation with realistic magic-state factories. Physical Review A 95, 3 (March 2017). doi: 10.1103/physreva.95.032338 
+
+[88] Pavel Panteleev and Gleb Kalachev. 2022. Asymptotically good Quan-tum and locally testable classical LDPC codes. In Proceedings of the 54th Annual ACM SIGACT Symposium on Theory of Computing (Rome, Italy) (STOC 2022) . Association for Computing Machinery, New York, NY, USA, 375–388. doi: 10.1145/3519935.3520017 
+
+[89] J. M. Pino, J. M. Dreiling, C. Figgatt, J. P. Gaebler, S. A. Moses, M. S. Allman, C. H. Baldwin, M. Foss-Feig, D. Hayes, K. Mayer, C. Ryan-Anderson, and B. Neyenhuis. 2021. Demonstration of the trapped-ion quantum CCD computer architecture. Nature 592 (2021), 209–213. doi: 10.1038/s41586-021-03318-4 
+
+[90] David Poulin. 2006. Optimal and efficient decoding of concatenated quantum block codes. Physical Review A 74 (2006), 052333. doi: 10. 1103/PhysRevA.74.052333 
+
+[91] Quantinuum. 2024. Quantinuum H-Series Quantum Computers. 
+
+https://www.quantinuum.com/hardware 
+
+[92] Anthony Ransford, M. S. Allman, Jake Arkinstall, J. P. Campora III, Samuel F. Cooper, Robert D. Delaney, Joan M. Dreiling, Brian Estey, et al. 2025. Helios: A 98-Qubit Trapped-Ion Quantum Computer. arXiv:2511.05465 [quant-ph] [93] Ben W. Reichardt, David Aasen, Rui Chao, Alex Chernoguzov, Wim van Dam, John P. Gaebler, Dan Gresh, Dominic Lucchetti, Michael Mills, Steven A. Moses, Brian Neyenhuis, Adam Paet-znick, Andres Paz, Peter E. Siegfried, Marcus P. da Silva, Krysta M. Svore, Zhenghan Wang, and Matt Zanner. 2024. Demonstration of quantum computation and error correction with a tesseract code. arXiv:2409.04628 [quant-ph] [94] Ben W. Reichardt, Adam Paetznick, David Aasen, Ivan Basov, Juan M. Bello-Rivas, Parsa Bonderson, Rui Chao, et al. 2025. Fault-tolerant quantum computation with a neutral atom processor. arXiv:2411.11822 [quant-ph] https://arxiv.org/abs/2411.11822 
+
+[95] Joschka Roffe. 2022. LDPC: Python tools for low density parity check codes . https://pypi.org/project/ldpc/ 
+
+[96] Joschka Roffe, David R. White, Simon Burton, and Earl T. Campbell. 2020. Decoding across the quantum LDPC code landscape. Physical Review Research 2 (2020), 043423. doi: 10.1103/PhysRevResearch.2. 043423 
+
+[97] Brent Russon, Bao Bach, Ed Younis, and Ilya Safro. 2026. Scaling Qubit Mapping and Routing With Position Graph Abstraction and Memoization. arXiv:2605.09237 [quant-ph] https://arxiv.org/abs/ 2605.09237 
+
+[98] T. Ruster, C. Warschburger, H. Kaufmann, C. T. Schmiegelow, A. Walther, M. Hettrich, A. Pfister, V. Dawkins, U. G. Poschinger, and F. Schmidt-Kaler. 2014. Experimental realization of fast ion separation in segmented Paul traps. Physical Review A 90 (2014), 033410. doi: 10. 1103/PhysRevA.90.033410 
+
+[99] C. Ryan-Anderson, J. G. Bohnet, K. Lee, D. Gresh, A. Hankin, J. P. Gaebler, D. Francois, A. Chernoguzov, D. Lucchetti, N. C. Brown, T. M. Gatterman, S. K. Halit, K. Gilmore, J. A. Gerber, B. Neyenhuis, D. Hayes, and R. P. Stutz. 2021. Realization of Real-Time Fault-Tolerant Quantum Error Correction. Physical Review X 11 (2021), 041058. Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+doi: 10.1103/PhysRevX.11.041058 
+
+[100] Maximilian Schier, Lea Richtmann, Christian Staufenbiel, Tobias Schmale, Daniel Borcherding, Michèle Heurs, and Bodo Rosenhahn. 2026. Reinforcement learning for ion shuttling on trapped-ion quan-tum computers. arXiv:2605.22463 [quant-ph] doi: 10.48550/arXiv.2605. 22463 
+
+[101] Daniel Schoenberger, Stefan Hillmich, Matthias Brandl, and Robert Wille. 2025. Shuttling for Scalable Trapped-Ion Quantum Computers. 
+
+IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 44, 6 (2025), 2144–2155. doi: 10.1109/TCAD.2024.3513262 
+
+[102] Irfansha Shaik and Jaco van de Pol. 2024. Optimal Layout Synthesis for Deep Quantum Circuits on NISQ Processors with 100+ Qubits. arXiv:2403.11598 [quant-ph] https://arxiv.org/abs/2403.11598 
+
+[103] Peter W. Shor. 1997. Polynomial-Time Algorithms for Prime Factor-ization and Discrete Logarithms on a Quantum Computer. SIAM J. Comput. 26, 5 (Oct. 1997), 1484–1509. doi: 10.1137/s0097539795293172 
+
+[104] Seyon Sivarajah, Silas Dilkes, Alexander Cowtan, Will Simmons, Alec Edgington, and Ross Duncan. 2020. t |ket ⟩: a retargetable compiler for NISQ devices. Quantum Science and Technology 6, 1 (2020), 014003. doi: 10.1088/2058-9565/ab8e92 
+
+[105] Luka Skoric, Dan E. Browne, Kenton M. Barnes, Neil I. Gillespie, and Earl T. Campbell. 2023. Parallel window decoding enables scalable fault tolerant quantum computation. Nature Communications 14, 1 (Nov. 2023). doi: 10.1038/s41467-023-42482-1 
+
+[106] M. C. Smith, A. D. Leu, K. Miyanishi, M. F. Gely, and D. M. Lucas. 2025. Single-Qubit Gates with Errors at the 10 −7 Level. Physical Review Letters 134 (2025), 230601. doi: 10.1103/PhysRevLett.134.230601 
+
+[107] Anders Sørensen and Klaus Mølmer. 1999. Quantum Computation with Ions in Thermal Motion. Physical Review Letters 82 (1999), 1971–1974. doi: 10.1103/PhysRevLett.82.1971 
+
+[108] Anders Sørensen and Klaus Mølmer. 2000. Entanglement and quan-tum computation with ions in thermal motion. Physical Review A 62, 2 (2000), 022311. [109] A. S. Sotirova, J. D. Leppard, A. Vazquez-Brennan, S. M. Decop-pet, F. Pokorny, M. Malinowski, and C. J. Ballance. 2024. High-fidelity heralded quantum state preparation and measurement. arXiv:2409.05805 [quant-ph] https://arxiv.org/abs/2409.05805 
+
+[110] R. Srinivas, S. C. Burd, H. M. Knaack, R. T. Sutherland, A. Kwiatkowski, S. Glancy, E. Knill, D. J. Wineland, D. Leibfried, A. C. Wilson, D. T. C. Allcock, and D. H. Slichter. 2021. High-fidelity laser-free universal control of trapped ion qubits. Nature 597, 7875 (sept 2021), 209–213. doi: 10.1038/s41586-021-03809-4 
+
+[111] L. J. Stephenson, D. P. Nadlinger, B. C. Nichol, S. An, P. Drmota, T. G. Ballance, K. Thirumalai, J. F. Goodwin, C. J. Sherlock, and D. M. Lucas. 2020. High-Rate, High-Fidelity Entanglement of Qubits across an Elementary Quantum Network. Physical Review Letters 124 (2020), 110501. doi: 10.1103/PhysRevLett.124.110501 
+
+[112] J. Stuart, R. Panock, C.D. Bruzewicz, J.A. Sedlacek, R. McConnell, I.L. Chuang, J.M. Sage, and J. Chiaverini. 2019. Chip-Integrated Voltage Sources for Control of Trapped Ions. Phys. Rev. Appl. 11 (Feb 2019), 024010. Issue 2. doi: 10.1103/PhysRevApplied.11.024010 
+
+[113] I. Talukdar, D. J. Gorman, N. Daniilidis, P. Schindler, H. Uys, and H. Häffner. 2016. Implications of surface-noise for motional states of trapped ions. Physical Review A 93 (2016), 043415. doi: 10.1103/ PhysRevA.93.043415 
+
+[114] Jean-Pierre Tillich and Gilles Zemor. 2014. Quantum LDPC Codes With Positive Rate and Minimum Distance Proportional to the Square Root of the Blocklength. IEEE Transactions on Information Theory 60, 2 (Feb. 2014), 1193–1202. doi: 10.1109/tit.2013.2292061 
+
+[115] Jean-Pierre Tillich and Gilles Zémor. 2014. Quantum LDPC codes with positive rate and minimum distance proportional to the square root of the blocklength. IEEE Transactions on Information Theory 60, 2 (2014), 1193–1202. doi: 10.1109/TIT.2013.2292061 
+
+[116] Peter Toth, Paul Shine Eugine, Yerzhan Kudabay, Kaoru Yamashita, Sebastian Halama, Judi Parvizinejad, Marco Bonkowski, Hiroki Ishikuro, Christian Ospelkaus, and Vadim Issakov. 2026. A Cryo-BiCMOS Controller for Quantum Computers based on Trapped Beryl-lium Ions. IEEE Journal of Solid-State Circuits (2026). doi: 10.1109/ JSSC.2025.3632204 
+
+[117] Felix Tripier, Woo Chang Chung, Jacob Young, Safwan Alam, Bryce Bjork, Aharon Brodutch, Finn Lasse Buessen, Nolan J. Coble, Thomas Dellaert, Dmitri Maslov, Martin Roetteler, Edwin Tham, Mark Webster, Min Ye, John Gamble, Andrii Maksymov, J. P. Marceaux, and Nicolas Delfosse. 2026. Fault-Tolerant Quantum Computing with Trapped Ions: The Walking Cat Architecture. arXiv:2604.19481 [quant-ph] [118] Q. A. Turchette, Kielpinski, B. E. King, D. Leibfried, D. M. Meekhof, C. J. Myatt, M. A. Rowe, C. A. Sackett, C. S. Wood, W. M. Itano, C. Monroe, and D. J. Wineland. 2000. Heating of trapped ions from the quantum ground state. Phys. Rev. A 61 (May 2000), 063418. Issue 6. doi: 10.1103/PhysRevA.61.063418 
+
+[119] Universal Quantum. 2026. Universal Quantum. https:// universalquantum.com Accessed: 10 June 2026. [120] Marco Valentini, Martin W. van Mourik, Friederike Butt, Jakob Wahl, Matthias Dietl, Michael Pfeifer, Fabian Anmasser, Yves Colombe, Clemens Rössler, Philip Holz, Rainer Blatt, Markus Müller, Thomas Monz, and Philipp Schindler. 2025. Demonstration of two-dimensional connectivity for a scalable error-corrected ion-trap quan-tum processor architecture. Physical Review X 15 (2025), 041023. doi: 10.1103/PhysRevX.15.041023 
+
+[121] Wim van Dam, Mariia Mykhailova, and Mathias Soeken. 2023. Us-ing Azure Quantum Resource Estimator for Assessing Performance of Fault Tolerant Quantum Computation. In Proceedings of the SC ’23 Workshops of the International Conference on High Performance Computing, Network, Storage, and Analysis (Denver, CO, USA) (SC-W ’23) . Association for Computing Machinery, New York, NY, USA, 1414–1419. doi: 10.1145/3624062.3624211 
+
+[122] Joel J Wallman. 2018. Randomized benchmarking with gate-dependent noise. Quantum 2 (2018), 47. [123] A. Walther, F. Ziesel, T. Ruster, S. T. Dawkins, K. Ott, M. Hettrich, K. Singer, F. Schmidt-Kaler, and U. Poschinger. 2012. Controlling fast transport of cold trapped ions. Physical Review Letters 109 (2012), 080501. doi: 10.1103/PhysRevLett.109.080501 
+
+[124] Pengning Wang, Chun-Yang Luan, Mu Qiao, Mark Um, Junhua Zhang, Ye Wang, Xiao Yuan, Mile Gu, Jingning Zhang, and Kihwan Kim. 2021. Single ion qubit with estimated coherence time exceeding one hour. Nature Communications 12 (2021), 233. doi: 10.1038/s41467-020-20330-w 
+
+[125] Yang Wang, Selwyn Simsek, Thomas M. Gatterman, Justin A. Ger-ber, Kevin Gilmore, Dan Gresh, Nathan Hewitt, Chandler V. Horst, Mitchell Matheny, Tanner Mengle, Brian Neyenhuis, and Ben Criger. 2024. Fault-tolerant one-bit addition with the smallest interesting color code. Science Advances 10, 29 (2024), eado9024. doi: 10.1126/ sciadv.ado9024 
+
+[126] Jiong Yang, Yaroslav A. Kharkov, Yunong Shi, Marijn J. H. Heule, and Bruno Dutertre. 2024. Quantum Circuit Mapping Based on Incremental and Parallel SAT Solving. In 27th International Conference on Theory and Applications of Satisfiability Testing (SAT 2024) (Leibniz International Proceedings in Informatics (LIPIcs), Vol. 305) , Supratik Chakraborty and Jie-Hong Roland Jiang (Eds.). Schloss Dagstuhl – Leibniz-Zentrum für Informatik, Dagstuhl, Germany, 29:1–29:18. doi: 10.4230/LIPIcs.SAT.2024.29 
+
+[127] Songqinghao Yang, Christopher K Long, Rubén M Otxoa, Prakash Murali, Crispin HW Barnes, and David RM Arvidsson-Shukur. 2026. Hardware-Tailored Resource Estimation for Magic-State Distillation on Silicon Spin Qubits. arXiv preprint arXiv:2605.28936 (2026). [128] Theodore J. Yoder, Eddie Schoute, Patrick Rall, Emily Pritchett, Jay M. Gambetta, Andrew W. Cross, Malcolm Carroll, and Michael E. Beverland. 2025. Tour de gross: A modular quantum computer WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions                                                  
+
+> Event Loop dispatch ·poll ·cancel ·redispatch 𝐵 up 𝐵 lo stop: 𝐵 lo ≥𝐵 up −1Greedy seed
+> 𝐵 ↓sat unsat
+> Pruners (5 types)
+> “Chop & conquer”
+> Tile grid; solve intra-tile; re-tile at offset; grow ×2
+> Goal: slash 𝐵 up fast Hunters (4 tiers)
+> “Track & tighten”
+> Full problem, reduced 𝑚𝑎𝑥 ;fast-loose →slow-tight
+> Goal: reduce 𝐵 up
+> Provers ( ×𝑁 )
+> “Prove & certify”
+> Max solver power; prove no solution ≤𝐵 exists
+> Goal: raise 𝐵 lo
+> 𝐿
+> col row rounds
+> inner MS ✓
+> cross-block MS (re-tile)
+> tiles grow ×2
+> 𝑚𝑎𝑥 𝐿
+> full volume, tighter 𝐵
+> unsat @ 𝐵
+> schedule ≤𝐵
+> Coordination: • new best 𝐵 →cancel stale workers •1st hunter SAT →pruners →provers • UNSAT at 𝐵 →
+> cancel provers 𝐵 ′≤𝐵
+
+Figure 7. Parallel SAT portfolio for optimal ion routing. Each iso-metric block represents the spacetime volume (columns × rows ×
+
+rounds). Pruners tile the spatial grid (dashed boundary on front face); inner MS pairs within a tile are solved optimally, while cross-block MS pairs straddling the boundary receive a boundary preference and are solved on re-tiling. Temporal rounds are chunked into windows of 𝐿 (top face); sub-problems double ( ×2). Hunters tackle the full volume with tighter 𝑚𝑎𝑥 . Provers certify 𝐵 lo via unsat. Workers promote on exhaustion. 
+
+Convergence              
+
+> Steane 𝑑 =3,2×8, 9 rds
+> 𝐵
+> time 0100 200 300 483 0s 4s 95s 5m 17.7m
+> 𝐵 up
+> 𝐵 lo
+> gap
+> heur sp med hi top mid
+> 7.1×
+> heur sp med hi top mid prv
+
+Figure 8. Convergence trace for Steane 𝑑 =3 (2 ×8 grid, 9 rounds). Pruners (green) rapidly slash 𝐵 up from 483 to 129; hunters (orange) tighten to 𝐵 ∗ = 68 (7 .1× improvement); provers (blue) raise 𝐵 lo 
+
+to 50, narrowing the optimality gap. 
+
+based on bivariate bicycle codes. arXiv:2506.03094 [quant-ph] 
+
+https://arxiv.org/abs/2506.03094 
+
+[129] Chenghong Zhu, Xian Wu, Jingbo Wang, and Xin Wang. 2025. S-SYNC: Shuttle and Swap Co-Optimization in Quantum Charge-Coupled Devices. In Proceedings of the 52nd Annual International Sym-posium on Computer Architecture (ISCA) . arXiv:2505.01316 [quant-ph] doi: 10.1145/3695053.3731084 
+
+## A Complete SAT-formulation 
+
+A.1 SAT Optimality Proof 
+
+We state precisely what the SAT formulation guarantees within the odd-even sorting network model. 
+
+Tight weighted bounds via parallel search. The fea-sibility predicate in 𝐵 is monotone: if a schedule exists at weighted cost 𝐵 0, it also satisfies the formula at any bound 
+
+𝐵 ≥ 𝐵 0. We exploit this monotonicity through parallel search: exploring different 𝐵 values simultaneously. Hunters find fea-sible QMR solutions by probing candidate upper bounds for 
+
+𝐵 from above, finding successively tighter SAT-feasible solu-tions, while Provers systematically prove UNSAT from below at the maximum pass budget. 
+
+Convergence and optimality certificate. The search 
+
+converges when the lower bound meets the upper bound: 
+
+𝐵 worst_unsat ≥ 𝐵 best_sat − 1. (2) At convergence, the solver has a SAT-certified optimal sched-ule at cost 𝐵 ∗ together with an UNSAT proof that 𝐵 ∗ − 1 is infeasible at 𝑝𝑚𝑎𝑥 = 2(𝑛 +𝑚 ) (the universal reachability hori-zon). This constitutes a complete optimality certificate: no schedule within the odd-even sorting network model can achieve a lower weighted cost. If the time budget expires before convergence, the solver returns the best incumbent solution with its proven lower bound, allowing the caller to assess the remaining optimality gap. 
+
+## B Implementation using Parallel Search 
+
+Pruners, Hunters, Provers. To scale up SAT solving, we introduce a parallel solving framework illustrated in Figure 7. A main event loop dispatches workers, polls for results, up-dates shared bounds ( 𝐵 upper , 𝐵 lower ), cancels obsolete work-ers, and redispatches into freed slots. Pruners decompose the problem and rapidly slash 𝐵 upper . Hunters solve the full SAT encoding at progressively tighter targets, activated when paired pruners exhaust. Provers certify 𝐵 lower by proving UN-SAT from below. Workers promote on exhaustion (pruner 
+
+→ hunter → prover); when the first hunter finds a solution, all remaining pruners convert to provers, accelerating the proof phase. 
+
+Convergence. The right panel of Figure 7 shows conver-gence for the Steane code ( 𝑑 =3, 2 ×8 grid): from 𝐵 heur = 483 to 𝐵 ∗ = 68 (7 .1× improvement). Typical ratios range from 3–8 × (Sec 6.1). 
+
+## C WISE Gate Model and Re-write Rules 
+
+C.1 Gate model 
+
+We restrict the entangling gate set to pairwise two-qubit MS gates, executed serially within each trap. This is a deliberate design-space choice grounded in current hardware capability. Although global Mølmer–Sørensen (GMS) gates have been demonstrated on 10–20 ions, they achieve fidelities of only 70–90% at gate times of ≈ 1000 𝜇 s [41, 70], compared to 
+
+> 99 .9% fidelity for a single two-qubit MS gate at ∼ 100 𝜇 son the same hardware. Likewise, parallel pairwise MS gates within a single chain incur a ∼ 6× slowdown and reduced fidelity relative to serial execution [32]. The modest parallelism gains from GMS and Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+Table 1. Clause families for the SAT formulation of QMR. 
+
+Structural validity 
+
+Permutation (cell): 𝑂 (𝑅 𝑃 max 𝑁 2 )
+
+For every encoded slice (𝑟, 𝑝, 𝑑, 𝑐 ), enforce ExactlyOne ( { 𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ) : 𝑖 ∈ 𝐼 } ) . Every cell contains exactly one active ion at each encoded time slice; in spectator-pruned subproblems, cells may be empty but never multiply occupied, so this relaxes to AtMostOne. 
+
+Permutation (ion): 𝑂 (𝑅 𝑃 max 𝑁 2 )
+
+For every encoded slice (𝑟, 𝑝, 𝑖 ), enforce ExactlyOne ( { 𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ) : (𝑑, 𝑐 ) ∈ Grid } ) . Each ion occupies exactly one cell at every encoded time step. 
+
+Phase monotonicity: 𝑂 (𝑅 𝑃 max )
+
+For all 𝑟 and 𝑝 < 𝑃 max − 1, enforce 𝜙 (𝑟, 𝑝 ) ⇒ 𝜙 (𝑟, 𝑝 +1). Once a round switches to vertical phase, it cannot return to horizontal phase. 
+
+H/V gating: 𝑂 (𝑅 𝑃 max 𝑁 )
+
+For every horizontal comparator (𝑑, 𝑐 ) and every vertical comparator 
+
+(𝑑, 𝑐 ), enforce 𝜙 (𝑟, 𝑝 ) ⇒ ¬ 𝑠 ℎ (𝑟, 𝑝, 𝑑, 𝑐 ) and ¬𝜙 (𝑟, 𝑝 ) ⇒ ¬ 𝑠 𝑣 (𝑟, 𝑝, 𝑑, 𝑐 ).
+
+Horizontal swaps may fire only in horizontal phase, and vertical swaps may fire only in vertical phase. 
+
+H/V parity gating: 𝑂 (𝑅 𝑃 max 𝑁 )
+
+For every horizontal comparator (𝑑, 𝑐 ) and vertical comparator (𝑑, 𝑐 )
+
+whose parity does not match the pass parity, enforce 
+
+𝑐 mod 2 ≠ 𝑝 mod 2 ⇒ ¬ 𝑠 ℎ (𝑟, 𝑝, 𝑑, 𝑐 ),
+
+𝑑 mod 2 ≠ 𝑝 mod 2 ⇒ ¬ 𝑠 𝑣 (𝑟, 𝑝, 𝑑, 𝑐 ). Only the odd or even comparator subset selected by the global odd-even clock may fire in a pass. 
+
+MS-pair end in same trap: 𝑂 (𝑅 | P | 𝑛 + 𝑅 | P | 𝐵 )
+
+For each required pair (𝑖 1, 𝑖 2 ) ∈ P 𝑟 , every row 𝑑 , and every block 𝑏 ,enforce row_end (𝑟, 𝑖 1, 𝑑 ) ⇔ row_end (𝑟, 𝑖 2, 𝑑 ) and 
+
+𝑤 end (𝑟, 𝑖 1, 𝑏 ) ⇔ 𝑤 end (𝑟, 𝑖 2, 𝑏 ). Paired ions must finish in the same row and the same local block, hence in the same trap. 
+
+Inter-round chain: 𝑂 (𝑅 𝑁 2 )
+
+For every round boundary and every (𝑑, 𝑐, 𝑖 ), enforce 
+
+𝑎 (𝑟, 𝑚𝑎𝑥, 𝑑, 𝑐, 𝑖 ) ⇔ 𝑎 (𝑟 +1, 0, 𝑑, 𝑐, 𝑖 ). The final layout of one round is the initial layout of the next. 
+
+Initial layout: 𝑂 (𝑁 2 )
+
+If input cell (𝑑, 𝑐 ) initially contains ion 𝑖 0, assert 𝑎 (0, 0, 𝑑, 𝑐, 𝑖 0 ), and 
+
+¬𝑎 (0, 0, 𝑑, 𝑐, 𝑖 ) ∀𝑖 ≠ 𝑖 0. The first SAT slice is pinned exactly to the incoming layout. 
+
+H/V swap semantics: 𝑂 (𝑅 𝑃 max 𝑁 2 )
+
+For every horizontal or vertical comparator and ion 𝑖 , enforce 
+
+𝑠 ℎ (𝑟, 𝑝, 𝑑, 𝑐 ) ∧ 𝑎 (𝑟, 𝑝, 𝑑, 𝑐 +1, 𝑖 ) ⇒ 𝑎 (𝑟, 𝑝 +1, 𝑑, 𝑐, 𝑖 ),𝑠 ℎ (𝑟, 𝑝, 𝑑, 𝑐 ) ∧ 𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ) ⇒ 𝑎 (𝑟, 𝑝 +1, 𝑑, 𝑐 +1, 𝑖 ),𝑠 𝑣 (𝑟, 𝑝, 𝑑, 𝑐 ) ∧ 𝑎 (𝑟, 𝑝, 𝑑 +1, 𝑐, 𝑖 ) ⇒ 𝑎 (𝑟, 𝑝 +1, 𝑑, 𝑐, 𝑖 ),𝑠 𝑣 (𝑟, 𝑝, 𝑑, 𝑐 ) ∧ 𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ) ⇒ 𝑎 (𝑟, 𝑝 +1, 𝑑 +1, 𝑐, 𝑖 ).
+
+If a comparator fires, the two incident ions are forced to swap positions in the next slice. 
+
+Copy clauses: 𝑂 (𝑅 𝑃 𝑚𝑎𝑥 𝑁 2 )
+
+For each cell (𝑑, 𝑐 ) and ion 𝑖 , let the incident comparators be 𝑠 left and 
+
+𝑠 right (or 𝑠 up and 𝑠 down ). 
+
+(¬ 𝜙 (𝑟, 𝑝 ) ∧ ¬ 𝑠 left ∧ ¬ 𝑠 right ∧ 𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ) ) ⇒ 𝑎 (𝑟, 𝑝 +1, 𝑑, 𝑐, 𝑖 ),
+
+(𝜙 (𝑟, 𝑝 ) ∧ ¬ 𝑠 up ∧ ¬ 𝑠 down ∧ 𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ) ) ⇒ 𝑎 (𝑟, 𝑝 +1, 𝑑, 𝑐, 𝑖 ),
+
+together with the converse implications from 𝑎 (𝑟, 𝑝 +1, 𝑑, 𝑐, 𝑖 ) back to 
+
+𝑎 (𝑟, 𝑝, 𝑑, 𝑐, 𝑖 ). An ion stays in place whenever no incident comparator of the active phase fires. 
+
+Row-end / Block-end helpers: 𝑂 (𝑅 𝑁 (𝑛 + 𝐵 ) ) 
+
+For every round 𝑟 , ion 𝑖 , row 𝑑 , and local block 𝑏 , enforce row_end (𝑟, 𝑖, 𝑑 ) ⇔ Ô𝑚 −1 
+
+> 𝑐 =0
+
+𝑎 (𝑟, 𝑚𝑎𝑥, 𝑑, 𝑐, 𝑖 ) and 
+
+𝑤 end (𝑟, 𝑖, 𝑏 ) ⇔ Ô(𝑑,𝑐 ) ∈ block (𝑏 ) 𝑎 (𝑟, 𝑚𝑎𝑥, 𝑑, 𝑐, 𝑖 ), for valid blocks; degenerate edge blocks that are not fully supported are forced false. These helper literals summarize the row and local trap block in which each ion finishes the round. 
+
+Return to start: 𝑂 (𝑁 2 )
+
+For every ion 𝑖 , row 𝑑 , col 𝑐 , enforce 𝑎 (1, 0, 𝑑, 𝑐, 𝑖 ) ⇔ 𝑎 (𝑅, 𝑝 𝑚𝑎𝑥 , 𝑑, 𝑐, 𝑖 )
+
+Helpers: 𝑂 (𝑅 𝑃 max (𝑁 + 1) ) 
+
+For every (𝑟, 𝑝 ), enforce 
+
+𝑢 (𝑟, 𝑝 ) ⇔ 
+
+Ü
+
+> 𝑑,𝑐
+
+ 𝑠 ℎ (𝑟, 𝑝, 𝑑, 𝑐 ) ∨ 𝑠 𝑣 (𝑟, 𝑝, 𝑑, 𝑐 ),𝑣 active (𝑟, 𝑝 ) ⇔ 𝑢 (𝑟, 𝑝 ) ∧ 𝜙 (𝑟, 𝑝 ).𝑢 (𝑟, 𝑝 ) marks active passes 𝑝 , while 𝑣 active (𝑟, 𝑝 ) marks passes that are both active and vertical. 
+
+Weighted bound: totaliser-sized 
+
+If a weighted bound 𝐵 is requested, enforce 
+
+> 𝑅
+
+∑︁   
+
+> 𝑟 =2
+> 𝑚𝑎𝑥 −1
+
+∑︁ 
+
+> 𝑝 =0
+
+
+
+𝑢 (𝑟, 𝑝 ) + ( 𝑤 −1) 𝑣 active (𝑟, 𝑝 )
+
+
+
+≤ 𝐵. 
+
+Horizontal active passes cost 1, vertical active passes cost 𝑤 , and binary search tightens 𝐵 to the minimum feasible calibrated cost. 
+
+parrallel MS gates are outweighed by their fidelity penalty. Our gate model therefore reflects the operating regime of current TI hardware [79, 92], where high-fidelity serial two-qubit MS gates remain the dominant entangling primitive. 
+
+C.2 Gate decomposition rules 
+
+To lower a general QEC circuit’s operations into WISE-supported operations, we use the following gate decomposi-tion rules based on [31]. Each abstract gate is decomposed deterministically into a fixed sequence of native operations: 
+
+• H → 𝑅 𝑌 (𝜋 /2), 𝑅 𝑋 (𝜋 /2)• CNOT → 𝑅 𝑌 , 𝑅 𝑋 , 𝑅 𝑋 , MS , 𝑅 𝑌 (1 MS + 4 rotations) 
+
+• CZ → 𝑅 𝑌 , 𝑅 𝑋 , 𝑅 𝑌 , 𝑅 𝑋 , MS , 𝑅 𝑌 , 𝑅 𝑌 , 𝑅 𝑋 (1 MS + 7rotations) 
+
+• SWAP → 3 × CNOT (3 MS + 12 rotations) 
+
+• MR → 𝑀 𝑍 , 𝑅 (measure then reset) 
+
+• MRX → 𝑅 𝑋 , 𝑅 𝑌 , 𝑀 𝑍 , 𝑅, 𝑅 𝑌 , 𝑅 𝑋 (basis change, measure, reset, undo) The CNOT decomposition follows the standard trapped-ion construction: the MS gate produces the entangling interac-tion 𝑋𝑋 (𝜋 /4), and the surrounding single-qubit rotations convert this to a CNOT via basis changes. 
+
+## D Noise modelling 
+
+In WISE, groups of controls share DACs and work together on ions. Although this collective control makes WISE resource-efficient, it also introduces correlated noise channels that differ qualitatively from the independent WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 
+
+local-control picture assumed in simpler models. We shall mention the noise modelling for trapped ion systems in general and then at specific place, we tailor the noise analysis for the WISE architecture. We begin the modelling with the noise in correlation by introducing the Lamb–Dicke parameter [64] for ion 𝑖 and mode 𝑚 ,
+
+𝜂 𝑖,𝑚 = 𝑧 0,𝑚 ®𝜈 (𝑖 ) 
+
+> 𝑚
+
+with 𝑧 0,𝑚 =√︄ ℏ
+
+2𝑚𝜔 𝑚 
+
+. (3) The cross-talk between ions are directly modelled by the coupling between these terms in different modes of the trap. There are many advancement in single-qubit operations and because of the low infidelity (down to 10 −7 [106]) even at the current hardware level, we do not explicitly consider the physics behind. Instead, we add the infidelity penalty as a constant. 
+
+Motional heating. This type of noise originates from elec-tric field fluctuations near surfaces. For a homogeneously dis-tributed layer of fluctuating dipoles on a plane with surface density 𝜎 𝑑 , the electric field fluctuations along a direction parallel to the trap surface have autocorrelation [113, 118] 
+
+⟨𝐸 (𝑡 )𝐸 (0)⟩ = 3𝜋𝜎 𝑑 
+
+8(4𝜋𝜖 0)2𝑑 4 ⟨𝜇 (𝑡 )𝜇 (0)⟩ , (4) where 𝑑 is the ion-surface distance and 𝜇 (𝑡 ) is the dipole moment. This gives electric field noise with spectral density 𝑆 𝐸 (𝜔 ) = 2 ∫ ∞−∞ ⟨𝐸 (𝑡 )𝐸 (0)⟩ 𝑒 𝑖𝜔𝑡 𝑑𝑡 . Fluctuations of the quadrupole field cause the frequency to fluctuate. The electric field noise spectrum typically follows 𝑆 𝐸 (𝜔 ) ∝ 1/𝜔 𝛽 
+
+with exponent 𝛽 ranging around 1 (by default we pick 0.9). To avoid divergence of total noise power, we include a low-frequency cutoff 𝜔 ir = 3 𝑘𝐻𝑧 ,
+
+𝑆 𝐸 (𝜔 ) =
+
+
+
+𝑆 0, 𝜔 < 𝜔 ir 
+
+𝑆 0
+
+ 𝜔 ir 
+
+𝜔 
+
+𝛽 
+
+, 𝜔 ≥ 𝜔 ir 
+
+(5) Here, we use the 1 /𝑓 type of noise spectral for the idling dephasing error 𝜖 dephasing . For WISE, when multiple controls share a DAC, voltage fluctuations are identical at the source. Therefore, to evaluate the collective effect, we sum up the electric-field correlation function with respect to mode 𝑚 .Heating occurs when electric field noise has spectral den-sity at the mode frequency. The heating rate for mode 𝑚 is evaluated with the Fermi-Golden rule [23]. Note that here we define the rate to be the case when an ion in the ground state is excited into the first vibrational state, 
+
+Γ𝑚 = 𝑒 2
+
+4𝑚 ℏ𝜔 𝑚 ∑︁ 𝑙 
+
+|E 𝑙 →𝑚 |2𝑆 𝐸 𝑙 (𝜔 𝑚 ). (6) The mean phonon number grows as ¯ 𝑛 𝑚 (𝑡 + Δ𝑡 ) = ¯𝑛 𝑚 (𝑡 ) + 
+
+Γ𝑚 Δ𝑡 .
+
+Operational phonon. Motivated by various techniques in the literature on the thermal phonon generation mod-elling for ion movement [19, 123], swaps [55], junction cross-ing [14, 15, 72] and split and merge [98], we build our heuris-tics. For example, the trapping potential in a trap is created by a strong radio-frequency (RF) field. In reality, the RF volt-age source has some noise, small, unwanted electric fields oscillating at frequencies just above and below the main RF tone. The RF field creates a time-averaged pseudo-potential that confines the ion. The gradient of this pseudo-potential, is largest near the junctions or barriers. When the ion is located on such a slope, different frequency components in-terfere and creates an oscillating force at exactly the ion’s natural frequency. This resonant force drives the ion’s mo-tion, increasing its energy. Therefore, phonon accumulates during the junction crossing. Also, to move the ion we need DACs, which pdates its output voltage at a fixed clock rate. The output is not perfectly smooth; it consists of a series of voltage steps. In the frequency domain, this stepped output contains strong harmonics of the update rate. If the ion’s frequency is close to one of these harmonics, the DAC out-put can resonantly drive the ion’s motion. This is analogous to pushing a swing at its natural frequency. The excitation occurs because each voltage step gives the ion a small ‘kick.’ If the kicks occur at a rate matching the ion’s oscillation, they add up coherently, leading to a large increase in energy, which affects the phonon count during transportation. 
+
+Cooling model and threshold. To maintain the chain of ions near its ground state throughout a computation, we implement a discrete cooling protocol triggered when the ac-cumulated phonon number ¯ 𝑛 exceeds a predefined threshold ¯𝑛 th . This threshold is set to ensure that phonon accumulation does not cause unacceptable gate infidelity between cooling events. The cooling process itself is not error-free: for ex-ample, each cooling operation [86] has a finite efficiency Γ𝜏 
+
+to scatter a photon, where Γ is the scattering rate and 𝜏 is the cooling duration. Each such scattering event could lead to qubit decoherence. The number of operations required to reduce the phonon number from its current value ¯ 𝑛 current 
+
+to the target ground state ¯ 𝑛 target is determined by the cool-ing efficiency. The total cooling error 𝜖 cool incurred is then added to the cumulative infidelity whenever the phonon number crosses the threshold. This approach approximates the cooling overhead as a constant error term applied at discrete intervals, capturing the essential trade-off between heating and the finite fidelity of the cooling process itself. The threshold ¯ 𝑛 th can be tuned to balance the frequency of cooling events against the thermal error accumulated be-tween them, enabling optimization of the overall gate fidelity for a given sequence. 
+
+Heating noise. As mentioned in the previous section, the accumulated phonon will cause errors in the system, which leads to two types of noise in our model. The first one is the dephasing noise. Physically, if the cooling is imperfect, the mode begins with a residual mean phonon population, which leads to an under- or over-rotation of the entangling gate. For a gate of duration 𝜏 , the added phonons are Δ ¯𝑛 𝑚 = Γ𝑚 𝜏 ,Scott Jones, Song-qing-hao Yang, and Prakash Murali 
+
+Table 2. Technology-tier parameters for the WISE architecture. Fabrication-dependent parameters are drawn from Malinowski et al. [71] and cross-validated against hardware data [51, 69, 79, 92].                                                                                    
+
+> Parameter Curr. Pess. Opt.
+> Electrical / fabrication
+> Transistor cap. ( 𝐶 𝑡 , fF) 30 45 15 Electrode cap. ( 𝐶 𝑠, RF , fF) 1.0 1.5 0.3 Cap. density ( 𝐶 /AC , fF/ 𝜇 m2)3.0 2.0 6.0 On-chip cap. size ( 𝐴 𝐶 ,𝜇 m) 100 120 70 TG size ( 𝐴 𝑡𝑔 ,𝜇 m) 50 65 30 Serial data rate (Mbit/s) 50 30 200 Discharge time ( 𝜏 dis , s) 180 90 600
+> Timing ( 𝜇 s)
+> Electrode charging ( 𝑡 𝑒𝑐 )150.1 Ion swap ( 𝑡 0)70 150 10 1Q gate ( 𝑡 1𝑞 )120.1 2Q MS gate ( 𝑡 2𝑞 )100 200 10 Measurement ( 𝑡 𝑀 )200 400 50 Reset ( 𝑡 𝑅 )30 50 5Cooling ( 𝑡 cool )200 500 50
+> Measurement, reset, cooling
+> Meas. error ( 𝑝 𝑀 )10 −410 −310 −5
+> Reset error ( 𝑝 𝑅 )10 −410 −310 −5
+> Cooling error ( 𝜖 cool )10 −610 −510 −7
+> Transport primitives (frac. of 𝑡 0)
+> Split / Merge (0 .80 𝑡 0)80 120 40 Shuttle (0 .05 𝑡 0)57.5 2.5 Junction cross (0 .50 𝑡 0)50 75 25 Rotation (0 .42 𝑡 0)42 63 21
+
+which leads to the heating error 𝜖 heating . And we attribute the decoherence during the idling period to the Pauli-Z de-phasing error. In addition to heating, the ion chain mode can lose phase coherence due to slow fluctuations in the trapping potential. These fluctuations cause the frequency to wander during the MS gate execution, which results directly in phase error accumulations. In practice, we attribute a quadratic dependence of the mean phonon number for the error and the dephasing contributes an error proportional to the gate duration [10]. 
+
+Correlated noise. In the WISE architecture, crosstalk arises from two distinct sources: (i) collective modes of the ions in the trap coupling unintended ion pairs during entangling gates, and (ii) shared control electronics inducing correlated errors across zones. We model the former here and leave the later in the next paragraph. For a set of parallel entan-gling gates on ion pairs, crosstalk corresponds to unintended entangling phases for pairs [𝑖, 𝑗 ] ∈ 𝐼 , where 𝐼 contains all pairs not intended to interact. From Ref. [27] the crosstalk entangling phase is 
+
+𝜃 𝑖,𝑗 (𝜏 ) = 2∑︁ 
+
+> 𝑚
+
+𝜂 𝑗,𝑚 𝜂 𝑖,𝑚 
+
+∫ 𝜏 
+
+> 0
+
+𝑑𝑡 2
+
+∫ 𝑡 2
+
+> 0
+
+𝑑𝑡 1 Ω𝑗 (𝑡 2)Ω𝑖 (𝑡 1)× sin (𝜇 𝑗 𝑡 1) sin (𝜇 𝑖 𝑡 2) sin [𝜔 𝑚 (𝑡 1 − 𝑡 2)] , (7) where Ω is the operation design down to the pulse level and 
+
+𝜇 is the detuning associated with the operations. Depending on the trap capacity, 𝐼 , the intra-zone crosstalk is captured by a correlated Pauli error channel: 
+
+E ( 𝜌 ) =∑︁  
+
+> 𝑖,𝑗 ∈𝐼
+
+∑︁ P∈ { 𝐼,𝑋 ,𝑌 ,𝑍 }⊗𝑘 
+
+𝑝 𝑖,𝑗 P𝜌 P†, (8) where the probability 𝑝 LD (P) is 
+
+𝑝 𝑖,𝑗 = sin 2  𝜃 𝑖,𝑖 (𝜏 ) . (9) 
+
+Device control noise. There are several device level noise mentioned in [71], for which we collectively denote as 𝜖 device .Opening a switch injects charge Δ𝑄 into the controlling points in the trap, producing a voltage step Δ𝑉 which creates an impulsive electric field that displaces the ion’s state. Also, control lines are periodically updated via multiplexers. Once charged to a voltage 𝑉 0, they are disconnected from the DAC and left floating. The voltage decays through the period 𝜏 hold 
+
+according to 𝑉 (𝑡 ) = 𝑉 0 exp 
+
+
+
+− 𝑡 𝜏 hold 
+
+
+
+.
+
+Other noise. For single-qubit unitary operations, as we mentioned in the begining of this section, we add a constant penalty to model the error. The same goes with our modelling for the measurement/reset error. WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions 2Q gate 2Q deph. Crosstalk 1Q gate Idling Measure Reset Cooling Transport Total Tec 
+
+Δct 
+
+tR reset tM
+
+meas. window Nseg 
+
+ωIR cutoff h ion height S0
+
+deph. spectrum AQ
+
+charge noise t2q 
+
+t1q 
+
+βspectral exp. t0 swap Act 
+
+Γsc Raman εcool 
+
+εM
+
+meas. infid. εR
+
+reset infid. tec 
+
+shim charge tcool 
+
+ωz
+
+axial freq. nt
+
+recool thresh. 
+
+1.4×10 −4 
+
+1.02 1.02 1.37 6.7×10 −2 6.3×10 −2 
+
+6.2×10 −2 6.2×10 −2 
+
+40 40 100 100 1.48 6.1 4.5×10 −3 0.96 1.19 1.24 1.04 1.01 1.01 1.01 6.4×10 3 6.4×10 3 1.02 1.02 0.97 1.01 0.98 1.20 1.0×10 4 1.02 1.54 1.04 100 1.10 100 1.99 100 1.99 1.68 3.6 2.2×10 −3 3.2 3.1 6 2.5 1.43 3.8 4.3 3.8 3.4 7.2 2.6×10 −2 65 8.5×10 −4 
+
+1.8×10 −2 65 4.5×10 −2 0.98 35 37 8.1×10 −2 28 0.48 
+
+-1-0.1 0 0.1 1 
+
+Total error response (% per % change) 
+
+−3 −2 −1 0123
+
+> log 10  (pessimistic / optimistic)
+
+Each parameter swept across its technology-tier span where one exists, otherwise a stated multiplicative range; both are listed in the accompanying table. Blank cells: no effect on that mechanism. The remaining 16 control fields set chip area and DAC power only, and cannot affect the noise model. 
+
+Figure 9. Each parameter swept across its technology-tier span where one exists, otherwise a stated multiplicative range; both are listed in the accompanying table. Blank cells: no effect on that mechanism. The remaining 16 control fields set chip area and DAC power only, and cannot affect the noise model.
