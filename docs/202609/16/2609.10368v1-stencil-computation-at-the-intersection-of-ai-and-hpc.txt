@@ -1,0 +1,313 @@
+Title: Stencil Computation at the Intersection of AI and HPC
+
+URL Source: https://arxiv.org/pdf/2609.10368v1
+
+Published Time: Thu, 10 Sep 2026 01:32:31 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+> 1
+
+# Stencil Computation at the Intersection of AI and HPC 
+
+Timothée Ewart and Mauricio Araya-Polo 
+
+Abstract —Tensor compilers such as TinyTC and OpenAI Triton were originally developed for AI workloads, but the same tiling and memory abstractions can be applied to imple-ment efficient high-order stencils for scientific and industrial applications. We demonstrate this for an 8th-order, 25-point acoustic stencil with boundary conditions over an a demanding-sized grid, targeting GPGPUs, where we compare the hardware-specialized TinyTC implementation with a portable PyTorch/Tri-ton implementation. The target platforms for evaluation include Intel B70, B580, GPU MAX 1550, NVIDIA A100/RTX6000 Blackwell/H100, and AMD MI325x. For instance, on Battlemage B580 TinyTC reaches 15.6 Gpts/s versus 13.5 Gpts/s for PT/Triton under random initialization, while zero-initialized runs reach up to 35.8 Gpts/s due to hardware memory compression. Using roofline and memory-hierarchy profiling, we show that -as expected- performance is predominantly bandwidth-limited and that compiler-managed L1/LSC caching can effectively replace programmer-managed shared-memory staging for this stencil class. Overall, the results position TinyTC as the performance-oriented path on Intel hardware and PyTorch/Triton as a strong portability/productivity baseline for cross-vendor HPC stencil development. 
+
+Index Terms —stencil computation, tile compiler, TinyTC, Tri-ton, GPU, AI, HPC, performance portability 
+
+I. I NTRODUCTION 
+
+Stencil computation is one of the oldest and most enduring patterns in scientific computing. At its core, a stencil kernel updates each point of a grid by combining values from its nearest neighbors, making it the foundation of finite-difference methods for solving partial differential equations (PDEs) [1]. Applications range from seismic wave propagation [2] and fluid dynamics [3] to image processing [4]. Despite its con-ceptual simplicity, achieving high performance for stencils has remained a moving target for over two decades, constantly reshaped by the evolution of computing hardware (CPU, GPU and now NPU/TPU), and software paradigms and program-ming models (OpenMP, CUDA, HIP, Tile Compiler, etc.). We retrace this journey in the next paragraphs to contextualize our work and highlight the key developments. 
+
+a) Multi-core era (2000s): In the early 2000s, the shift from single-core to multi-core processors [5] forced sten-cil developers to adopt shared-memory parallelism. Cache-blocking and loop tiling became essential optimizations to exploit spatial and temporal locality across multiple cores [6], [7]. Auto-tuning research [8] demonstrated that algorithmic parameters could be searched automatically for optimal per-formance rather than hand-tuned. 
+
+> T. Ewart is with Intel Corporation, Santa Clara, USA M. Araya is with TotalEnergies EP Research and Technology US, Houston, USA
+
+b) Heterogeneous accelerators (2005–2013): The IBM Cell Broadband Engine (PowerXCell in the HPC variant) was the first mainstream accelerator, (although dedicated accelerators had already existed in the 1980s, such as the MicroVAX matrix accelerator) Introduced in 2005 for the PlayStation 3 and the Roadrunner supercomputer, introduced a radically different model: one general-purpose (PowerPC) core orchestrating eight lean SIMD (128-bit width) engines (SPEs) over a local store (256 KB) with explicit DMA transfers [9], [10]. It was the dawn of accelerator for HPC. Stencil codes had to be restructured around explicit data movement [11] and software-managed memory, foreshadowing the challenges that would later arise on GPU architectures. This period established that stencil performance is driven by memory bandwidth, not compute, a fact reflected in roofline analysis [12]. 
+
+c) GPU era (2010s–present): General-purpose GPU computing (GPGPU), enabled by CUDA (released 2004-2007) and later OpenCL, brought massive thread-level parallelism to stencil workloads alongside large global memory (up to several GB) directly accessible by threads, unlike the Cell’s mandatory local store management. GPUs offer shared mem-ory, a much larger number of registers - 64k per Streaming Processor (H100), and warp-level primitives [13] as optional but powerful latency-hiding optimizations [7], [14]–[16]. The period produced a rich body of work on stencil kernels for NVIDIA GPUs, and later on directive-based portability layers (OpenACC, OpenMP target) that could target both CPU and GPU backends [17]. 
+
+d) AI accelerates HPC (2020–present): The explosion of deep learning has driven unprecedented investment in GPU hardware and in programming abstractions for tensor opera-tions: CUTLASS [18], XeTLA [19], and tile compilers such as TinyTC [20] for Intel or CuTile [21] for NVIDIA, lower the level of abstraction just enough to expose the hardware tiling and register-file hierarchy without requiring hand-written assembly. In parallel, OpenAI Triton [22] has emerged as the main de facto tile programming model, offering a tile-based Python DSL with a low barrier to entry; it has been widely adopted in both industry and research. Originally designed for fused transformer kernels, Triton is expressive enough to describe any regular tiled computation and supports multiple GPU backends out of the box. Tensor compilers target primarily AI workloads: matrix multiplications, attention, convolutions, yet stencil computations share the same tiling structure and memory access patterns that make them attractive candidates for evaluation. Our contribution is to evaluate a TinyTC implementation as arXiv:2609.10368v1 [cs.DC] 9 Sep 2026 2
+
+the architecture-specialized path and PT/Triton as the porta-bility baseline. Because the stencils are bandwidth-limited, we focus on data reuse and cache behavior, with particular attention to L1/LSC efficiency. A preliminary version of this work was presented as a poster at ISC 2026 [23]. In more concrete terms, the paper makes three linked contributions: 1) a comparative evaluation of TinyTC and PT/Triton for a 25-point acoustic stencil with boundary conditions; 2) a memory-centric analysis (throughput, roofline, and cache/DRAM counters) that explains the observed per-formance trends, including the impact of the B580 memory compression; and 3) a cross-vendor PT / Triton comparison with different GPUs to characterize portability/performance trade-off. In general, our goal is to answer whether a specialized tile compiler and a mainstream AI programming model can serve as first-class tools for HPC stencil development. The remainder of this paper is organized as follows. Sec-tion II reviews related work. Section III introduces the hard-ware platforms and programming models. Section IV describes the stencil implementations. Section V presents the experimen-tal setup. Section VI reports and discusses performance results. Section VII concludes. II. R ELATED WORK 
+
+Stencil optimization on parallel architectures has been stud-ied extensively over the past two decades. We briefly survey the main algorithmic strategies and position our work with respect to the most closely related efforts. 
+
+a) Tiling, caching, and time skewing on CPUs: The literature on this topic is vast; we highlight a representative subset. [24], [25], [26], [27], [28], [6], [29], [30], [31], [32]. These papers cover cache-aware, cache-oblivious, and time-skewing techniques to reduce memory traffic and exploit locality, since bandwidth is the bottleneck and caching is key to performance. For example, cache-blocking and time skewing [6], [24] were among the first systematic techniques to improve data reuse for stencil codes on multi-core CPUs. Overlapped tiling [33] extended this idea to parallel execution by intro-ducing redundant computation at tile boundaries in exchange for reduced memory traffic. Split tiling [34] avoids redundant computation by decomposing the time-skewed domain into two phases. 
+
+b) GPU-specific strategies and shared memory manage-ment: The GPU literature is also very rich: [16], [35], [14], [15], [36], [37]. For example, Micikevicius [14] proposed a simple but highly effective 2.5D approach: tile a 2D plane into shared memory while keeping the values along the third (streaming) dimension in registers, effectively hiding global memory la-tency through the register file. This approach be the starting point of our implementations. Nguyen et al. [35] introduced 3.5D blocking, combining 2D spatial blocking in shared memory with 1D temporal blocking to increase arithmetic intensity. This strategy is particularly efficient for high-order stencils because it avoids the shared-memory pressure that grows with stencil order, and maps naturally onto the warp execution model. The AN5D framework [36] further refines 2.5D and 3.5D blocking with fixed register allocations, double buffering, and division of the streaming dimension, achieving near-roofline performance for simple single-statement kernels. Sai et al. [37] conducted a thorough empirical study of a 25-point 8th-order acoustic isotropic stencil with PML boundary conditions on multiple NVIDIA GPU generations (P100, V100, A100). They systematically compare 3D and 2.5D blocking strategies, shared-memory vs. register-file us-age. Several of their implementations were shown to achieve twice the performance of a proprietary OpenACC code. Across these GPU approaches, performance hinges on effec-tive use of the GPU memory hierarchy. Explicit management of shared memory (called Shared Local Memory, SLM, on Intel GPUs) remains a central and labor-intensive concern: the programmer must manually orchestrate data staging, syn-chronization barriers, and tile boundaries to keep the fast scratchpad occupied, and in the most hand-tuned variants even manage register usage explicitly. A key motivation for tile compilers is to relieve the programmer of this burden entirely. Rather than relying on programmer-managed SLM. For instance, TinyTC targets the 
+
+L1 data cache (Load Store Cache, LSC) of Intel GPU ar-chitectures. On Intel Battlemage and Intel GPU MAX1550, the LSC (384 KB) is significantly larger than the SLM (64 KB), providing more capacity for data reuse without requiring explicit staging. The tile compiler generates the necessary access patterns and prefetch schedules automatically, letting the hardware cache hierarchy absorb the data reuse that would otherwise require hand-written shared-memory code. This shift: from programmer-managed scratchpad to compiler-managed L1 (although TTC could do it), is one of the central design differences between the TinyTC approach and classical GPU stencil implementations, and is a key value proposition this paper evaluates. 
+
+c) Cerebras WSE-2 Integration: At the other end of the architectural spectrum, Jacquelin et al. [38] evaluate the 25-point stencil onto the Cerebras WSE-2, a wafer-scale engine with 850,000 cores, each with 48 KB of local SRAM and interconnected via a high-speed on-chip fabric. The X and Y dimensions of the grid are mapped onto the fabric, with each core exchanging data with its 16 neighbors using localized broadcast patterns, while the Z dimension resides entirely in the local memory of each PE. Incoming neighbor data is multi-plied by stencil coefficients and accumulated in a local buffer. This careful orchestration of communication and computation makes the stencil effectively compute-bound ( 503 TFLOPs), fully leveraging the WSE-2’s massive parallelism and on-chip memory. 
+
+d) DSL and compiler approaches: Domain-specific lan-guages such as Devito [39] and Halide [40] generate optimized stencil code from high-level specifications, while auto-tuning frameworks [7] explore the space of blocking parameters at runtime. At the SIMD CPU level, Yount [41] proposed 
+
+vector folding , storing multi-dimensional data blocks in SIMD registers to reduce memory traffic by up to 2.7 × on Intel Xeon 3
+
+Phi. 
+
+e) Tile compilers for scientific stencils: To our knowl-edge, [42] lays the first foundations for tile architecture in HPC, particularly for matrix–vector BLAS operations associ-ated with sparsity-aware tile compression. Our work follows this direction, but we focus on tile compilers such as TinyTC and Triton on high-order scientific stencils with boundary conditions. III. B ACKGROUND 
+
+A. Stencil Computation 
+
+We study a stencil-based solver for the acoustic isotropic approximation of the 3-D wave equation, widely used in seismic depth imaging by the oil and gas industry [37]. The Minimod proxy-application, from which the base code is ex-tracted is developed by TotalEnergies, it represents production-level geophysical applications and it solves the above men-tioned equation using high-order finite differences [43]. The physical domain is a cubic grid of up to thousands points in every direction. To solve the equation for realistic scenarios simulations iterate over a large number of time steps. The governing equations are described in [43]. The key ele-ment -and most computationally demanding- is the Laplacian found in the spatial differential operator. The Laplacian ∇2
+
+is discretized with an 8th-order star-shaped stencil, giving a 25-point kernel in 3-D: 
+
+∇2u ≈
+
+> 4
+
+X
+
+> m=1
+
+h
+
+cmx
+
+ ui+m,j,k + ui−m,j,k 
+
+
+
++ cmy
+
+ ui,j +m,k + ui,j −m,k 
+
+
+
++ cmz
+
+ ui,j,k +m + ui,j,k −m
+
+i
+
+(1) where cmx , cmy , cmz are discretization parameters along each axis respectively. The computational domain has two distinc-tive segments, the inner region (which represents the physical domain) and an auxiliary surrounding shell (PML boundary region) where a boundary condition is applied, as can be seen in Figure 1. 
+
+Inner region. In the interior of the domain, the solver evaluates the wave equation using the 25-point stencil (1) applied to the pressure field stored in the u-array. The seismic source is injected as a Gaussian wavelet at a fixed grid point, providing a physically realistic, band-limited excitation of the wavefield. The multi-statement nature of this kernel, involving auxiliary arrays for damping and source terms. 
+
+PML boundary region. To suppress spurious reflections at the domain boundaries, we apply a Perfectly Matched Layer (PML) condition [44]. The PML region surrounds the inner cu-bic domain and is subdivided into six sub-regions (top, bottom, front, back, left, right), each processed by a dedicated kernel to avoid branch divergence. The PML width of 27 cells is set by the physical parameters of the seismic model: specifically, the absorbing layer must span approximately three wavelengths at the dominant source frequency (25 Hz) to suppress reflections, yielding 3λmax /∆x = 3 × (4500 [m /s] /25 [Hz]) /20 [m] = 27 
+
+cell, where ∆x is the lattice spacing of the spatial discretiza-tion (identical in every direction) 
+
+> 27 746 27
+
+Fig. 1: Domain decomposition for an 800 3 grid showing the inner 746 3 region (blue) within the outer domain. This surrounding shell accounts for roughly 19% of the total 800 3 grid 1 volume (maximum that fit in the target GPU), leaving an inner region of 746 3 cells for the primary wavefield computation. In the PML region, again a 25-point stencil is applied. The PML region and its kernel are not the bottleneck of the simulation, as they become negligible for larger grids (production). 
+
+Domain decomposition. Following [37], we launch sep-arate GPU kernels for the inner region and each of the six PML sub-regions. This separation eliminates boundary branch divergence and ensures work balance within each kernel. In contrast to [37], the kernels are launched sequentially rather than concurrently: we tested concurrent PML dispatch but found no throughput improvement on the B580, as the inner kernel alone fully saturates the available execution resources. Figure 1 illustrates the decomposition. 
+
+Buffer initialization and memory compression. The main floating-point buffers, must be allocated and initialized before the time-stepping loop begins. We evaluate two initialization strategies:  
+
+> •
+
+Zero initialization : all buffers are filled with zero except for the source of Gaussian noise that injects information at every steps in the inner domain (common choice in seismic simulation)  
+
+> •
+
+Random initialization : all buffers are filled with uniformly distributed random values. This distinction is deliberately chosen to expose and quantify the effect of the memory compression feature present in the Intel Battlemage architecture. The BMG memory subsystem applies lossless compression directly from/to main memory, reducing the effective number of bytes transferred over the memory bus and thus increasing usable bandwidth, a hardware compression at no software cost e.g. the measured bandwidth will be 100 GB/s but the “dat” transferred will be 800 GB/s. Zero-initialized buffers are highly compressible (ratio 512) and   
+
+> 1The memory allocated for the grid is 808 3to contain the halo. 4
+
+Fig. 2: Distribution of floating-point values in the 700 3 grid over time steps for a zero constant initialization. therefore benefit fully from this feature, delivering a significant throughput boost that can be considered a free lunch : no code change is required, the hardware handles it transparently. For the stencils problem with zero initialization is that as the simulation progresses and the information propagates through the domain, the buffers gradually fill with non-trivial floating-point data, reducing their compressibility until the gain even-tually vanishes. Random-initialized buffers are incompressible from the start and represent the worst-case scenario. This behavior is clearly visible in Figure 2, which shows the distribution of all numbers (normalized/denormalized/ze-ro/NaN) in the grid over the time iteration steps. 
+
+B. TinyTC Tile Compiler 
+
+TinyTC [20] is a domain-specific language and compiler for tensor computations targeting Intel GPU architectures that exposes the hardware tiling capacity through a DSL (specific load/store capacity). Its kernel language is written directly in Static Single Assignment (SSA) form, there is no high-level language front-end; the programmer authors IR by hand (like CUDA Tile IR for NVIDIA). At compile time, TinyTC lowers the tensor IR to SPIR-V, making it in effect a compact (≈2 MB) LLVM-style front-end embeddable in any project that supports OpenCL, Level Zero, or SYCL without pulling in heavy framework dependencies. It follows a Single Program Multiple Data (SPMD) execution model: the programmer explicitly partitions work across [a tile|tiles]. Compared to Triton, this gives finer control over the generated code at the cost of greater verbosity and a steeper learning curve. The central abstraction is the cooperative operation : the programmer specifies the shape, stride, and element type of a tile within a multidimensional tensor. TinyTC uses this information to emit 2D block load instructions that transfer a rectangular memory region in a single hardware operation to the LSC. These instructions are significantly more efficient than scalar or 1D-vectorized memory accesses. Last and not least the 2D block load is hardware boundary safety : the instruction specification guarantees that accesses are clamped to the declared buffer extents, making out-of-bounds reads and writes architecturally impossible. As illustrated in the next listing. Data is loaded with boundary check using 
+
+cooperative_matrix_load.both_checked , which takes a 2D subview and a row/column offset; out-of-bounds accesses are clamped by hardware with no mask logic re-quired. Results are written back analogously:                               
+
+> ;2D slice of 3D buffer at X-plane %lk %u_xk =subview %u[0:%z_end, 0:%y_end, %lk] ;2D block load, OOB clamped by hardware %tile =cooperative_matrix_load.both_checked %u_xk[%z_off, %y_off] :$mat_t ... ;2D block store cooperative_matrix_store.both_checked %result, %v_xk[%z_off, %y_off]
+
+The programmer therefore needs no mask logic and no padding: the hardware automatically enforces the domain boundary at no cost. On supported architectures, Triton gener-ates 2D block loads However, these optimizations are applied transparently, without giving the programmer direct control over the operation shape or the prefetch schedule. In contrast, TinyTC exposes these mechanisms, allowing the memory access pattern to be tuned to match the stencil’s reuse footprint. In the SYCL case, the compiler takes the kernel IR as a plain C string, compiles it to SPIR-V, and packages the result into a standard SYCL kernel bundle. The resulting 
+
+sycl::kernel object can then be dispatched using a stan-dard parallel_for , allowing TinyTC kernels to seamlessly integrate into existing SYCL host code.                                     
+
+> // compile IR string -> SPIR-V -> SYCL kernel bundle
+> auto prog =tinytc::parse_string(ir_source);
+> auto bundle =tinytc::create_kernel_bundle( queue.get_context(), queue.get_device(), prog, tinytc_core_feature_flag_large_register_file);
+> auto kernel =tinytc::create_kernel(bundle, "sc_inner_point" ); // dispatch as astandard SYCL nd_range kernel q.submit([&](sycl::handler &h) {h.set_args(x_begin, ..., u, u_shape0, ..., coef0); h.parallel_for( sycl::nd_range{global_range, group_size}, kernel); });
+
+C. Triton 
+
+Triton [22] is a tile-based Python DSL in which the pro-grammer reasons about blocks of data rather than individual elements. A kernel is launched over a grid of program in-stances, each responsible for one tile of the output. Within a kernel, data is brought into registers using tl.load , which takes a block of pointers and an optional boolean mask ;elements for which the mask is False are replaced by a user-supplied fill value instead of triggering an out-of-bounds access. Symmetrically, tl.store writes a block back to memory, again guarded by a mask. This mask mechanism is the idiomatic way to handle domain boundaries: the programmer constructs index tensors for the full tile, computes a validity mask from the domain extents, and passes it to every load and store. No explicit 5
+
+branching or loop peeling is required; the compiler lowers the masked operations to predicated instructions on the target architecture. Iteration over a dimension is expressed as a Python for 
+
+loop over a tl.range , with the loop body operating on the current block of pointers. The compiler is responsible for scheduling, register allocation, and (on supported backends) software pipelining of the resulting memory operations. To conclude, triton generates 2D block loads when tensor descriptor is included in the main code. However, examination of the assembly does not reveal their use, resulting in lower performance (see section VI for explanation). IV. I MPLEMENTATION 
+
+Both kernels implement the same 2.5D register-tiling strat-egy [14], [37]. The domain is partitioned into T X ×T Y ×T Z 
+
+work-group tiles; each work-group is responsible for one tile and sweeps it along the X-axis. 
+
+Tile decomposition. The 3D grid is indexed in Z-fastest (column-major) order. Given a work-group identified by 
+
+(gx, g y , g z ), the tile origins are x0 = gx · T X , y0 = gy · T Y ,
+
+z0 = gz ·T Z . The Y/Z extent of the tile ( T Y ×T Z points) fits in the LSC and is treated as a 2D matrix throughout (typically 
+
+T X = 32 , T Y = 16 , T Z = 16 for a total of 32 KB). 
+
+X register queue. Before the X-loop, the nine T Y × T Z 
+
+planes at x0 − 4, . . . , x 0 + 4 are loaded into the LSC. At each step k the four-order X Laplacian is assembled entirely from these LSC/register values, incurring no memory traffic. After the update the oldest plane is discarded and a new plane at 
+
+k+5 is loaded, keeping the queue current for the next iteration. 
+
+Y and Z stencils. For each step k the eight T Y ×T Z planes at offsets ±1 . . . ± 4 along Y and Z are fetched from global memory. No explicit cache management is required: the LSC provides sufficient reuse across adjacent tiles so that most of these loads are cache hits in practice. More specifically the TinyTC implementation uses 2D block loads to fetch the Y/Z planes with halo. For the Triton version, the Y/Z planes are loaded without the halo. The total memory traffic per output point is dominated by the forward X-plane load (amortized over T X steps). For TinyTC, each Y/Z plane is extended by 8 cells (±4) in both Y and Z dimensions to include the halo. For Triton, the Y/Z planes are loaded at the tile size without halo extension, and boundary halos are handled separately. Listing 1 shows the loop structure as Triton Python pseu-docode. Figure 3 illustrates the decomposition in 3D. Listing 1: Register-queue algorithm (pseudocode).                                                                                 
+
+> #workgroup tile: z0:z0+TZ, y0:y0+TY, x0:x0+TX z=z0 +arange(TZ) #TZ-element vector y=y0 +arange(TY) #TY-element vector #pre-fill Xregister queue: planes x0-4 .. x0+4 q=[u[z, y, x0+d] for din range (-4, 5)] #9tiles
+> for kin range (x0, x0 +TX): #XLaplacian: pure register arithmetic, no loads lapx =sum (cx[m]*(q[4-m]+q[4+m]) for min 1..4) #Y/Z Laplacians: 8+8 global loads per step lapy =sum (cy[m]*(u[z,y-m,k]+u[z,y+m,k]) for min 1..4) lapz =sum (cz[m]*(u[z-m,y,k]+u[z+m,y,k]) for min 1..4) #leapfrog update
+> XYZ
+> reg. queue
+> T Z ×T Y
+> ZYX sweep
+
+Fig. 3: Register-queue tile decomposition. Blue planes are the nine T Z ×T Y tiles kept in registers (four shown). The orange panel is the active output tile at step k. Red and green arrows mark the Z- and Y-direction loads fetched from global memory each step; the purple arrow shows the X sweep direction.                    
+
+> v[z,y,k] =2*u[z,y,k] -v[z,y,k] +\roc2[z,y,k]*(c0*u[z,y,k]+lapx+lapy+lapz) #advance queue: pop front, push next plane q=q[1:] +[u[z, y, k+5]]
+
+A. TinyTC Kernel 
+
+Listing 2 shows a condensed excerpt from the inner stencil kernel written in the TinyTC IR language. The 
+
+shape_gcd /stride_gcd annotations on each memref 
+
+argument let the compiler prove that the base pointer and strides satisfy the 4-, 16-, and 64-byte alignment requirements of the 2D block load instruction. foreach_tile distributes the T Z × T Y work-group tile into $tz × $ty sub-tiles, one per subgroup. Inside the X-loop, subview selects a 2D slice, the Z- and Y-direction neighbors are loaded with cooperative_matrix_load.both_checked ,the Laplacian is accumulated via 
+
+cooperative_matrix_scale and element-wise add , and the result is written back with 
+
+cooperative_matrix_store.both_checked .The X-direction is handled without extra loads via a register queue pre-filled before the loop and shifted by one plane per iteration. Listing 2: Condensed TinyTC IR for the inner stencil kernel (Z-direction contribution shown).                                                                                                                            
+
+> func @sc_inner_point( %u: memref<f32x?x?x?,strided<1,?,?>> {shape_gcd=[4,4,4],stride_gcd=[1,4,16]}, %v: memref<f32x?x?x?,strided<1,?,?>> {shape_gcd=[4,4,4],stride_gcd=[1,4,16]}, %roc2: memref<f32x?x?x?,strided<1,?,?>>, ..., %coef0: f32) attributes {subgroup_size=16, work_group_size=[16,2]} {... foreach_tile (%i,%j)=(%c0,%c0),(%TZ,%TY) as (%ti,%tj) <= ($tz,$ty) {6
+> ;pre-fill X-queue: planes x-4 .. x+4 in registers ... for %k=%x_begin,%x_end init(...) -> (...) {;2D slice at X-plane %lk %u_xk =subview %u[%c0:%lz_end,%c0:%ly_end,%lk] :memref<f32x?x?,strided<1,?>> ;X-stencil computed from register queue (no loads) %lapx =... ;Zstencil: 2D block loads, OOB clamped by hardware %z_1 =cooperative_matrix_load.both_checked %u_xk[%ltile_z_1,%ltile_y] :$mat_t %z1 =cooperative_matrix_load.both_checked %u_xk[%ltile_z1, %ltile_y] :$mat_t %lapz10 =add %z1, %z_1 :$mat_t %lapz11 =cooperative_matrix_scale %cr1z, %lapz10 :$mat_t %lapz =add %lapz11, ... :$mat_t ;Ystencil: same pattern as Z%lapy =... %stencil =add %lapx, (add %lapy, %lapz) :$mat_t ;assemble update: 2*u -v+roc2*stencil %result =add (sub (cooperative_matrix_scale 2.0, %x0) ,%vv), (mul %r2, %stencil) :$mat_t ;write result tile to vcooperative_matrix_store.both_checked %result, %v_xk[%ltile_z,%ltile_y] ;advance register queue yield (%x_3,%x_2,%x_1,%x0,%x1,%x2,%x3,%x4,%x5) }}}
+
+B. PT/Triton Kernel 
+
+The Triton inner kernel follows the same register-queue algorithm described above (see Listing 2). However, Triton’s masked tl.load carries a measurable overhead in 2D tiling scenarios: generating a per-element predication mask across the full BLOCK _Y × BLOCK _Z tile and threading it through every neighbor load adds instruction pressure that degrades performance, especially when only the last tile along each axis is partially out-of-bounds. The adopted solution is to shift the boundary check entirely to the store side and to ensure loads are always safe by con-struction (Fig. 4). All buffers ( u, v, phi , eta ) are allocated with one extra tile of padding beyond the physical domain on each axis:                    
+
+> pad_y, pad_z =block_y, block_z u=torch.zeros((nx +2*lx +pad_x, ny +2*ly +pad_y, nz +2*lz +pad_z), ...)
+
+The kernel grid is launched with triton.cdiv , so the last tile along each direction may extend one tile beyond the valid domain. Because the padding is at least one full tile wide, all loads including the stencil halo at ±4 and the pre-fill of the X-queue at x0 ± 4 land in allocated, zeroed memory and require no mask:                
+
+> #unmasked load: always in-bounds due to padding y_p1 =tl.load(u_ptr +(x+lx)*sx +(y_l+1)*sy +z_l*sz)
+
+The store, on the other hand, must not write computed values into the padding region; incorrect values there would corrupt subsequent time-step loads. A validity mask is therefore ap-plied exclusively at the store:                       
+
+> mask_out =(y <y_end) &(z <z_end) &(x <x_end) tl.store(v_ptr +..., out, mask=mask_out)
+> ××
+> tile 0 tile 1 tile 2 mask on every load
+> (a) Z
+> tile 0 tile 1 tile 2
+
+✓ ✓ ◦ ◦      
+
+> 1 tile pad loads free |store masked at k<N
+> (b) Z
+> valid domain padding (zeroed) OOB
+
+Fig. 4: Boundary handling along one axis ( Z; block size 4, domain 10 cells). (a) Without padding tile 2 spills into unallocated memory (red), requiring a predication mask on every load. (b) One extra tile of zeroed memory is appended; all loads land in allocated space with no mask. The store uses a mask to avoid writing into the padding region ( ✓ = written, 
+
+◦ = skipped). This “load wide, store narrow” strategy eliminates all per-load predication at the cost of a small over-allocation ( one extra BLOCK _Y × BLOCK _Z slice), which is negligible for the 800 3 grids used in this evaluation. The approach depicted in Fig. 4(b) is the one actually used in the PT/Triton implementation. 
+
+C. SYCL Shared-Memory Kernel 
+
+As a portable reference baseline, we implemented the stencil kernel in standard SYCL following the shared-memory tiling strategy of Micickevicius [14] for the inner kernel only. The damping kernel, by contrast, uses a straightforward streaming approach: data is read directly from main memory with no tiling or data reuse optimization, reflecting the lower arith-metic intensity of the PML update. For the inner kernel, a 
+
+(BLOCK _Y +halo )×(BLOCK _Z +halo ) tile of the input grid is loaded into local_accessor shared memory, the work-group is synchronized, by a per-thread X-direction reg-ister window. No inline ASM for 2D block-load instructions are used: all global memory accesses are scalar loads. 
+
+D. OpenMP Offload Kernel 
+
+A second reference implementation uses OpenMP tar-get offload, offloading the standard 25-point kernel com-posed of three nested loops to the GPU with min-imal code changes. The innermost loops are mapped onto GPU threads via #pragma omp target teams distribute parallel for , with no explicit shared-memory or register-queue optimization. This baseline rep-resents the lowest-effort GPU port and provides a lower bound on achievable throughput, useful for assessing how much performance the more specialized tile-compiler kernels recover. V. E XPERIMENTAL SETUP 
+
+Platforms. The primary evaluation target is the Intel Arc Battlemage 580 (B580), a consumer-grade discrete GPU with a theoretical peak memory bandwidth of 450 GB/s. Although positioned as a gaming accelerator at a modest price point, 7
+
+TABLE I: Hardware platforms used in the evaluation. The Intel GPU Max 1550 number is given in 1-tile mode, i.e., with 64 Xe cores active instead of 128.                                      
+
+> Hardware Architecture Peak BW Th. STREAM Peak Vec. FP32
+> GB/s GB/s TFLOPs Intel B580 Xecore2 450 400 13.7 Intel B70 Xecore2 600 540 21.9 Intel GPU Max 1550 (1T) Xecore1 1600 1000 21.2 NVIDIA A100 Ampere 1935 1806 19.5 NVIDIA RTX6000 Blackwell 1597 1484 38.7 NVIDIA H100 Hopper 2040 1917 51.2 AMD Mi325x CDNA 4 6000 4526 163.4
+
+the B580 is the only publicly available host for the TinyTC tile compiler at the time of writing and therefore represents the hardware of primary interest. The evaluation is extended to higher-end platforms for comparison: the Intel B70, GPU MAX 1550, NVIDIA A100/RTX6000 Blackwell/H100, and AMD MI325x. The tinyTC runs are limited to Intel GPUs, whereas the PT/Triton runs perform on all GPUs. Table I summarizes the platforms and their main characteristics. 
+
+Memory compression on B580. The Battlemage memory subsystem implements lossless hardware compression: cache lines containing repetitive or constant data (e.g., all-zero patterns) are compressed on the fly by the memory controller during transfer i.e. GPU-DRAM to LSC, reducing the number of bytes that traverse the memory bus and yielding an effective bandwidth exceeding the theoretical peak without altering the data layout in main memory. To characterize this effect quantitatively, experiments were conducted with a modified GPU STREAM [45] benchmark in which a controlled fraction of each array is filled with uniformly distributed random values while the remainder retains the STREAM defaults (A=1 , B=2 , C=0 ). At a fill fraction of 1/128 (nearly all constant data), the Triad kernel reaches ≈ 840 GB/s, nearly twice the theoretical peak, while at full random fill ( 1/1)the effective bandwidth converges to ≈ 400 GB/s, consistent with the theoretical limit. Table II reports the full sweep. This feature was enabled on the B580 and B70, not on the Intel GPU MAX 1550, and on the NVIDIA and AMD GPUs, its behavior was not characterized. Note that the behavior of Intel GPU in-memory compression can be controlled through the combination of two environment variables: NEOReadDebugKeys=1 
+
+and RenderCompressedBuffersEnabled=0|1 , how-ever for this study, the memory compression was on for B580/B70 and off for Intel GPU MAX 1550. VI. R ESULTS 
+
+A. Benchmark Results 
+
+Table III presents the throughput (Giga points per second -Gpts/s) achieved by all four implementations (Triton, TinyTC, SYCL, and OMP) across 1 000, 2 000, and 4 000 time steps, with and without random field initialization, for a computing domain fixed in 800 3 grid points. A first key observation is the dramatic performance dif-ference between initialization strategies: TinyTC through-put drops from 35.8 Gpts/s (zero-initialization) to 15.6 Gpts/s (random initialization), a 56% reduction; Triton drops from TABLE II: STREAM GPU benchmark: effective memory bandwidth (GB/s) on the Intel B580 for varying data fill fractions (float32, 3 × 10 GB arrays). Fill fraction gives the proportion of elements initialized to random values in [0 , 1] ;the remainder uses STREAM defaults ( A=1 , B=2 , C=0 ). Results are the mean of 3 runs.                                     
+
+> Fill Copy Scale Add Triad
+> 1/128 610.8 741.0 892.1 839.7 1/64 745.5 771.7 884.3 834.0 1/32 734.5 759.4 868.4 819.4 1/16 715.8 736.1 837.2 792.6 1/8 675.1 693.8 781.3 742.9 1/4 617.5 621.8 690.2 661.3 1/2 522.7 515.5 560.0 542.0 1/1 399.3 383.3 405.7 397.7
+
+TABLE III: Throughput benchmark results (Gpts/s) for all implementations on Intel Arc B580 with 800 3 grid. 
+
+Version Zero-Initialization Random Initialization 
+
+1k 2k 4k 1k 2k 4k TinyTC 35.8 33.1 23.8 15.6 15.6 15.6 Triton 32.5 30.3 21.5 13.5 13.6 13.6 SYCL 20.2 19.1 16.1 12.2 12.2 12.2 OMP 8.9 8.9 8.4 7.8 7.8 7.8 
+
+32.5 Gpts/s to 13.5 Gpts/s (58% reduction), SYCL from 20.2 Gpts/s to 12.2 Gpts/s (39% reduction), and OMP from 8.9 Gpts/s to 7.8 Gpts/s (12% reduction). This discrepancy reflects the impact of Intel Battlemage’s memory-compression feature: zero-initialized arrays are highly compressible, yield-ing much higher effective bandwidth and throughput, whereas random data is incompressible and delivers throughput limited by the hardware’s nominal bandwidth. Another observation emerges from examining the step-count behavior. With random initialization, all implementations show convergence to steady-state throughput values: Triton stabi-lizes at 13.6 Gpts/s, TinyTC at 15.6 Gpts/s, SYCL at 12.2 Gpt-s/s, and OMP at 7.8 Gpts/s (1000, 2000, and 4000 steps yield nearly identical throughput). With zero-initialization, the throughput decreases with more steps: TinyTC drops from 35.8 to 23.8 Gpts/s, Triton from 32.5 to 21.5 Gpts/s, and SYCL from 20.2 to 16.1 Gpts/s. This behavior indicates that random initialization prevents compression across all time steps (constant nominal bandwidth), whereas zero-initialized arrays compress well initially but become less compressible as structured wave patterns emerge and propagate through the domain. Ultimately, for a very large number of iterations, the throughput values converge between the two initialization strategies. But due to the fast gain at the beginning, it takes time The benchmark results in Table III show that the end-to-end throughput depends critically on the memory state: whether the inputs arrays are initialized with constant data (best-case compression) or contain random data (worst-case compression). 
+
+B. Connecting Roofline to End-to-End Performance 
+
+The roofline model was generated using unitrace, where the required counters were measured to determine bandwidth and 8
+
+Fig. 5: Roofline plot comparing all four implementations (TinyTC, Triton, SYCL, and OpenMP) on Intel Arc B580. The plot shows arithmetic intensity (FLOPs/byte) versus perfor-mance (GFLOPs/s) for both inner and damping kernels, with diagonal lines indicating memory bandwidth limits and the horizontal line showing the peak computational throughput. TABLE IV: Roofline metrics on the Intel Arc B580 (peak BW = 405 GB/s, peak Perf = 13 670 GFLOPs/s). Values are the mean over 9 steady-state iterations; ± gives the standard deviation. AI = arithmetic intensity [FLOPs/byte]. Time is the mean GPU execution time per kernel call (inner) or per 6 ×
+
+damping group (damping).                                                                        
+
+> Version Kernel AI Perf [GFLOPs/s] BW [GB/s] Time [ms]
+> [FLOPs/B] mean ±std mean ±std mean ±std TinyTC inner 1.862 714.5 0.5 383.7 0.2 20.32 0.01 damping 1.511 539.7 0.9 357.1 0.5 13.83 0.02 Triton inner 1.350 531.1 20.1 393.4 11.3 23.69 0.91 damping 1.207 436.1 15.4 361.4 9.0 15.09 0.54 SYCL inner 2.015 634.2 9.7 314.8 5.0 26.13 0.40 damping 0.888 295.8 5.0 333.2 5.3 17.07 0.28 OMP inner 0.729 293.3 0.2 402.5 0.2 45.99 0.03 damping 1.175 360.8 0.4 307.0 0.4 18.22 0.02
+
+FLOPs. Figure 5 and Table IV provide insight into this difference by measuring the roofline performance of individual inner and damping kernels under optimal (initialization) memory compression conditions. All implementations are bandwidth-limited (lying below the memory ceiling in Figure 5), meaning that reducing the total memory traffic, and efficient caching is the primary path to higher throughput. The roofline analysis in Table IV reveals that TinyTC’s and Triton’s 2D block-load strategy delivers bandwidth efficiency: sustaining ≈ 390 GB/s for the inner kernel and ≈ 360 GB/s for the damping kernel, close to the measurable STREAM bandwidth (405 GB/s). TinyTC achieving the lowest DRAM TABLE V: Memory hierarchy metrics for the inner kernel on the Intel Arc B580 (mean over 9 steady-state iterations). DRAM Rd: bytes read from main memory. LSC Rd: bytes read through the Load-Store Cache (L1). L3 hit and LSC hit: hardware hit rates.                          
+
+> Version Time [ms] DRAM Rd [GB] LSC Rd [GB] L3 hit [%] LSC hit [%]
+> TinyTC 20.3 5.9 32.3 73.5 65.3 Triton 23.7 7.4 27.7 61.3 70.0
+> SYCL 26.1 6.2 8.9 46.4 24.9 OMP 46.0 16.7 41.8 58.2 63.4
+
+traffic (5.9 GB 2) and highest L3 hit rate (73.5%) (see Table V). Triton achieves competitive bandwidth (393.4 GB/s for inner) and even better LSC hit rates (70.0%), but loses effectiveness due to scalar load emission. However, the roofline measure-ments capture only the steady-state inner kernel performance under optimal (initialization) conditions. To understand the performance differences between imple-mentations, we instrumented the memory hierarchy with the unitrace MemoryProfile counter set and extracted the LSC (L1 data cache), L3, and DRAM traffic for each inner kernel under initialization conditions. Table V summarizes the results. The data confirm the hypothesis. TinyTC achieves the lowest DRAM traffic (5.9 GB) and the highest L3 hit rate (73.5%), meaning that most of the stencil neighborhood data is satisfied from the on-chip cache hierarchy rather than from main memory. This is a direct consequence of operating 
+
+close to the metal : TinyTC exposes the Intel hardware tiling hierarchy through its cooperative matrix API, and the pro-grammer explicitly controls the shape, alignment, and prefetch schedule of every 2D block load. Inspection of the generated assembly confirms this: the TinyTC inner kernel is dominated by load2dstrided (2D block-load) instructions, which transfer a full rectangular tile from memory in a single hardware operation, maximising spatial locality and allowing a better usage of the L3 bandwidth. Triton follows the same tile-based philosophy and achieves the best LSC hit rate (70.0%), but pays a higher DRAM cost (7.4 GB) and runs 14% slower than TinyTC. Assembly inspection reveals the reason: our Triton implementation does 
+
+not use tensor descriptors, which are required to unlock 2D block-load instructions on Intel hardware. Without them, tile loads are lowered to scalar or 1D-vectorized loads, forgoing the bandwidth efficiency that 2D block loads provide. This was a deliberate simplification driven by time constraints rather than a fundamental compiler limitation: Triton can emit 2D block loads when tensor descriptors are used explicitly. Exploiting tensor descriptors in the Triton kernel is left as future work and is expected to close the observed performance gap. The SYCL shared-memory kernel routes data through the SLM scratchpad rather than the LSC, which explains its very low LSC read volume (8.9 GB) and poor LSC hit rate (24.9%). While SLM staging avoids redundant global-memory fetches within a work-group, it produces a worse L3 hit rate (46.4%) than either tile-compiler approach. In effect, the programmer-
+
+> 2In this section the roofline analysis of the kernel has been performed on 10 iterations only. It explains the DRAM traffic. 9
+
+TABLE VI: Throughput comparison Gpts/s across accelerators for 1,000, 2,000, and 4,000 steps. Memory compression is disabled on the Intel GPU MAX 1550 (GM1550). NVIDIA and AMD are insensitive to memory compression, therefore only one result is provided.                                                          
+
+> Hardware Zero-Initialization Random Initialization
+> 1k 2k 4k 1k 2k 4k B70 (TinyTC) 46.2 42.6 30.7 20.2 20.2 20.2 B70 (PT/Triton) 26.4 25.3 21.2 16.6 16.6 16.6 B580 (TinyTC) 35.8 33.1 23.8 15.6 15.6 15.6 B580 (PT/Triton) 32.5 30.3 21.5 14.1 13.6 13.6 GM1550 (TinyTC) 38.1 37.4 35.6 33.8 34.0 34.1 GM1550 (PT/Triton) 36.6 36.1 34.7 32.9 33.1 33.1 1k 2k 4k A100 (PT/Triton) 35.0 35.1 35.2 H100 (PT/Triton) 42.4 42.5 42.9 rtx6k (PT/Triton) 41.1 41.2 41.6 mi325 (PT/Triton) 62.7 62.4 60.6
+
+managed scratchpad competes with, rather than complements, the hardware cache hierarchy on this architecture. The SYCL results are not optimal, additional effort in manual tuning could have mitigated the issues. The current OMP offload kernel, with no data-reuse strategy, generates nearly three times more DRAM traffic (16.7 GB) than TinyTC and takes more than twice as long (46 ms vs. 20 ms), providing the expected lower bound on performance. 
+
+C. Intel B70/GPUMAX 1550, NVIDIA A100/RTX6K/H100 and AMD mi325x 
+
+For the final result section, we benchmark all the architec-tures using our PT/Triton implementation, which is portable across vendors. Throughput results Gpts/s are plotted in Fig-ure 6 and summarized in Table VI. Comparing the B70 and B580 under zero initialization, both systems show the same overall trend with TinyTC: as the simulation advances, the number of non-zero elements grows and throughput gradually falls. Peak throughput reaches 46.2 and 35.8 Gpts/s at 1 000 steps for the B70 and B580, respectively, which is a strong result for mid-range cards. The Python/Triton version follows the same pattern and delivers comparable performance on the B580, although it is about 8% slower, most likely because of the 2D block-load strategy. The B70 is more interesting: TinyTC behaves like the B580 but with a ×1.3 speedup, which closely matches the mea-sured peak memory-bandwidth ratio between the two cards (540 /400 ≈ 1.35 ). PT/Triton produces a more mixed picture under zero initial-ization. On the B70, performance falls below the B580 result, which is unexpected. Despite extensive investigation, we could not identify the cause of this discrepancy. The Intel GPU MAX 1550 (GM1550) behaves consistently with these observations. As reported in [42], the sustained STREAM bandwidth of the GM1550 is closer to ∼ 1000 GB /s
+
+than to its theoretical peak of 1600 GB /s, while the B580 reaches about 405 GB /s in practice. This gives a practical bandwidth ratio of 1000 /405 ≈ 2.47 , which aligns well with our random-initialization results: the GM1550/B580 through-
+
+Fig. 6: Throughput Gpts/s with zero-initialization for 1 000, 2 000, and 4 000 time steps. For a better comparison, the B580/B70 results are replotted in the inset with random initialization, due to strong effect of the compression for zero initialization on the B580/B70. put ratio is 32 .9/13 .5 ≈ 2.44 for PT/Triton and 33 .8/15 .6 ≈
+
+2.17 for TinyTC. In random initialization, the Intel results are consistent across devices. The throughput ratios follow the measured bandwidth ratios within about 10%: GM1550/B70/B580 give relative ratios of 1.0/1.9/2.2, respectively. The B70 PT/Triton result is slightly lower than expected, but remains consistent and is still clearly better than in the zero-initialization case. The second part concerns NVIDIA and AMD hardware, tested with Python/Triton only. The interpretation here is simpler: since these platforms do not implement memory com-pression, zero-initialization and random-initialization yield identical results, and only one value is reported per config-uration. We compare PT/Triton results exclusively, as TTC is limited to Intel GPUs. The A100, H100, RTX 6000, and MI325X execute the same Python/Triton code as the Intel hardware; however, performance is limited by the quality of the Triton backend on each platform and the available memory band-width, and falls short of what bandwidth ratios alone would suggest. Taking the B580 as the reference point at 400 GB/s (measured bandwidth), the bandwidth ratios with respect to the A100, H100, RTX 6000, and MI325X are respectively (4.5/4.8/3.7/11.3). The performance ratios of the NVIDIA and AMD platforms relative to the B580 are (1.1/1.3/1.3/1.9) for zero-initialization and (2.5/3.0/2.9/4.4) for random-initialization. Two observa-tions follow:  
+
+> •
+
+For zero-initialization, the gap between the B580 and server-class GPUs remains limited, largely because mem-ory compression acts as a hardware-level accelerator on Intel platforms.  
+
+> •
+
+With random-initialization, a more realistic benchmark, the performance gap widens, yet remains well below what raw bandwidth ratios would predict. 10 
+
+The main explanations for the lack of performance (at least a 2X speedup is missing) on AMD/NVIDIA flagship GPUs may be rooted in the difference in architectural design compared with Intel GPUs. Our implementation of the Micikevicius algorithm relies primarily on the hardware-managed cache hierarchy, allowing the compiler to optimize data locality auto-matically (whereas the original paper achieves this manually using shared memory). This strategy appears well suited to Intel GPUs, whose X e-core has significantly more L1 cache associated with it compared to the L1 cache per CUDA core in NVIDIA’s SM design. For NVIDIA and AMD GPUs, this automatic cache optimization approach may be suboptimal. Instead, a more fine-grained management of data movement in particular through the explicit use of shared memory (or LDS on AMD) would likely improve performance. Additionally, leveraging NVIDIA-specific mechanisms such as the Tensor Memory Accelerator (TMA) would further enhance perfor-mance on NVIDIA platforms. This hypothesis warrants further investigation to confirm the architectural impact on performance and to validate the proposed optimizations for each platform. In conclusion, every platform requires architecture-specific adaptations to achieve peak performance. In this sense, we are approaching the limits of truly generic kernels; much like OpenMP, where portable code often sacrifices performance for generality. Achieving peak performance on dedicated hardware ultimately requires platform-specific optimizations. 
+
+D. Programming model 
+
+From a software-engineering perspective, model selection should be driven by developer experience, target hardware, and legacy-code constraints rather than by peak performance alone. OpenMP offload remains the most practical, lowest-effort path for porting an existing CPU stencil code to GPUs, en-abling the same codebase to execute on both CPUs and GPUs with minimal code modifications. restructuring but delivering the lowest throughput in our study. SYCL provides a portable C++ path with explicit control over memory and execution, and in our results it offers clearly better performance than OpenMP while remaining less intrusive than a full DSL rewrite. PT/Triton offers a strong productivity–performance com-promise: its Python-based tile abstraction is easier to adopt, portable across vendors, and substantially faster than directive-only offload. TinyTC like any low level DSL provides the highest per-formance on Intel hardware by exposing fine-grained control over tile shape and 2D block-load behavior, but it is also the most demanding programming model among the four implementations evaluated. Objectively, when an application is already written in SYCL, TinyTC is an ideal performance booster (like CUDA Tile IR for NVIDIA): it can be applied selectively to the criti-cal kernels while keeping the existing SYCL host framework. In practice, a pragmatic strategy is to avoid rewriting an entire application in a new language and instead focus optimization effort on the dominant bottleneck kernels. When those kernels control end-to-end runtime, investing in a lower-level model such as TinyTC is justified; otherwise, Triton or OpenMP often provides a better overall time-to-solution. In addition, OpenMP, SYCL, and TinyTC can be mixed within the same code base; this interoperability was used directly in this project. VII. C ONCLUSION 
+
+This paper demonstrates that tensor compilers are practical tools for high-order HPC stencils, beyond their original AI focus. On Intel hardware, a specialized approach such as TinyTC delivers the best performance by exposing low-level control over tiling and memory operations. The main takeaway is that these two paths are complemen-tary rather than exclusive: specialization maximizes peak per-formance, while generalist frameworks maximize portability and development velocity. Future work will extend full memory-traffic analysis beyond steady-state inner kernels, optimize boundary kernels, investi-gate the triton performance following the vendors architecture and explore tighter integration of Triton into production code. ACKNOWLEDGMENT 
+
+REFERENCES [1] R. J. LeVeque, Finite Difference Methods for Ordinary and Partial Differential Equations: Steady-State and Time-Dependent Problems .Society for Industrial and Applied Mathematics, 2007. [2] K. Aki and P. G. Richards, Quantitative Seismology: Theory and Methods , 2nd ed. University Science Books, 2002. [3] J. H. Ferziger and M. Peri´ c, Computational Methods for Fluid Dynamics ,3rd ed. Springer, 2002. [4] R. C. Gonzalez and R. E. Woods, Digital Image Processing , 4th ed. Pearson, 2017. [5] Intel Corporation, “Intel xeon dual-core processors bring multi-core performance to servers,” 2006, announcement of Intel’s first dual-core Xeon processors for server platforms. [Online]. Available: https: //www.intel.com/pressroom/archive/releases/2006/20060227corp.htm [6] D. Wonnacott, “Using time skewing to eliminate idle time due to memory bandwidth and network limitations,” in Proceedings of the 14th International Parallel and Distributed Processing Symposium (IPDPS) .IEEE, May 2000, pp. 171–180. [7] K. Datta, M. Murphy, V. Volkov, S. Williams, J. Carter, L. Oliker, D. Pat-terson, J. Shalf, and K. Yelick, “Stencil computation optimization and auto-tuning on state-of-the-art multicore architectures,” in Proceedings of SC’08 , 2008. [8] K. Datta, “Auto-tuning stencil codes for cache-based multicore platforms,” Ph.D. dissertation, EECS Department, University of California, Berkeley, Dec 2009. [Online]. Available: http://www2.eecs. berkeley.edu/Pubs/TechRpts/2009/EECS-2009-177.html [9] S. Williams, J. Shalf, L. Oliker, S. Kamil, P. Husbands, and K. Yelick, “Scientific computing kernels on the cell processor,” in International Journal of Parallel Programming , 2007. [10] S. Williams, J. Shalf, L. Oliker, S. Kamil, P. Husbands, and K. A. Yelick, “The potential of the cell processor for scientific computing,” in Proceedings of the 3rd ACM International Conference on Computing Frontiers (CF’06) . Ischia, Italy: ACM, 2006, pp. 9–20. [11] R. de la Cruz and M. Araya-Polo, “Algorithm 942: Semi-stencil,” ACM Transactions on Mathematical Software , vol. 40, no. 3, pp. 1–39, 2014. [12] S. Williams, A. Waterman, and D. Patterson, “Roofline: An insightful visual performance model for multicore architectures,” in Communica-tions of the ACM , 2009. [13] Y. Lin and V. Grover, “Using cuda warp-level primitives,” NVIDIA Developer Blog , 2018. [Online]. Available: https://developer.nvidia. com/blog/using-cuda-warp-level-primitives/ [14] P. Micikevicius, “3D finite difference computation on GPUs using CUDA,” in Proceedings of the 2nd Workshop on General Purpose Processing on Graphics Processing Units (GPGPU-2) , 2009. 11 
+
+[15] T. Grosser, A. Cohen, P. H. J. Kelly, J. Ramanujam, P. Sadayappan, and S. Verdoolaege, “Split tiling for gpus: Automatic parallelization using trapezoidal tiles,” in Proceedings of the 6th Workshop on General Purpose Processor Using Graphics Processing Units (GPGPU’13) .Houston, Texas, USA: ACM, Mar 2013, pp. 24–31. [16] J. Holewinski, L.-N. Pouchet, and P. Sadayappan, “High-performance code generation for stencil computations on gpu architectures,” in Pro-ceedings of the 26th ACM International Conference on Supercomputing (ICS’12) . San Servolo Island, Venice, Italy: ACM, Jun 2012, pp. 311– 320. [17] B. Shan and M. Araya-Polo, “Evaluation of programming models and performance for stencil computation on current gpu architectures,” arXiv preprint , 2024. [18] A. Kerr, D. Merrill, J. Demouth, and J. Tran, “Cutlass: Fast linear algebra in cuda c++,” NVIDIA Developer Blog, 2017, cUDA Templates and abstractions for high-performance GEMM and related computations on NVIDIA GPUs. [Online]. Available: https://developer.nvidia.com/blog/cutlass-linear-algebra-cuda/ [19] Intel XeTLA Contributors, “Intel xe templates for linear algebra (xetla),” GitHub repository, 2024, sYCL and eSIMD C++ templates for high-performance GEMM, convolution, and related computations on Intel Xe GPUs. [Online]. Available: https://github.com/intel/xetla [20] Intel Corporation, “Tinytc: A tile compiler for intel gpus,” https://github. com/intel/tiny-tensor-compiler, 2024. [21] NVIDIA Corporation, “CuTile: A tile programming model for NVIDIA GPUs,” https://developer.nvidia.com/cuda/tile, 2024. [22] P. Tillet, H. T. Kung, and D. Cox, “Triton: An intermediate language and compiler for tiled neural network computations,” MAPL @ PLDI, 2019. [23] T. Ewart, C. Uphoff, and M. Araya-Polo, “Stencil computation with OMP, SYCL, and tensor compiler on intel GPUs,” Poster presented at the International Supercomputing Conference (ISC 2026), 2026, intel poster. [24] M. Frigo, C. E. Leiserson, H. Prokop, and S. Ramachandran, “Cache-oblivious algorithms,” in Proceedings of the 40th Annual Symposium on Foundations of Computer Science (FOCS) . USA: IEEE, Oct 1999, pp. 285–297. [25] M. Frigo and V. K. Strumpen, “Cache oblivious stencil computations,” in Proceedings of the 19th Annual International Conference on Super-computing (ICS) . Cambridge, Massachusetts, USA: ACM, Jun 2005, pp. 361–366. [26] ——, “The cache complexity of multithreaded cache oblivious algo-rithms,” in Proceedings of the Eighteenth Annual ACM Symposium on Parallelism in Algorithms and Architectures (SPAA) . Cambridge, Massachusetts, USA: ACM, Jul 2006, pp. 271–280. [27] R. Strzodka, M. Shaheen, D. Pajak, and H.-P. Seidel, “Cache oblivious parallelograms in iterative stencil computations,” in Proceedings of the 24th ACM International Conference on Supercomputing (ICS) .Tsukuba, Ibaraki, Japan: ACM, Jun 2010, pp. 49–59. [28] Y. Tang, R. A. Chowdhury, B. C. Kuszmaul, C. C.-K. Luk, and C. E. Leiserson, “The pochoir stencil compiler,” in Proceedings of the Twenty-Third Annual ACM Symposium on Parallelism in Algorithms and Architectures (SPAA) . San Jose, California, USA: ACM, Jun 2011, pp. 117–128. [29] D. Wonnacott, “Achieving scalable locality with time skewing,” Inter-national Journal of Parallel Programming , vol. 30, no. 3, pp. 181–221, 2002. [30] G. R. Jin, J. Mellor-Crummey, and R. Fowler, “Increasing temporal locality with skewing and recursive blocking,” in SC’01: Proceedings of the 2001 ACM/IEEE Conference on Supercomputing . ACM/IEEE, Nov 2001, p. 57. [31] J. D. McCalpin and D. Wonnacott, “Time skewing: A value-based approach to optimizing for memory locality,” Technical Report, Tech. Rep., 1998. [32] Y. Song and Z. Li, “New tiling techniques to improve cache temporal locality,” SIGPLAN Notices , vol. 34, no. 5, pp. 215–228, 1999. [33] R. Strzodka, M. Shaheen, D. Pajak, and H.-P. Seidel, “Cache oblivious parallelograms in iterative stencil computations,” in ICS , 2010. [34] V. Bandishti, I. Pananilath, and U. Bondhugula, “Tiling stencil compu-tations to maximize parallelism,” in SC , 2012. [35] A. Nguyen, N. Satish, J. Chhugani, C. Kim, and P. Dubey, “3.5D blocking optimization for stencil computations on modern CPUs and GPUs,” in SC’10: Proceedings of the 2010 ACM/IEEE International Conference for High Performance Computing , 2010. [36] K. Matsumura, M. Wahib et al. , “AN5D: Automated stencil framework for high-order computation on GPUs,” in CGO , 2020. [37] R. Sai, J. Mellor-Crummey, X. Meng, M. Araya-Polo, and J. Meng, “Accelerating high-order stencils on GPUs,” in IEEE/ACM Performance Modeling, Benchmarking and Simulation of High Performance Com-puter Systems (PMBS) , 2020. [38] M. Jacquelin, M. Araya-Polo, and J. Meng, “Massively scalable stencil algorithm,” arXiv preprint arXiv:2204.03775 , 2022. [Online]. Available: https://arxiv.org/abs/2204.03775 [39] M. Louboutin et al. , “Devito: An embedded domain-specific language for finite differences and geophysical exploration,” Geoscientific Model Development , 2019. [40] J. Ragan-Kelley et al. , “Halide: A language and compiler for optimizing parallelism, locality, and recomputation in image processing pipelines,” in PLDI , 2013. [41] C. Yount, “Vector folding: Improving stencil performance via multi-dimensional SIMD-vector representation,” in 2015 IEEE 17th Interna-tional Conference on High Performance Computing and Communica-tions (HPCC) . IEEE, 2015, pp. 25–32. [42] J. Wassell, M. Zubair, A. Walden, G. Nastac, E. Nielsen, and T. Ewart, “An optimized generalized multi-color point implicit solver for intel gpus using oneapi esimd,” in SC Workshops ’25: Proceedings of the SC ’25 Workshops of the International Conference for High Performance Computing, Networking, Storage and Analysis . St. Louis, Missouri, USA: Association for Computing Machinery, 2025, pp. 775–783. [43] J. Meng, A. Atle, H. Calandra, and M. Araya-Polo, “Minimod: A finite difference solver for seismic modeling,” CoRR , vol. abs/2007.06048, 2020. [Online]. Available: https://arxiv.org/abs/2007.06048 [44] D. Komatitsch and R. Martin, “An unsplit convolutional perfectly matched layer improved at grazing incidence for the seismic wave equation,” Geophysics , vol. 72, no. 5, pp. SM155–SM167, 2007. [45] J. D. McCalpin, “Memory bandwidth and machine balance in current high performance computers,” IEEE Computer Society TCCA Newslet-ter, Dec. 1995, https://www.cs.virginia.edu/stream/.

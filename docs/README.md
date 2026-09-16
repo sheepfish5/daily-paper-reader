@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-15</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-16</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 22 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 9 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>10</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-15 22:44:50 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-16 21:47:04 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日扫描22篇论文并精读10篇，重点锁定推测解码与KV缓存效率两大方向。最值得关注的是满分论文《Carryover Drafting》用回收被拒状态提升推测解码，以及《Grouped Value Attention》按需重建Key来优化KV缓存。普通读者可先从这两篇入手，理解大模型推理加速的核心思路。</p>
+<p>今天筛读 9 篇论文（精读 2、速读 7），主线集中在 GPU 注意力算子与融合内核的编译优化。</p>
+<p>最值得看的是《AttnFuse》（9.0/10）用可组合 DSL 把注意力编译成融合 GPU 内核，以及《mKernel》（8.0/10）面向多 GPU、多节点的快速融合内核。</p>
+<p>普通读者可先读 AttnFuse 理解&quot;DSL 自动生成高性能核&quot;的思路，再按兴趣翻速读中的近似逻辑综合与 AI/HPC 交叉议题。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">10 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Carryover Drafting: Recycling Rejected States for Speculative Decoding">Carryover Drafting: Recycling Rejected States for Speculative Decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="Grouped Value Attention: Efficient KV Caching via On-Demand Key Reconstruction">Grouped Value Attention: Efficient KV Caching via On-Demand Key Reconstruction</span></li><li><span class="dpr-home-dashboard-paper-title" title="Dynamic HBM Repartitioning for Multi-Turn MoE Serving">Dynamic HBM Repartitioning for Multi-Turn MoE Serving</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="AttnFuse: A Composable DSL for Compiling Attentions to Fused GPU Kernels">AttnFuse: A Composable DSL for Compiling Attentions to Fused GPU Kernels</span></li><li><span class="dpr-home-dashboard-paper-title" title="mKernel: Fast Multi-GPU, Multi-Node Fused Kernels">mKernel: Fast Multi-GPU, Multi-Node Fused Kernels</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>10</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">12 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions">WISER: Systematic Design-Space Exploration of Fault-Tolerant Global Control Trapped-Ions</span></li><li><span class="dpr-home-dashboard-paper-title" title="BigMoMo: Efficient Inference of Large-Scale MoE with Speculative Decoding on Mobile Devices">BigMoMo: Efficient Inference of Large-Scale MoE with Speculative Decoding on Mobile Devices</span></li><li><span class="dpr-home-dashboard-paper-title" title="Self-Orchestrating Language Models: Leveraging Semantic Dependence for Efficient Inference">Self-Orchestrating Language Models: Leveraging Semantic Dependence for Efficient Inference</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="E-ALS: Approximation-Potential-Aware E-Graph Rewriting for Approximate Logic Synthesis">E-ALS: Approximation-Potential-Aware E-Graph Rewriting for Approximate Logic Synthesis</span></li><li><span class="dpr-home-dashboard-paper-title" title="SemBridge: Compiling Consumer Observations into Cross-Stack Communication Plans">SemBridge: Compiling Consumer Observations into Cross-Stack Communication Plans</span></li><li><span class="dpr-home-dashboard-paper-title" title="Stencil Computation at the Intersection of AI and HPC">Stencil Computation at the Intersection of AI and HPC</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>5</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
 </section>
 </div>
 

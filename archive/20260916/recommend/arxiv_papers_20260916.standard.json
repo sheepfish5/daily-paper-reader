@@ -1,0 +1,382 @@
+{
+  "mode": "standard",
+  "generated_at": "2026-09-16T21:39:55.430984+00:00",
+  "stats": {
+    "mode": "standard",
+    "tag_count": 2,
+    "deep_divecandidates": 2,
+    "deep_cap": 7,
+    "deep_selected": 2,
+    "quick_candidates": 7,
+    "quick_skim_target": 12,
+    "quick_selected": 7
+  },
+  "deep_dive": [
+    {
+      "id": "2609.13612v1",
+      "source": "arxiv",
+      "title": "AttnFuse: A Composable DSL for Compiling Attentions to Fused GPU Kernels",
+      "abstract": "Modern AI systems are built on the Transformer architecture, whose core operation, attention, accounts for the majority of computation and memory cost. Researchers continually propose new attention variants to improve quality, efficiency, or context length, but each variant currently requires expert-written GPU code to run at usable speeds. PyTorch's recent flex\\_attention lets researchers describe custom attention patterns in Python and compile them to fused kernels, but its design is limited to modifications applied after the central matrix multiplication, excluding Rotary Position Embedding (RoPE), the positional encoding used by every major LLM.   We introduce AttnFuse, a small DSL for attention that makes pre-multiplication transformations like RoPE first-class operations. Researchers compose ten high-level building blocks to describe a variant, and AttnFuse's compiler emits a single fused GPU kernel for the entire computation. On an RTX 3090, AttnFuse achieves a 2.10$\\times$ speedup over flex\\_attention on the RoPE+causal pattern. On an H100, it runs a full Llama-3-8B training step within 5\\% of PyTorch's hand-tuned backend. Our investigation reveals the Rotation Calculus: whether to fuse RoPE or apply it separately depends on the GPU's compute-to-bandwidth ratio, with a derived crossover that matches measurement. AttnFuse demonstrates that a small, attention-specific compiler can close the gap between flexible research code and production kernels.",
+      "authors": [
+        "Varun Kumar Dasoju",
+        "Tian Zhao"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-09-11T23:55:03+00:00",
+      "link": "https://arxiv.org/pdf/2609.13612v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "composable DSL compiling attention variants into fused GPU kernels",
+      "llm_evidence_cn": "将注意力变体编译为融合GPU算子的可组合DSL",
+      "llm_evidence": "将注意力变体编译为融合GPU算子的可组合DSL",
+      "canonical_evidence": "将注意力变体编译为融合GPU算子的可组合DSL",
+      "llm_tldr_en": "AttnFuse is a composable DSL that compiles custom attention patterns, including pre-matmul transforms like RoPE, into fused GPU kernels, removing the need for expert-written CUDA and overcoming flex_attention limitations.",
+      "llm_tldr_cn": "针对注意力新变体每次都需要专家手写GPU代码才能高效运行、而现有flex_attention仅支持矩阵乘之后的修改且无法覆盖RoPE等前置变换的问题，本文提出AttnFuse，一种可组合的注意力DSL，可将包含旋转位置编码等乘前变换的自定义注意力模式编译为融合GPU算子。该工作扩展了可自动生成融合内核的表达能力，使研究者无需手写CUDA即可获得可用性能，对GPU算子优化与注意力系统实现具有直接价值。",
+      "llm_tldr": "针对注意力新变体每次都需要专家手写GPU代码才能高效运行、而现有flex_attention仅支持矩阵乘之后的修改且无法覆盖RoPE等前置变换的问题，本文提出AttnFuse，一种可组合的注意力DSL，可将包含旋转位置编码等乘前变换的自定义注意力模式编译为融合GPU算子。该工作扩展了可自动生成融合内核的表达能力，使研究者无需手写CUDA即可获得可用性能，对GPU算子优化与注意力系统实现具有直接价值。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.13585v1",
+      "source": "arxiv",
+      "title": "mKernel: Fast Multi-GPU, Multi-Node Fused Kernels",
+      "abstract": "Communication has become a bottleneck in distributed training and inference of large models. Overlapping communication with computation at the granularity of kernels, on separate streams, reduces only part of this communication cost. Fused kernels often have better performance by transmitting each output tile as soon as it is produced, but existing fused kernels are largely confined to a single NVLink domain. We present mKernel, a library of multi-GPU, multi-node fused kernels that overlap computation, intra-node NVLink communication, and inter-node RDMA at tile granularity. mKernel partitions the streaming multiprocessors (SMs) of a persistent kernel into compute and communication roles, and an on-GPU controller tunes the SM partition adaptively at run time, since the best SM partition varies with the kernel and the input shape. It structures data movement hierarchically so that data traversing the inter-node network is minimized. Finally, it drives the network from the GPU through a lightweight command queue and host proxy implemented directly on RDMA verbs, which allows the same kernels to run on any network backend (e.g. InfiniBand and on AWS EFA); we observe, surprisingly, that GPUDirect Async (IBGDA) yields little additional benefit over host-assisted GPU-initiated communication. We implement five kernels spanning tensor, sequence, and expert parallelism. On two 16-GPU H200 clusters, mKernel achieves speedups of up to 1.72x on GEMM+AllReduce and $1.88\\times$ on Ring Attention.",
+      "authors": [
+        "Ziming Mao",
+        "Yihan Zhang",
+        "Shawn Wei Chew",
+        "Shuang Ma",
+        "Costin Raiciu",
+        "Yang Zhou",
+        "Scott Shenker",
+        "Ion Stoica"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.AI",
+        "cs.LG",
+        "cs.NI"
+      ],
+      "published": "2026-09-11T22:50:04+00:00",
+      "link": "https://arxiv.org/pdf/2609.13585v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "multi-GPU multi-node fused kernels overlapping compute and communication",
+      "llm_evidence_cn": "多GPU多节点融合内核重叠计算与通信",
+      "llm_evidence": "多GPU多节点融合内核重叠计算与通信",
+      "canonical_evidence": "多GPU多节点融合内核重叠计算与通信",
+      "llm_tldr_en": "mKernel provides multi-GPU, multi-node fused kernels that overlap computation, NVLink and RDMA communication at tile granularity, with an on-GPU controller tuning SM partitioning at runtime.",
+      "llm_tldr_cn": "通信已成为大模型分布式训练与推理的瓶颈，在独立流上以内核粒度重叠通信与计算只能消除部分通信开销。融合内核通过在输出分块产生时立即传输可获更好性能，但现有融合内核大多局限于单一NVLink域。本文提出mKernel，一个多GPU多节点融合内核库，以分块粒度重叠计算、节点内NVLink通信与节点间RDMA，并将持久内核的流多处理器划分为计算与通信角色，由片上控制器在运行时自适应调整划分。显著缓解跨节点通信瓶颈。",
+      "llm_tldr": "通信已成为大模型分布式训练与推理的瓶颈，在独立流上以内核粒度重叠通信与计算只能消除部分通信开销。融合内核通过在输出分块产生时立即传输可获更好性能，但现有融合内核大多局限于单一NVLink域。本文提出mKernel，一个多GPU多节点融合内核库，以分块粒度重叠计算、节点内NVLink通信与节点间RDMA，并将持久内核的流多处理器划分为计算与通信角色，由片上控制器在运行时自适应调整划分。显著缓解跨节点通信瓶颈。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch"
+    }
+  ],
+  "quick_skim": [
+    {
+      "id": "2609.13276v1",
+      "source": "arxiv",
+      "title": "E-ALS: Approximation-Potential-Aware E-Graph Rewriting for Approximate Logic Synthesis",
+      "abstract": "Approximate logic synthesis (ALS) improves circuit power, performance, and area by trading exact correctness for bounded functional error. However, existing structural ALS methods largely overlook structural bias: even functionally equivalent netlists can expose markedly different approximation opportunities and lead to substantially different outcomes under the same downstream ALS flow. Our experiments show that this effect can induce final area gaps of up to 42.77%. To unlock this opportunity, we propose E-ALS, an e-graph-based framework for approximation-aware structural search. E-ALS combines Function-Reduced Saturation, an ALS-coupled surrogate, search-based extraction, and budget-guided refinement to identify approximation-friendly equivalent structures. Experiments on well-established arithmetic and logic benchmarks show that E-ALS achieves additional area reductions of 3.2 and 7.0 percentage points under maximum Hamming-Distance and Error-Distance constraints, respectively. Code is available in https://github.com/ZenuSunB/Ecompile.git.",
+      "authors": [
+        "Bin Sun",
+        "Jianan Mu",
+        "Jiaxi Zhang",
+        "Rengang Zhang",
+        "Zhiteng Chao",
+        "Jing Ye",
+        "Huawei Li"
+      ],
+      "primary_category": "cs.ET",
+      "categories": [
+        "cs.ET"
+      ],
+      "published": "2026-09-08T02:17:39+00:00",
+      "link": "https://arxiv.org/pdf/2609.13276v1",
+      "tags": [
+        "keyword:dse",
+        "query:dse"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "e-graph based structural search for approximate logic synthesis",
+      "llm_evidence_cn": "面向近似逻辑综合的e-graph结构搜索",
+      "llm_evidence": "面向近似逻辑综合的e-graph结构搜索",
+      "canonical_evidence": "面向近似逻辑综合的e-graph结构搜索",
+      "llm_tldr_en": "Approximate logic synthesis trades bounded correctness for PPA, but structural bias makes functionally equivalent netlists yield very different outcomes. E-ALS uses e-graph rewriting with a surrogate and search-based extraction to find approximation-friendly structures.",
+      "llm_tldr_cn": "近似逻辑综合通过牺牲有界正确性换取功耗、性能与面积收益，但现有结构方法忽视结构偏置，功能等价网表在相同流程下面积差距可达42.77%。作者提出E-ALS，基于e-graph进行近似感知结构搜索，结合函数约简饱和、ALS耦合代理模型、搜索式提取与预算引导精化，识别利于近似的结构。实验表明该框架能有效缩小面积差距，提升近似综合质量，为EDA综合优化提供新搜索范式。",
+      "llm_tldr": "近似逻辑综合通过牺牲有界正确性换取功耗、性能与面积收益，但现有结构方法忽视结构偏置，功能等价网表在相同流程下面积差距可达42.77%。作者提出E-ALS，基于e-graph进行近似感知结构搜索，结合函数约简饱和、ALS耦合代理模型、搜索式提取与预算引导精化，识别利于近似的结构。实验表明该框架能有效缩小面积差距，提升近似综合质量，为EDA综合优化提供新搜索范式。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "EDA optimization",
+      "matched_requirement_id": "req-13",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.08231v1",
+      "source": "arxiv",
+      "title": "SemBridge: Compiling Consumer Observations into Cross-Stack Communication Plans",
+      "abstract": "Distributed-tensor systems specify where values reside, while collective systems optimize how requested operations execute. At a boundary between vendor runtimes that cannot share a native communicator, neither abstraction states what a remote consumer must observe. SemBridge fills this gap by compiling graph and runtime facts into a typed contract for the consumer-visible result and its delivery obligations. The contract captures provenance, substitutability, completion, authority, demand, and native-domain locality. A deterministic lowerer constructs backend-neutral communication plans, and a symbolic checker validates each plan before execution across CUDA/NCCL and CANN/HCCL. An independent layout-only planner handles all 72 structural transitions but establishes only 54 complete obligations; a byte-only minimizer proposes 40 semantically invalid candidates, all rejected by SemBridge. On nine real edges, SemBridge produces distinct observation-aware plans that reduce startups on all nine and payload bytes on the three result edges. A live CUDA/CANN run derives and executes full-logit reconstruction, source projection, and owner-token delivery from log-probability, token-only, and owner-scoped requests. On a measured two-host 1-GbE capacity-spillover deployment, source projection cuts result traffic by more than 99.97% and increases throughput by 8.92-80.20% across Dense, MoE, and MiniMax workloads. All 18 MiniMax restart pairs at concurrency 1, 8, and 16 favor source projection. A Qwen3-14B MLP slice additionally verifies bitwise activation-shard delivery and HCCL completion of row-parallel partials. These results establish consumer observation as a semantic layer between placement and collective execution.",
+      "authors": [
+        "Genlang Chen",
+        "Junyi Zhu",
+        "Yuanshan Lin"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-09-08T04:23:21+00:00",
+      "link": "https://arxiv.org/pdf/2609.08231v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "cross-stack communication plans validated across CUDA/NCCL and CANN/HCCL",
+      "llm_evidence_cn": "跨CUDA/NCCL与CANN/HCCL的通信计划编译与验证",
+      "llm_evidence": "跨CUDA/NCCL与CANN/HCCL的通信计划编译与验证",
+      "canonical_evidence": "跨CUDA/NCCL与CANN/HCCL的通信计划编译与验证",
+      "llm_tldr_en": "SemBridge compiles graph and runtime facts into typed contracts capturing consumer-visible results, then lowers them into backend-neutral communication plans validated across CUDA/NCCL and CANN/HCCL.",
+      "llm_tldr_cn": "分布式张量系统规定数值位置，集合通信系统优化操作执行，但在无法共享原生通信器的厂商运行时边界上，缺乏对远程消费者可见结果的描述。SemBridge通过将图与运行时事实编译为带类型的契约，刻画来源、可替代性、完成、权限、需求与本地性等义务。该方案生成后端无关的通信计划并在执行前做符号验证，覆盖CUDA/NCCL与CANN/HCCL，为跨栈通信提供了系统级支撑。",
+      "llm_tldr": "分布式张量系统规定数值位置，集合通信系统优化操作执行，但在无法共享原生通信器的厂商运行时边界上，缺乏对远程消费者可见结果的描述。SemBridge通过将图与运行时事实编译为带类型的契约，刻画来源、可替代性、完成、权限、需求与本地性等义务。该方案生成后端无关的通信计划并在执行前做符号验证，覆盖CUDA/NCCL与CANN/HCCL，为跨栈通信提供了系统级支撑。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.10368v1",
+      "source": "arxiv",
+      "title": "Stencil Computation at the Intersection of AI and HPC",
+      "abstract": "Tensor compilers such as TinyTC and OpenAI Triton were originally developed for AI workloads, but the same tiling and memory abstractions can be applied to implement efficient high-order stencils for scientific and industrial applications. We demonstrate this for an 8th-order, 25-point acoustic stencil with boundary conditions over an a demanding-sized grid, targeting GPGPUs, where we compare the hardware-specialized TinyTC implementation with a portable PyTorch/Triton implementation. The target platforms for evaluation include Intel B70, B580, GPU MAX 1550, NVIDIA A100/RTX6000 Blackwell/H100, and AMD MI325x. For instance, on Battlemage B580 TinyTC reaches 15.6 Gpts/s versus 13.5 Gpts/s for PT/Triton under random initialization, while zero-initialized runs reach up to 35.8 Gpts/s due to hardware memory compression. Using roofline and memory-hierarchy profiling, we show that -as expected- performance is predominantly bandwidth-limited and that compiler-managed L1/LSC caching can effectively replace programmer-managed shared-memory staging for this stencil class. Overall, the results position TinyTC as the performance-oriented path on Intel hardware and PyTorch/Triton as a strong portability/productivity baseline for cross-vendor HPC stencil development.",
+      "authors": [
+        "Timothee Ewart",
+        "Mauricio Araya-Polo"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-09-09T15:59:22+00:00",
+      "link": "https://arxiv.org/pdf/2609.10368v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "tensor compilers Triton/TinyTC applied to GPGPU stencil kernels, tiling and memory abstractions",
+      "llm_evidence_cn": "张量编译器Triton/TinyTC用于GPGPU模板计算核，分块与内存抽象",
+      "llm_evidence": "张量编译器Triton/TinyTC用于GPGPU模板计算核，分块与内存抽象",
+      "canonical_evidence": "张量编译器Triton/TinyTC用于GPGPU模板计算核，分块与内存抽象",
+      "llm_tldr_en": "The paper shows tensor compilers like TinyTC and Triton can implement efficient high-order stencils on GPGPUs, comparing specialized and portable kernel implementations across many accelerators.",
+      "llm_tldr_cn": "原本面向AI负载的张量编译器TinyTC与Triton，其分块与内存抽象同样可用于科学计算中的高阶模板计算。本文针对带边界条件的8阶25点声学模板，在多种GPGPU上比较硬件特化的TinyTC与可移植的PyTorch/Triton实现。在Battlemage B580上TinyTC达15.6 Gpts/s，优于PT/Triton的13.5 Gpts/s。该工作说明张量编译器能有效生成高性能GPU算子，为跨平台内核优化提供借鉴。",
+      "llm_tldr": "原本面向AI负载的张量编译器TinyTC与Triton，其分块与内存抽象同样可用于科学计算中的高阶模板计算。本文针对带边界条件的8阶25点声学模板，在多种GPGPU上比较硬件特化的TinyTC与可移植的PyTorch/Triton实现。在Battlemage B580上TinyTC达15.6 Gpts/s，优于PT/Triton的13.5 Gpts/s。该工作说明张量编译器能有效生成高性能GPU算子，为跨平台内核优化提供借鉴。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.13559v1",
+      "source": "arxiv",
+      "title": "Carbon-Aware Routing for Function Calling in Edge-Cloud LLM Systems",
+      "abstract": "Large Language Models (LLMs) with function-calling capabilities are becoming critical for modern agentic AI systems. Nevertheless, current deployments typically route inferences to powerful cloud-based models, incurring significant energy use and carbon emissions. We address this sustainability challenge with a carbon-aware routing framework that distributes function-calling queries across a three-tier edge-cloud architecture, combining edge and cloud LLMs on heterogeneous hardware. At its core, a lightweight k-NN predictor operating in a unified semantic-lexical embedding space estimates query-specific accuracy, delay, and power consumption on each edge tier. These predictions are then combined with real-time grid carbon intensity to route every query to the lowest-emission tier capable of executing it successfully. Evaluated on state-of-the-art function-calling benchmarks and LLM families, our framework matches cloud-level accuracy while reducing operational carbon emissions by $4\\times$ on average.",
+      "authors": [
+        "Aikaterini Maria Panteleaki",
+        "Varatheepan Paramanayakam",
+        "Spyros Tragoudas",
+        "Iraklis Anagnostopoulos"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-09-11T21:51:39+00:00",
+      "link": "https://arxiv.org/pdf/2609.13559v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "carbon-aware routing across edge-cloud LLM serving tiers",
+      "llm_evidence_cn": "面向边云LLM服务的碳感知路由",
+      "llm_evidence": "面向边云LLM服务的碳感知路由",
+      "canonical_evidence": "面向边云LLM服务的碳感知路由",
+      "llm_tldr_en": "Routing all function-calling LLM queries to the cloud wastes energy and emits carbon. A carbon-aware framework spreads queries across a three-tier edge-cloud setup, using a k-NN predictor of accuracy, delay and power plus live grid carbon intensity to route each query.",
+      "llm_tldr_cn": "具备函数调用能力的大模型正成为智能体系统核心，但现有部署多将推理路由至云端，能耗与碳排放高。作者提出碳感知路由框架，在三层边云架构上结合边云异构LLM，用轻量k-NN预测器在统一语义-词法嵌入空间中估计各层精度、时延与功耗，并结合实时电网碳强度进行查询路由。实验表明该框架可在保证服务质量的同时降低碳足迹，为可持续LLM服务系统提供新思路。",
+      "llm_tldr": "具备函数调用能力的大模型正成为智能体系统核心，但现有部署多将推理路由至云端，能耗与碳排放高。作者提出碳感知路由框架，在三层边云架构上结合边云异构LLM，用轻量k-NN预测器在统一语义-词法嵌入空间中估计各层精度、时延与功耗，并结合实时电网碳强度进行查询路由。实验表明该框架可在保证服务质量的同时降低碳足迹，为可持续LLM服务系统提供新思路。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM serving",
+      "matched_requirement_id": "req-5",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.15039v1",
+      "source": "arxiv",
+      "title": "SpliTEE: Improving LLM Inference on Trusted Hardware with Differentially Private GPU Outsourcing",
+      "abstract": "User prompts provided to large language models (LLMs) may contain sensitive or private information that can be misused by remotely deployed models, such as through inadvertent memorization during retraining. One way to protect user prompts is to execute the LLM inside a trusted execution environment (TEE), with the guarantee that the service provider has no access to computations performed within or information exchanged with the TEE. However, current TEEs are primarily CPU-based and significantly slower than GPUs optimized for LLM inference. To circumvent this, Tramer and Boneh (2019) proposed Slalom, which splits neural network inference between a TEE and an untrusted GPU and encrypts intermediate inputs sent to the GPU. We extend this split-inference architecture to LLM inference and instead protect intermediate inputs using differential privacy. We show that masking intermediate representations is necessary by showing that a prompt-reconstruction attack can recover prompts from these representations with nearly 80% accuracy. Our main contribution is a global sensitivity analysis of key LLM functions, which bounds the required scale of differentially private noise. Unlike encryption, differential privacy avoids quantization, allowing the LLM to remain in the floating-point domain. We also derive an upper bound on floating-point error from masking and noise cancellation in the TEE as a function of the privacy parameter epsilon. We implement our architecture using Intel TDX and evaluate it with two LLMs: Llama-3.2-3B and Qwen3-4B. Our split execution is nearly twice as fast as fully CPU-based inference inside TDX and 5-15 seconds faster than encryption-based Slalom while achieving higher accuracy. Finally, we demonstrate that prompt reconstruction, even with knowledge of the differential privacy mechanism, cannot recover more information than is contained in an unrelated prompt.",
+      "authors": [
+        "Shashie Dilhara Batan Arachchige",
+        "Robin Carpentier",
+        "Hassan Jameel Asghar",
+        "Dali Kaafar"
+      ],
+      "primary_category": "cs.CR",
+      "categories": [
+        "cs.CR",
+        "cs.AI",
+        "cs.LG"
+      ],
+      "published": "2026-09-14T04:55:17+00:00",
+      "link": "https://arxiv.org/pdf/2609.15039v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "improving LLM inference on trusted hardware with GPU outsourcing",
+      "llm_evidence_cn": "在可信硬件上通过GPU外包改进LLM推理",
+      "llm_evidence": "在可信硬件上通过GPU外包改进LLM推理",
+      "canonical_evidence": "在可信硬件上通过GPU外包改进LLM推理",
+      "llm_tldr_en": "TEE-based LLM inference is private but CPU-bound and slow versus GPUs. SpliTEE splits inference between a TEE and an untrusted GPU with differentially private outsourcing, improving throughput while preserving prompt privacy.",
+      "llm_tldr_cn": "针对LLM服务中用户提示可能泄露隐私的问题，将模型放入可信执行环境（TEE）可保护数据，但现有TEE多基于CPU，远慢于为推理优化的GPU。论文提出SpliTEE，将神经网络推理在TEE与不可信GPU之间切分，并结合差分隐私的GPU外包机制，在保护中间输入的前提下利用GPU算力。该方法在维持提示隐私保证的同时提升了LLM推理效率，为隐私敏感的LLM推理系统提供了兼顾安全与性能的方案。",
+      "llm_tldr": "针对LLM服务中用户提示可能泄露隐私的问题，将模型放入可信执行环境（TEE）可保护数据，但现有TEE多基于CPU，远慢于为推理优化的GPU。论文提出SpliTEE，将神经网络推理在TEE与不可信GPU之间切分，并结合差分隐私的GPU外包机制，在保护中间输入的前提下利用GPU算力。该方法在维持提示隐私保证的同时提升了LLM推理效率，为隐私敏感的LLM推理系统提供了兼顾安全与性能的方案。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM inference",
+      "matched_requirement_id": "req-6",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.15131v1",
+      "source": "arxiv",
+      "title": "AdaVSkip: Adaptive Visual Token Skipping Across Layers For Efficient MLLMs Inference",
+      "abstract": "Multimodal large language models (MLLMs) require substantial computation to process numerous visual tokens across all transformer layers. Most methods for efficient MLLM inference exploit horizontal redundancy by compressing visual tokens. Beyond token reduction, recent studies exploit vertical redundancy through early exit or fixed-layer skipping. However, we find that the extent and distribution of this redundancy vary across inputs and differ between self-attention and MLP modules. Motivated by these observations, we propose AdaVSkip, which equips each layer with two lightweight routers that independently determine whether visual tokens pass through by or skip the self-attention and MLP modules. These decisions collectively define an input-specific visual-computation path, but their discrete and non-differentiable nature makes learning effective paths challenging. To address this challenge, we develop a progressive two-stage training framework that updates only the routers while keeping the backbone frozen. Stage I establishes an initial routing policy through supervised training with input-specific targets derived from module-wise necessity scores. To further align the routing policy with task performance, Stage II uses reinforcement learning to optimize routing decisions with direct feedback from generated answers. It combines an answer correctness reward with a skip-consistency reward that discourages excessive retention of visual-token computation. Across three MLLM backbones, AdaVSkip maintains strong task performance with substantially less computation. On LLaVA-NeXT-7B, AdaVSkip reduces FLOPs by 53.2\\% while preserving the original model's average performance. Combining it with visual token compression increases this reduction to 91.2\\%, while retaining 97.2\\% of the original performance on average.",
+      "authors": [
+        "Yuyao Sun",
+        "Tao Deng",
+        "Shuang Li",
+        "Deqing Wang"
+      ],
+      "primary_category": "cs.CV",
+      "categories": [
+        "cs.CV",
+        "cs.AI"
+      ],
+      "published": "2026-09-14T07:07:51+00:00",
+      "link": "https://arxiv.org/pdf/2609.15131v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "adaptive visual token skipping for efficient multimodal LLM inference",
+      "llm_evidence_cn": "自适应视觉token跳过加速多模态大模型推理",
+      "llm_evidence": "自适应视觉token跳过加速多模态大模型推理",
+      "canonical_evidence": "自适应视觉token跳过加速多模态大模型推理",
+      "llm_tldr_en": "AdaVSkip equips each transformer layer with two lightweight routers that independently skip visual tokens through self-attention or MLP modules, exploiting input-dependent vertical redundancy for efficient MLLM inference.",
+      "llm_tldr_cn": "多模态大模型需在所有Transformer层处理大量视觉token，计算开销大。现有方法多利用水平冗余压缩token，或通过早退与固定层跳过利用垂直冗余，但冗余程度随输入变化且自注意力与MLP模块不同。本文提出AdaVSkip，为每层配置两个轻量路由器独立决定视觉token是否经过自注意力与MLP模块。该方法自适应跳过冗余计算，提升多模态大模型推理效率。",
+      "llm_tldr": "多模态大模型需在所有Transformer层处理大量视觉token，计算开销大。现有方法多利用水平冗余压缩token，或通过早退与固定层跳过利用垂直冗余，但冗余程度随输入变化且自注意力与MLP模块不同。本文提出AdaVSkip，为每层配置两个轻量路由器独立决定视觉token是否经过自注意力与MLP模块。该方法自适应跳过冗余计算，提升多模态大模型推理效率。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM inference",
+      "matched_requirement_id": "req-6",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.15820v1",
+      "source": "arxiv",
+      "title": "AlgoEvo: Self-Evolving Agentic Search for Automated Algorithm Discovery",
+      "abstract": "Large language models have advanced automated algorithm discovery by synthesizing executable code, but existing frameworks trap them in rigid search pipelines with pre-defined control flows. This limitation restricts adaptive reasoning, blocks cross-paradigm transfer, and discards valuable execution feedback. We propose AlgoEvo, a unified agentic framework that transforms automated algorithm discovery into an interactive, knowledge-accumulating process. An autonomous agent dynamically inspects, diagnoses, and edits code based on runtime feedback. A design skill hub decouples paradigm-specific knowledge from the core discovery engine, allowing a single workflow to seamlessly handle single-objective, multi-objective, and multi-component design. Meanwhile, a hierarchical experience mechanism organizes search trajectories into a task-level tree to guide exploration and consolidates cross-task patterns into reusable skills. Across six representative benchmark tasks, AlgoEvo matches or surpasses specialized methods with substantially fewer evaluations and reduced token consumption, demonstrating strong intra-task accumulation, cross-task transfer, and the ability to reproduce or exceed existing state-of-the-art performance through flexible skill activation.",
+      "authors": [
+        "Junhao Qiu",
+        "Qinglong Hu",
+        "Xialiang Tong",
+        "Mingxuan Yuan",
+        "Liyong Lin",
+        "Qingfu Zhang"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-09-14T16:24:27+00:00",
+      "link": "https://arxiv.org/pdf/2609.15820v1",
+      "tags": [
+        "keyword:dse",
+        "query:dse"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "LLM agent driven interactive search over algorithm design space",
+      "llm_evidence_cn": "LLM智能体驱动的算法设计空间交互式搜索",
+      "llm_evidence": "LLM智能体驱动的算法设计空间交互式搜索",
+      "canonical_evidence": "LLM智能体驱动的算法设计空间交互式搜索",
+      "llm_tldr_en": "AlgoEvo turns automated algorithm discovery into an interactive agentic search where an LLM inspects, diagnoses and edits code from runtime feedback, with a skill hub decoupling paradigm knowledge.",
+      "llm_tldr_cn": "针对现有基于LLM的算法发现框架受限于预设控制流、难以自适应推理并丢弃执行反馈的问题，本文提出AlgoEvo统一智能体框架，使自主智能体可依据运行时反馈动态检查、诊断并编辑代码，并通过设计技能中心将范式知识从发现引擎中解耦。实验表明单一工作流即可同时处理单目标、多目标与多组件设计任务。该工作把算法发现转变为交互式、知识累积的过程。",
+      "llm_tldr": "针对现有基于LLM的算法发现框架受限于预设控制流、难以自适应推理并丢弃执行反馈的问题，本文提出AlgoEvo统一智能体框架，使自主智能体可依据运行时反馈动态检查、诊断并编辑代码，并通过设计技能中心将范式知识从发现引擎中解耦。实验表明单一工作流即可同时处理单目标、多目标与多组件设计任务。该工作把算法发现转变为交互式、知识累积的过程。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "LLM-driven design space exploration",
+      "matched_requirement_id": "req-11",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    }
+  ]
+}

@@ -1,0 +1,527 @@
+Title: SemBridge: Compiling Consumer Observations into Cross-Stack Communication Plans
+
+URL Source: https://arxiv.org/pdf/2609.08231v1
+
+Published Time: Wed, 09 Sep 2026 03:20:13 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# SemBridge: Compiling Consumer Observations into Cross-Stack Communication Plans 
+
+## Genlang Chen 
+
+cgl@zju.edu.cn NingboTech University Ningbo, China 
+
+## Junyi Zhu 
+
+JunyiZhu.cs@gmail.com Dalian Ocean University Dalian, China 
+
+## Yuanshan Lin 
+
+linyuanshan@dlou.edu.cn Dalian Ocean University Dalian, China 
+
+## Abstract 
+
+Distributed-tensor systems specify where values reside, while collective systems optimize how requested operations execute. At a boundary between vendor runtimes that can-not share a native communicator, neither abstraction states what a remote consumer must observe. SemBridge fills this gap by compiling graph and runtime facts into a typed contract for the consumer-visible result and its delivery obli-gations. The contract captures provenance, substitutability, completion, authority, demand, and native-domain locality. A deterministic lowerer constructs backend-neutral commu-nication plans, and a symbolic checker validates each plan before execution across CUDA/NCCL and CANN/HCCL. An independent layout-only planner handles all 72 structural transitions but establishes only 54 complete obligations; a byte-only minimizer proposes 40 semantically invalid candidates, all rejected by SemBridge. On nine real edges, SemBridge produces distinct observation-aware plans that reduce startups on all nine and payload bytes on the three result edges. A live CUDA/CANN run derives and executes full-logit reconstruction, source projection, and owner-token delivery from log-probability, token-only, and owner-scoped requests. On a measured two-host 1-GbE capacity-spillover deployment, source projection cuts result traffic by more than 99.97% and increases throughput by 8.92–80.20% across Dense, MoE, and MiniMax workloads. All 18 MiniMax restart pairs at concurrency 1, 8, and 16 favor source projection. A Qwen3-14B MLP slice additionally verifies bitwise activation-shard delivery and HCCL completion of row-parallel partials. These results establish consumer observation as a semantic layer between placement and collective execution. 
+
+## 1 Introduction 
+
+Large language models increasingly exceed the capacity of one accelerator pool, while available resources can be-long to distinct hardware and software stacks. Heteroge-neous inference systems respond by selecting model place-ments, parallelism strategies, and request routes over de-vices with different compute, memory, and network char-acteristics [10, 11, 15]. Phase-disaggregated serving further transfers request state between specialized prefill and decode pools [17, 34]. These systems make heterogeneous placement practical. Across CUDA/NCCL and CANN/HCCL, however, endpoints remain in disjoint native communicator domains. Once a partition is fixed across them, what must cross the boundary for remote consumers to observe the correct value? Distributed-tensor compilers describe layouts, propagate sharding, and generate parallel programs [2, 23, 31]. Place-ment systems search over inter- and intra-operator paral-lelism [8, 9, 33], and cross-mesh resharding optimizes trans-fers between layouts [35]. Collective systems synthesize or tune a physical algorithm for a requested AllReduce, All-Gather, broadcast, or related primitive [3, 5, 22, 30]. Mixed-vendor substrates can realize such collectives through cross-domain point-to-point transport and vendor-local combining operations [28]. SemBridge augments these layout and collec-tive abstractions with the result a remote consumer observes: a projection, one substitutable replica, a completed value, or an owner-issued decision. It lowers that requirement before physical collective selection. Autoregressive result transfer makes the gap concrete. In our integration, the native tail output head materializes full logits. A layout-directed plan slices the tensor by TP lane, transfers the shards, reconstructs the full value with All-Gather, and then samples. A token-only request can apply the same deterministic sampler before the boundary and com-municate int32 token IDs; a log-probability request still re-quires complete logits. Selected homogeneous serving paths already communicate compact sampler outputs [25, 26]. Sem-Bridge generalizes this path-specific choice into a derived cross-stack transformation: the serving API determines the consumer surface, the graph and runtime determine its deliv-ery obligations, and the checker validates the resulting plan. The same contract composes projection with lane-preserving shards, partial completion, substitutable replicas, authorita-tive decisions, and native-domain constraints. Thus identical endpoints can admit different legal payloads and communi-cation graphs. Figure 1 separates two decisions: which result the con-sumer observes and how that result must be delivered. For a token-only request, full-logit transfer and source-side projec-tion expose the same token surface; they differ only in where argmax runs. Log-probability requests retain complete-logit transfer. Delivery rules separately preserve shard mappings, complete partials, select representatives from derived replica classes, and source decisions from their owner. SBP and DTensor encode shard, replicate, and partial states [18, 32]; SemBridge adds the consumer surface, demand, substitutabil-ity, authority, execution identity, and native-domain facts. 
+
+> 1arXiv:2609.08231v1 [cs.DC] 8 Sep 2026 G. Chen, J. Zhu, and Y. Lin
+
+(a) Checked semantic lowering  (b) Same placement, different realizations 
+
+Graph -derived facts 
+
+> shards 0/1/2 · lineage
+
+Runtime -derived facts 
+
+> token surface · owner
+
+Typed boundary contract      
+
+> Result
+> Delivery
+> Scope
+> surface projection
+> provenance substitution completion authority
+> demand domain locality
+
+Lowerer + symbolic checker    
+
+> Complete Project Select Deliver
+> Checks:
+> coverage ·surface ·completion ·provenance·authority·locality
+
+Checked plan family   
+
+> R0 logits · P0 projection · S1 owner token
+> Fixed placement · deterministic token request
+> Producer domain Consumer domain
+
+Full -logit transfer  R0    
+
+> k logit shards
+> ⋮AG argmax
+> ×k
+> Token IDs
+> all ranks
+> V logit elements · k remote frames
+
+Source projection  P0      
+
+> Complete
+> logits ⋮PROJECT
+> argmax ×k
+> Token IDs
+> all ranks
+> k int32 IDs · k remote frames >99.97% less result traffic
+
+Owner -token delivery  S1  
+
+> owner
+> Local broadcast
+> Token IDs
+> all ranks
+> 1 ID · 1 remote frame + local Broadcast unique owner
+> AllGather
+
+Figure 1. Consumer-observation-guided lowering. (a) Graph and runtime facts form a typed boundary contract; an ordered lowerer and symbolic checker produce a checked plan. (b) The dashed line separates producer and consumer domains under one fixed placement. Full-logit transfer (R0), source projection (P0), and owner-token delivery (S1) preserve the same requested token ID. R0 transfers 𝑉 logit elements in 𝑘 remote frames, P0 transfers 𝑘 int32 IDs in 𝑘 frames, and S1 transfers one ID in one remote frame followed by local Broadcast. An independent planner isolates what layout informa-tion alone can establish. It receives shape, dtype, meshes, domains, and Shard/Replicate/Partial placements. Although it supports all 72 layout transitions, it establishes only 54 complete application obligations. On those 54 cases, Sem-Bridge reduces bytes in 30 and startups in 35. Authority adds another 10 byte and 13 startup reductions across the remain-ing 18 cases. On nine real edges, SemBridge changes every plan, reducing startups on all nine and bytes on the three result edges. A shared-IR oracle matches the production low-erer throughout the bounded family; a byte-only minimizer proposes 40 semantically invalid candidates, all rejected by SemBridge. All plans run through the same persistent transport and vendor-local collectives. In the projection-placement compar-ison, forward traffic and result-frame counts match. Source-side projection reduces result traffic by 99.979–99.996% and improves throughput by 8.92% on Dense TP4 and 26.39– 62.87% on MoE TP2. On MiniMax, it improves throughput by 18.64–80.20% across concurrency 1, 8, and 16, with all 18 restart pairs positive. Separate controls show that fewer for-ward startups help Dense, while owner-token fanout helps MoE when result synchronization lies on the critical path. This work makes three contributions: 
+
+• A typed boundary contract separates the consumer-visible result from delivery obligations over prove-nance, substitution, completion, and authority, while retaining demand and native-domain locality. 
+
+• A deterministic lowerer compiles the contract into a backend-neutral graph. A symbolic checker validates coverage, surface, completeness, provenance, author-ity, and domain locality before runtime realization. 
+
+• A plan-parametric CUDA/NCCL–CANN/HCCL run-time executes API-selected full-logit, projected-token, and owner-token plans together with representative, exact-shard, and partial-completion plans. Exper-iments cover three model families and MiniMax concurrency from 1 to 16. 
+
+## 2 Cross-Domain Communication Semantics 
+
+2.1 Execution Model 
+
+Let D be the set of native collective domains. A domain contains endpoints that can participate directly in one ven-dor runtime’s communicator and collective semantics. For a boundary edge 𝑒 , let 𝑃 𝑒 be its producer endpoints, 𝐶 𝑒 its pos-sible consumer endpoints, and 𝐶 req  
+
+> 𝑒
+
+⊆ 𝐶 𝑒 the consumers that demand the value. The function 𝐷 (𝑥 ) ∈ D maps endpoint 
+
+> 2SemBridge
+
+Table 1. Abstraction boundary relative to the closest systems.     
+
+> Research thread Primary representation or optimization Relation to SemBridge OneFlow SBP; PyTorch DTensor [18, 32] Split/shard, broadcast/replicate, partial, and layout redistribution Supplies tensor state; SemBridge adds consumer result surfaces, demand, authority, execution identity, and cross-domain observation checks GSPMD; PartIR; cross-mesh resharding [2, 31, 35] Sharding propagation, partition rewrites, and layout-directed multicast Selects or realizes placement transitions; SemBridge selects the consumer-observable requirement for a fixed transition CoCoNet; Unity [7, 24] Joint computation/communication programs and verified graph substitutions Rewrites program structure; SemBridge checks per-boundary observations and native-domain locality P2; TACCL; MSCCLang [4, 22, 29] Reduction programs and executable collective schedules Implements a specified reduction or collective after SemBridge selects what information must cross HetCCL [28] Mixed-vendor device transport and hierarchical collectives Realizes a requested mixed-vendor collective; SemBridge produces the checked logical requirement supplied to such a backend
+
+𝑥 to its native domain. A cross-domain operation connects endpoints whose domain identifiers differ; it is expressed in a backend-neutral logical graph before a transport imple-mentation is chosen. SemBridge accepts model placement and parallelism from a human plan, a distributed-tensor compiler, or a heteroge-neous placement system [2, 15, 33]. It occupies the interface between placement and physical collective execution, where it identifies the weakest logical communication graph that preserves the observation required by each consumer. 
+
+2.2 Placement and Consumer Observation 
+
+Tensor layouts remain necessary. An exact-shard mapping identifies which producer supplies each consumer; a reshard-ing operation changes the mapping between device meshes; a partial value records unfinished reduction state. Distributed-tensor systems already represent and propagate these prop-erties [2, 23, 31, 35]. The application boundary also contains facts that placement does not express: which consumers are active, which result surface they observe, whether replica substitution is valid, whether completion remains outstand-ing, and which producer owns a request-scoped decision. The distinction changes both payload and graph shape. Lane 𝑖 must retain its producer mapping when it carries a distinct shard. A graph-derived replica may use one rep-resentative per remote domain. A partial must be reduced before a consumer that expects the complete value. A deci-sion must originate at its owner. At a result edge, complete logits require shard transfer and reconstruction, whereas a token-only consumer permits deterministic sampling at the producer and transfer of the projected token. The endpoint layout can remain fixed in every case. 
+
+2.3 Consumer Surfaces and Delivery Obligations 
+
+We factor consumer observation into two orthogonal di-mensions, result surface × delivery obligations . The surface names what the consumer API exposes: complete logits, log probabilities, token IDs, or another registered projection. Four delivery obligations constrain how that result arrives. A provenance-preserving obligation requires the mapped producer’s value. A substitution obligation permits a rep-resentative when graph lineage places the producers in one downstream-substitutable class. A completion obliga-tion reduces an unfinished partial before a complete-value observation. An authority-preserving obligation permits only the runtime-selected owner to source a decision or persistent state. Deterministic token-only sampling derives the token surface by applying argmax to complete logits; lowering chooses whether that projection runs before or after the boundary. Complete-value, log-probability, and stochastic-sampling requests retain complete logits because the current contract does not carry RNG state. Projection is a result-surface transformation orthogonal to the four delivery classes evaluated in the normalized matrix. The result surface and delivery obligation first determine the legal plan set. A fabric-aware selector can then choose among accepted plans using message multiplicity, local col-lective cost, load, and the execution critical path. Sections 4 and 6 separate this semantic filtering from runtime selection. 
+
+2.4 Scope of the Current Backend 
+
+The serving adapter realizes replicated forward values, recon-structs complete logits, projects tokens, and returns owner-sourced tokens. A companion Qwen3-14B MLP path uses the same production transport for lane-preserving exact shards and HCCL completion of row-parallel partials. Together, 
+
+> 3G. Chen, J. Zhu, and Y. Lin
+
+these paths exercise complete-value, projected-result, prove-nance, substitution, completion, and authority observations on CUDA/CANN engines. 
+
+## 3 Consumer-Observable Contracts 
+
+3.1 Boundary Contract 
+
+For each boundary edge, SemBridge constructs the compile-time contract 
+
+𝑒 = ⟨𝑃, 𝐶 req , 𝐷, 𝐾, Γ, 𝑅, 𝑂, 𝑄 ⟩. (1) 
+
+𝑃 is the producer set, 𝐶 req is the demanded consumer set, and 𝐷 is the native-domain mapping. 𝐾 selects the value kind. Γ partitions producers into downstream-substitutable classes derived from graph lineage. 𝑅 records an outstanding reduction and the required completion, 𝑂 ⊆ 𝑃 is the author-itative owner set, and 𝑄 names the consumer-visible result surface and a registered projection operator, including its input/output types and deterministic tie-breaking seman-tics. Shape, dtype, tensor layout, lifetime, and framing group accompany the contract. Autoregressive execution introduces a separate runtime tag 
+
+𝜏 = ⟨request , token , microbatch , epoch ⟩. (2) The contract answers which logical value a consumer may observe; 𝜏 identifies the execution instance to which a de-livered frame belongs. Keeping the two concepts separate prevents request lifecycle metadata from becoming part of the core communication abstraction. The frontend compiles graph structure and runtime APIs into this representation. Tensor-parallel AllReduce lineage derives complete replica classes; partial lineage derives the reduction obligation; the request graph derives demanded consumers; and runtime APIs identify result outputs and the decision owner. The three evaluated model partitions use the same derivation path and no model- or configuration-specific lowering branch. 
+
+3.2 Consumer Observation 
+
+The semantic value of an execution is defined at demanded consumers rather than at every intermediate rank. We use ob-servational refinement at a registered communication bound-ary, with equivalence defined over the demanded observa-tions named by its contract. For consumer 𝑐 , the observation is 
+
+O𝑒 (𝑐 ) = ⟨surface , value , complete , provenance , authority ⟩.
+
+(3) A runtime delivery is current only when its received tag matches the expected 𝜏 . A plan 𝑝 is legal if 
+
+∀𝑐 ∈ 𝐶 req  
+
+> 𝑒
+
+, O𝑝 (𝑒, 𝑐 ) ≡ O ref (𝑒, 𝑐 ), (4) where the reference follows the complete layout-directed ex-ecution for the requested consumer surface. For a token-only request, both executions are compared after the registered projection; for log probabilities, the surface remains com-plete logits plus token IDs. Authority additionally requires the decision to originate at its runtime-selected owner. Equation 4 defines observational refinement: intermediate state may change or disappear while demanded consumers retain the same registered result with admissible complete-ness, provenance, and authority. A representative plan need not reproduce all producer-to-consumer copies, and a pro-jection plan need not reconstruct state absent from the con-sumer surface. 
+
+3.3 Legality Invariants 
+
+The checker symbolically executes each candidate operation. It initializes producer values as available, tracks surface, com-pleteness, and provenance through transfer and projection, and updates availability at destinations. Reduction combines provenance and discharges completion. Acceptance requires coverage of every demanded consumer, the requested sur-face, complete values where required, admissible producer provenance, substitution only within a derived class, dis-charge of outstanding reductions, an authorized source for every decision, and native collectives confined to one do-main. The checker rejects unavailable sources, missing con-sumers, cross-domain operations mislabeled as local, un-finished reductions, invalid provenance, and non-owner decision sources. The runtime separately rejects stale re-quest, token, and state-epoch tags at receive boundaries. This division keeps compile-time semantic soundness inde-pendent of the details of framed transport. 
+
+3.4 Semantic Inputs 
+
+Optimization-authorizing fields come from the graph or run-time API. A completed tensor-parallel AllReduce establishes a replica class, partial lineage names its reduction, the re-quest graph supplies active consumers, and the serving API supplies requested outputs, deterministic-sampling mode, and the decision owner. Runtime byte-equality gates vali-date evaluated executions but do not authorize lowering. If a required fact is unavailable, the frontend emits the corre-sponding layout-materializing plan; log-probability requests therefore retain complete-logits redistribution. 
+
+3.5 Contract Construction and Static Validation 
+
+A boundary contract is built at the integration point between model partitioning and transport. Endpoint groups identify producer and consumer lanes and their native collective do-mains. Graph placement supplies lane-preserving, replicated, or partial relations; request/runtime metadata supplies de-mand, result surface, sampling mode, and owner selection. Shape and dtype determine both the materialized footprint and the projected result type. Reduction obligations name an elementwise operator and source set. The executable reference supports sum, product, 
+
+> 4SemBridge
+
+minimum, and maximum; the live Qwen3 path uses HCCL sum AllReduce. Lowering completes the registered operator before exposing a full value. Static validation checks endpoint membership, domain assignment, mapped sources, owner uniqueness, request identity, reduction lineage, observation compatibility, and projection preconditions before lowering. The frontend then materializes an immutable edge object with field-level provenance. Graph- and runtime-derived facts enable specialized rules, validation observations remain non-authorizing evidence, and missing facts select the refer-ence obligation. Placement chooses endpoints and layouts; the contract compiler derives the consumer observation; and SemBridge verifies that the communication graph preserves both. 
+
+3.6 Soundness Argument Proposition 1 (Observation-preserving refinement) . As-sume valid graph/runtime facts, correct implementations of the registered projection semantics, correct native-domain col-lectives, and reliable tagged delivery. Every communication plan accepted by SemBridge preserves the conservative obser-vation of every demanded consumer. Proof sketch. Initially, every producer or authoritative owner has one available value with its own provenance and sur-face. The checker permits an operation to read only available sources. A point-to-point transfer preserves value, complete-ness, and provenance. A representative transfer requires compatible derived classes. A reduction consumes the regis-tered producers, combines provenance, and marks the result complete. A projection applies the operator named by 𝑄 to complete producer state, preserving its registered input, out-put, and tie-breaking semantics. Ownership checks restrict decision sources, domain checks confine native collectives, and coverage makes every 𝑐 ∈ 𝐶 req available. Induction over the operation sequence establishes Equation 4; runtime tag matching selects the execution instance. □
+
+Section 6 tests these invariants through differential refer-ence executions, targeted invalid mutations, and live result-observation checks. 
+
+## 4 Checked Semantic Lowering 
+
+4.1 Lowering and Checking Procedure 
+
+Algorithm 1 formalizes the compiler pipeline. It separates completion, result-surface transformation, source selection, and cross-domain delivery into ordered passes. The lowerer emits backend-neutral operations, and the checker enforces coverage, surface, completion, provenance, authority, and native-domain locality before backend execution. The com-plete rule matrix appears in the Supplemental Material. For a token-only edge, the specialized plan projects at the producer and transfers the token. The conservative plan 
+
+Algorithm 1 Contract-guided lowering and legality check-ing                                                                           
+
+> Require: boundary edge 𝑏 , graph facts 𝐺 , runtime facts 𝐴
+> Ensure: checked logical plan 𝑝 , or a rejected contract
+> 1: 𝑒 ←BuildContract (𝑏, 𝐺, 𝐴 )
+> 2: ValidateContract (𝑒 )
+> 3: 𝑝 ← [ ] ;𝑞 ← [ ] ;𝑣 ←ProducerState (𝑒 )
+> 4: if 𝑒 has an outstanding completion obligation then
+> 5: (𝑝, 𝑣 ) ← Complete (𝑝, 𝑣, 𝑒.𝑅 )
+> 6: end if
+> 7: if 𝑒.𝑄 is token-only and CanProject (𝑒 )then
+> 8: (𝑝, 𝑣 ) ← ProjectAtProducer (𝑝, 𝑣, 𝑒.𝑄 )
+> 9: else if 𝑒.𝑄 includes a consumer projection then
+> 10: (𝑝, 𝑣 ) ← MaterializeComplete (𝑝, 𝑣, 𝑒 )
+> 11: 𝑞 ←ProjectAtConsumer (𝑒.𝑄 )
+> 12: else
+> 13: (𝑝, 𝑣 ) ← MaterializeSurface (𝑝, 𝑣, 𝑒.𝑄 )
+> 14: end if
+> 15: if 𝑒 requires a unique authoritative source then
+> 16: 𝑆 ←𝑒.𝑂
+> 17: else if 𝑒 provides a derived substitution class then
+> 18: 𝑆 ←one representative per class and remote domain
+> 19: else
+> 20: 𝑆 ←the mapped producer for each demanded consumer
+> 21: end if
+> 22: 𝑝 ←DeliverByDomain (𝑝, 𝑣, 𝑆, 𝑒.𝐶 req , 𝑒.𝐷 )
+> 23: 𝑝 ←𝑝 +𝑞
+> 24: return 𝑝 if Check (𝑝, 𝑒 )accepts; otherwise reject
+
+redistributes complete logits and applies the same projec-tion at the consumer. Complete-value and log-probability requests retain layout redistribution and AllGather. A replica plan sends one graph-derived representative to each remote domain and broadcasts locally. Exact shards retain their pro-ducer mapping, partials complete the registered reduction, and authoritative decisions use the runtime-selected owner. 
+
+4.2 Reference, Layout-Only Baseline, and Semantic Oracle 
+
+The conservative reference materializes the complete lay-out, applies any requested projection at the consumer, pre-serves producer mappings and owner constraints, completes required reductions, and delivers to every demanded con-sumer. The independent Layout-Only baseline accepts only shape, dtype, source/destination meshes, native domains, and Shard/Replicate/Partial placements. It implements docu-mented layout redistribution without importing SemBridge’s demand, observation, authority, lifetime, checker, or cost model. This baseline measures what layout information alone can establish. An internal capability ladder attributes demand pruning, domain-local multicast, and replica substitution within Sem-Bridge. The Semantic Oracle instead shares the full semantic 
+
+> 5G. Chen, J. Zhu, and Y. Lin
+
+IR, candidate operations, checker, and objective; it enumer-ates the bounded family and provides a ceiling for the pro-duction lowerer. A separate byte-only minimizer greedily reduces remote transfer without consumer semantics and supplies legality counterexamples. 
+
+4.3 Bounded Validation Oracle 
+
+The production lowerer is deterministic; the Semantic Or-acle evaluates its Pareto and lexicographic optimality by enumerating a finite family of small topologies. The family contains at most four producers, four demanded consumers, and three consumer domains. Endpoint availability is mono-tonic; cross-domain operations are single-destination point-to-point transfers; local broadcasts are nonempty and stay within one domain; partials may use an all-producer reduc-tion; and programs contain no cyclic delivery, redundant redelivery, arbitrary backend collective, or overlap schedule. For each legal plan 𝑝 , the oracle records this footprint: 
+
+𝐹 (𝑝 ) = ⟨𝐵 𝑥 , 𝑁 𝑥 , 𝐵 𝑙 , 𝑁 𝑙 , 𝑁 𝑟 , 𝑁 𝑜 ⟩, (5) where 𝐵 𝑥 and 𝑁 𝑥 are cross-domain bytes and startups, 𝐵 𝑙 
+
+and 𝑁 𝑙 are local bytes and startups, 𝑁 𝑟 is the number of re-ductions, and 𝑁 𝑜 is total operations. The oracle tests whether the specialized plan lies on the Pareto frontier and minimizes this tuple lexicographically. Within this bounded family, the production lowerer is Pareto efficient and lexicographically optimal. 
+
+4.4 Complexity and Operation Coalescing 
+
+Lowering is a deterministic pass over boundary edges. Within an edge, it groups demanded consumers by native domain and, when substitution is available, by producer class. Operations follow a stable endpoint order, and only an accepted plan produces runtime configuration. Let |𝑃 | and |𝐶 | be the number of producer and consumer endpoints for an edge. Contract validation and direct map-pings require 𝑂 (| 𝑃 |+| 𝐶 |) state. Grouping consumers and pro-ducers uses ordered maps and requires 𝑂 ((| 𝑃 |+| 𝐶 |) log (| 𝑃 |+ |𝐶 |)) time in the current implementation. The checker ex-ecutes 𝑚 emitted operations and tracks endpoint state in 
+
+𝑂 (| 𝑃 | + | 𝐶 | + 𝑚 ) space, with bounds independent of tensor payload size because lowering manipulates graph metadata rather than model values. The exhaustive oracle is intention-ally separate because its search grows combinatorially and is used only for small-family validation. Graph-level costing can coalesce payloads that share a transport group, operation kind, source set, destination set, and cross-domain flag. Coalescing affects the estimated startup count but not legality: the checker retains every constituent edge and verifies it against its own consumer observation before the packed operation is costed. This distinction prevents a frame-packing optimization from erasing the provenance or completion requirement of an individual edge. 
+
+4.5 Relation to Collective Synthesis 
+
+Collective synthesis and tuning operate after the logical requirement has been selected. SCCL and TACCL generate topology-specific collective algorithms [3, 22]; AutoCCL tunes low-level parameters of a requested NCCL collec-tive [30]; HeteCCL synthesizes schedules for heterogeneous links [5]; and MSCCL++ exposes portable primitives and a communication DSL [6]. SemBridge can emit one representa-tive transfer plus a domain-local broadcast, after which any suitable backend can optimize those remaining operations. Collective synthesis answers how to execute a requirement; SemBridge first determines whether and what must cross the boundary. 
+
+## 5 Cross-Stack Realization 
+
+5.1 Runtime Architecture 
+
+The prototype connects two independent serving engines rather than forming one heterogeneous native process group. The head partition executes on CUDA/NCCL and the tail partition on CANN/HCCL. Each engine retains its vendor runtime for local tensor-parallel collectives. A cross-domain adapter maps accepted logical plans to runtime switches that control forward aggregation, result aggregation, and node-local result fanout. The current mapping requires the hidden and residual forward edges to share one aggregation decision and requires exactly one authoritative decision-return edge. The implementation builds on a vLLM-style serving en-gine [12]. Cross-domain tensor movement uses persistent binary connections, framed messages, demand-allocated pinned-host staging, depth-two sender queues, and inline receive. Forward values and result decisions follow distinct registered paths. The contract frontend derives the consumer observation from graph and request/runtime APIs. After legality checking, the runtime mapper lowers the accepted plan to the forward and result switches. Requests for log probabilities retain the full-logits redistribution path. The complete runtime topology and message formats are detailed in the Supplemental Material. 
+
+5.2 Data, Result, and Control Paths 
+
+The data path carries the hidden state and residual values produced by the head partition. Under shard forwarding, each local TP lane serializes its mapped value for the corre-sponding remote lane. Under representative forwarding, one source lane serializes the logical value once, a designated remote lane receives it, and the tail engine invokes its native local collective for the remaining demanded lanes. Hidden and residual payloads share one aggregation decision in the current adapter. The result path is selected from the consumer observation. The native tail output head materializes full logits before either plan. A complete-logits or log-probability obligation 
+
+> 6SemBridge
+
+slices that tensor by TP lane, transfers the shards, and recon-structs the full value with a destination-local AllGather. For the deterministic sampling requests used in our evaluation, a token-only obligation applies the native sampler to the same tensor and transfers the compact int32 IDs. If the contract establishes a unique owner, the mapper sends one owner value per remote domain and uses a native local broadcast. Projection weakens the observed value; authority selects its admissible source. Persistent connections amortize connection setup across tokens. Each frame contains a fixed header, tensor metadata, execution tag, and payload. Receive operations are bounded by the declared frame size and expected tensor contract. Pinned staging is allocated on demand and returned to a 512-MiB per-process cache after use; the transport reserves no persistent device-buffer pool. The depth-two sender queue bounds in-flight staging, while inline receive avoids the mea-sured overhead of a persistent receiver thread. These mecha-nisms are implementation choices for the current backend; the logical plan does not depend on sockets, host staging, or a particular vendor API. The control path coordinates request admission and re-tirement. Local ranks first agree on continue, admit, or retire. A host acknowledges cross-node retirement after every local rank drains the current collective slot, and the peer acknowl-edgement advances the shared epoch. This ordering prevents one rank from entering the next request while another re-mains in the previous local collective. 
+
+5.3 Plan Realization 
+
+All configurations use the same runtime. Figure 2 pro-files local, non-additive result-path timers across the two plans during steady decode. Full-logit transfer (R0) slices tail-materialized logits by TP lane, transfers the shards, reconstructs the value with destination-local AllGather, and then applies argmax. Source-side projection (P0) applies the same argmax before transfer and sends one int32 result per lane. For forward values, shard forwarding (L0) reconstructs flatten-defined shards with AllGather, while representative forwarding (S0) transfers one complete value and broadcasts it locally. Owner-token delivery (S1) adds owner-only result transfer and local fanout. Contracts contain no configura-tion identifiers; the runtime settings are generated from the checked plan. Earlier replica-scaling campaigns use mapped copies (C1), representative broadcast (C0), and representative broadcast with owner return (C5). These configurations retain the orig-inal value and frame formats and provide a second view of replica multiplicity. On the TP2 MiniMax graph, they emit forward/result frame pairs of (2, 4), (1, 4), and (1, 2) per logi-cal step. For 𝑘 graph-derived forward replicas and one remote consumer domain, representative forwarding predicts 
+
+𝐵 SemBridge ≈ 𝐵 reference 
+
+𝑘 , reduction ≈ 1 − 1
+
+𝑘 . (6) Equation 6 quantifies cross-domain replica traffic; its end-to-end effect depends on the workload’s communication-to-computation ratio. 
+
+5.4 Ordering and Failure Boundary 
+
+Every frame carries request, token, microbatch, and state-epoch fields. Service control uses named continue, admit, and retire states. Before an epoch retires, every local tensor-parallel rank drains its current collective slot; the two hosts then exchange a retirement acknowledgement. These mech-anisms prevent a faster rank or host from reusing a collective position while its peer still executes the previous cycle. Trans-port closure and peer timeouts surface to the service layer as execution errors. 
+
+5.5 Backend Scope and Portability 
+
+The logical IR is backend neutral, while the exercised runtime maps the registered observations onto a CUDA/CANN pair. The serving adapter realizes complete-logits redistribution, token projection, replica forwarding, and owner-sourced de-cisions. The Qwen3 MLP slice realizes exact shards through lane-preserving point-to-point frames and completes par-tials with HCCL AllReduce. A backend needs point-to-point delivery, native-domain fanout and reduction, tag validation, projection support, and completion reporting; the logical plan does not depend on socket framing or buffer layout. 
+
+## 6 Evaluation 
+
+The evaluation follows the abstraction’s evidence chain. It first tests whether layout alone establishes consumer obser-vations, then whether checked refinements preserve them on CUDA/CANN engines, and finally whether graph differences affect end-to-end inference. 
+
+6.1 Methodology 
+
+Hardware and software. The measured environment contains two physical hosts connected by a dedicated 1-GbE link with a worst-direction p95 TCP-echo RTT of 0.3425 ms. The CUDA/NCCL host contains four NVIDIA A100 PCIe 40-GB GPUs; the CANN/HCCL host contains four Ascend 910B4-1 accelerators. This topology represents capacity spillover between independently operated accelerator pools over a bandwidth-constrained inter-domain path. MiniMax-M2.7 [16] is the primary capacity-spillover work-load. Qwen3-14B Dense [19] supplies TP scaling, result pro-jection, and the layer-0 MLP slice. Qwen3.5 MoE [20] pro-vides a distinct routing and compute balance under the same compiler rules. Configuration selection precedes the mea-sured runs. For each workload, the protocol fixes output lengths, primary endpoint, AB/BA orders, paired analysis, and inclusion rules before the six measured fresh-process pairs. The MiniMax load sweep holds the token-only API,  
+
+> 7G. Chen, J. Zhu, and Y. Lin A100 execution A100 ingest Cross-domain transport 910B Host Ascend NPU output head (0.585 ms) logits D2H (0.137 ms) socket blocked (0.593 ms; 4 frames · 3,201,544 B) H2D + NCCL AllGather + sampling (3.342 ms) next-stage model interval (62.82 ms)
+
+(a) Full-logit reconstruction (R0)         
+
+> 010 20 30 40 50 60 70
+> Mean local component duration per decode step (ms; offsets show logical stage order)
+> A100 execution A100 ingest Cross-domain transport 910B Host Ascend NPU output head (0.585 ms) + projection (0.189 ms cost) token D2H (0.052 ms)
+> socket blocked (0.060 ms; 4 frames · 256 B, 12,506× reduction)
+> token H2D (0.121 ms; no result AllGather) next-stage model interval (9.46 ms)
+> Next-stage interval: −53.36 ms (−84.9%)
+
+(b) Source projection (P0) 
+
+Figure 2. Measured result-path component durations for MiniMax-M2.7 at concurrency 16 on the 1-GbE CUDA/CANN deployment. R0 sends four logit-shard frames totaling 3,201,544 B per step and performs H2D, NCCL AllGather, and sampling at the A100. P0 adds 0.189 ms of source projection, sends four token frames totaling 256 B, and removes result AllGather. Across six restart pairs, the CUDA-stream interval enclosing the subsequent A100 head-stage execution falls from 62.82 to 9.46 ms. The socket bars measure process-local sendall blocking, not wire-transfer time. Bar widths encode local durations; horizontal offsets indicate logical order; the components are not additive. prompt, and 128-token output fixed while varying concur-rency over 1, 8, and 16. All paired configurations use the same checkpoint, requests, process placement, transport, framing, queue depth, and lifecycle within a workload. 
+
+Configurations and metrics. Full-logit transfer (R0) and source-side projection (P0) satisfy the same token-only re-quest. R0 transfers and reconstructs complete logits before applying the contract argmax; P0 applies the same projection before the boundary. Log-probability requests use full-logit transfer. The forward-path comparison isolates shard trans-fer plus AllGather (L0) from representative transfer plus Broadcast (S0). Owner-token delivery (S1) adds owner-only result transfer and local fanout. Earlier replica-scaling cam-paigns use mapped replica copies (C1), representative broad-cast (C0), and representative broadcast with owner return (C5). We report output-token throughput, p95 time to first token (TTFT), p95 time per output token (TPOT), p95 total latency, framed bytes, frames, local collectives, and obser-vation checks. Performance estimates use uninstrumented runs; component timers, resource probes, and correctness assertions execute separately. 
+
+Statistical units. Each AB/BA pair from fresh processes is an independent performance unit; requests within one run are repeated service observations. Every projection-placement and forward/owner comparison contains six pairs, with three per order stratum. For specialized plan 𝑠 and reference plan 𝑟 , pair 𝑖 contributes 𝑑 𝑖 = 100 (𝑇 𝑠,𝑖 /𝑇 𝑟,𝑖 − 1).These comparisons report all six effects and the two-sided paired-𝑡 interval ¯𝑑 ± 𝑡 0.975 ,5𝑠 𝑑 /√6. The replica-scaling mea-surements use percentile-bootstrap intervals over six fresh-process pairs. The Supplemental reports every pair effect and both interval estimators for both experiment families. Correctness probes and instrumented runs are excluded from performance estimates. 
+
+6.2 Compiler Comparison with Layout-Only 
+
+The generated matrix contains 72 cases, with 18 each for replica, exact-shard, authority, and partial delivery obliga-tions. It covers TP degrees 1, 2, and 4 and one to three con-sumer domains. Result projection is orthogonal to these de-livery classes and is evaluated separately through compiler checks and the projection-placement experiments. Layout-Only supports every source/destination layout transition and establishes 54 complete application obligations. Table 2 sep-arates footprint reductions on this common semantic subset from the authority information absent from layout. Across the 54 layout-established obligations, SemBridge uses fewer bytes in 30 cases and fewer startups in 35. Lay-out alone cannot establish the owner in the 18 authority cases; the checked owner constraint produces lower byte and startup footprints in 10 and 13 cases. On the nine real headline edges, SemBridge and the layout-only baseline se-lect different plan shapes in every case. SemBridge reduces startups on all nine and bytes on the three result edges. The shared-IR oracle matches SemBridge on all 72 generated cases and all 13 real edges, showing that the deterministic lowerer reaches the best footprint in its bounded candidate 
+
+> 8SemBridge
+
+100 kB 10 MB 1 GB 
+
+Result traffic per restart cell (framed bytes, log scale) 
+
+Dense TP4 MoE TP2 MiniMax 
+
+−99.9788% 
+
+33.2 kB 156.3 MB 
+
+−99.9959% 
+
+52.4 kB 1.277 GB 
+
+−99.9950% 
+
+82.1 kB 1.640 GB 
+
+(a) Projection collapses result traffic 
+
+Source projection Full-logit transfer 0 20 40 60 80 
+
+Throughput change (%) 
+
+Dense TP4 long output MoE TP2 64 tokens MoE TP2 256 tokens MiniMax 16-request burst 
+
+8.9% 
+
+26.4% 
+
+62.9% 
+
+76.6% 
+
+(b) Restart-paired throughput improvement 
+
+Figure 3. Projection placement in the common runtime. (a) Source-side projection reduces result traffic by more than 99.97%. (b) Circles show six restart-pair throughput effects; diamonds and bars show means and paired-𝑡 95% confidence intervals. Forward traffic and result-frame counts match between plans. 
+
+Table 2. Comparison with the independent Layout-Only baseline across 72 cases. “Established” counts complete ap-plication obligations derived from layout inputs. Byte and startup columns count cases with lower SemBridge foot-prints; “Rejected” counts semantically invalid candidates proposed by the byte-only minimizer and rejected by Sem-Bridge.                                      
+
+> Obligation Cases Established Bytes ↓Startups ↓Rejected Replica 18 18 13 15 0Exact shard 18 18 7714 Partial 18 18 10 13 18 Layout subtotal 54 54 30 35 32 Authority residual 18 010 13 8All 72 54 40 48 40
+
+family. The oracle enumerates 69,322 checker-accepted pro-grams, and 504 legal programs execute against the reference semantics. The byte-only minimizer proposes semantically invalid candidates in 14 exact-shard, 18 partial, and eight authority cases; SemBridge rejects all 40. All eight targeted mutations of demand, reduction, substitution, ownership, domain locality, and execution identity are rejected. The common-runtime studies validate these plan differ-ences under live execution. On Dense TP4, shard transfer and representative transfer move the same 14,192,640 payload bytes per fresh-process run. Representative transfer reduces forward frames from 468 to 117 and improves throughput by 1.48% [0.60%, 2.36%] across all six pairs. On Qwen3.5 MoE, the same forward rewrite changes output-256 throughput by −3.14% [ −5.64%, −0.64%]. Owner-token delivery instead improves throughput by 7.98% [0.53%, 15.42%] at output-64 and 6.09% [2.37%, 9.81%] at output-256. Dense benefits from fewer forward startups; MoE benefits from authority-aware result delivery. Contract compilation, lowering, and checking remain off the token path. Across the model contracts, p95 compilation time is 0.051–0.056 ms on the A100 host and 0.114–0.130 ms on the Ascend host. 
+
+6.3 Projection Placement Changes End-to-End Execution 
+
+Full-logit transfer and source-side projection satisfy the same token-only surface, retain identical forward traffic, and use the same number of result frames. The former transfers complete logit shards, invokes result AllGather, and applies argmax at the consumer; the latter applies the same argmax before transfer. Figure 3 places this boundary transformation beside its restart-paired service effect. The Dense and MoE campaigns complete all 24 fresh-process runs and 288 requests. Source-side projection re-moves 130 and 332 result AllGathers, respectively, and im-proves p95 TPOT by 10.46% on Dense and 41.95% on the longer MoE output. The MiniMax load sweep contains six fresh-process pairs at each concurrency. Source-side projection improves throughput by 18.64% [17.46%, 19.82%], 80.20% [77.12%, 
+
+> 9G. Chen, J. Zhu, and Y. Lin
+
+Table 3. Qwen3-14B layer-0 MLP correctness. The 8- and 64-token cases were held out from error-gate selection.                    
+
+> Tokens Shard delivery Partial completion Relative L2 (%) Max error / peak (%) 1bitwise distinct →equal 0.207 0.164 8bitwise distinct →equal 0.226 0.324 64 bitwise distinct →equal 0.244 0.451
+
+83.28%], and 76.63% [65.61%, 87.65%] at concurrency 1, 8, and 16; all 18 pair effects are positive. The corresponding p95 TPOT reductions are 17.27%, 54.43%, and 56.24%, while p95 total latency falls by 15.71%, 44.54%, and 43.29%. Full-logit runs reconstruct the transferred logits bitwise, and source projection produces identical tokens across all three model families. A live surface-switching run composes result surfaces with delivery obligations through one com-piler and CUDA/CANN runtime, without plan identifiers in the contracts. Log-probability requests select full-logit recon-struction (36 frames, 13,609,032 B) and return all 16 requested positions. Token-only requests select source projection with mapped delivery (20 frames, 1,232 B), while owner-scoped requests compose the token surface with unique author-ity and select owner-token delivery (5 frames, 308 B) with rank 3/lane 0 as the sole sender. Both token plans match 40/40 consumers. 
+
+6.4 Exact Shards and Partial Completion on Real Backends 
+
+The MLP down projection is the canonical tensor-parallel completion boundary: each lane produces an incomplete full-width output that must be summed before a complete downstream observation. The layer-level experiment par-titions the gate and up projections of the real Qwen3-14B layer-0 MLP across two A100 GPUs. Each rank produces a distinct 8704-column BF16 activation shard and sends it to the matching Ascend rank through the production framed transport. The two Ascend ranks apply row-parallel down projections, producing distinct partials, then complete the sum with HCCL AllReduce. For every token count, each received activation matches its sender bitwise, the two activation lanes differ, the pre-reduction partials differ, and the two completed outputs are identical. Relative L2 error against a full FP32 down-projection reference is 0.207–0.244%, establishing live exact-shard delivery and partial completion on the two vendor stacks. 
+
+6.5 Legal Plans Have Workload-Dependent Effects 
+
+Figure 4 tests Equation 6 without changing the result surface. Representative broadcast has no replica advantage at TP1, reduces host traffic by 50.6–52.5% at TP2, and by 75.2–76.2% TP1 (k = 1 )TP2 (k = 2 )TP4 (k = 4 )
+
+0200 400 600 800 
+
+> Host traffic (kB / output token)
+
+[−0.01, +0.01]% neutral 
+
+50.6–52.5% (50% predicted) 75.2–76.2% (75% predicted) 
+
+Mapped copies Representative 
+
+Figure 4. Replica-aware traffic scaling. Host traffic per out-put token for mapped copies and representative broadcast; ranges cover directions and restart blocks. at TP4. The MiniMax variants with owner return realize forward/result frame pairs (2, 4), (1, 4), and (1, 2) per step. Across six independent fresh-process pairs, representa-tive broadcast raises throughput by 38.57% [36.89%, 40.07%] on Dense TP4 long output, 13.68% [10.15%, 17.82%] on a 16-request MiniMax burst, and 19.17% [13.20%, 25.23%] on MoE with long output at concurrency 8. The steady-low MiniMax control is practically neutral at +0.54%, Dense TP1 long out-put averages −1.87% without replica multiplicity, and the 16-request MoE burst averages −10 .84% with an interval crossing zero. Together, these measurements show how Sem-Bridge exposes semantically valid alternatives whose service benefit follows the workload critical path. 
+
+Resource footprint. P0 leaves peak allocated and re-served device memory, KV blocks, maximum batch size, and concurrency unchanged from R0. It lowers pinned-memory high-water by 37.40 MiB on the A100 host and 74.79 MiB on the Ascend host. Neither plan allocates a persistent transport device-buffer pool, and the sender queue high-water remains unchanged. 
+
+## 7 Related Work 
+
+7.1 Placement and Distributed Tensors 
+
+Distributed-tensor systems separate a global program from device-level realization. Mesh-TensorFlow, GShard, GSPMD, DistIR, and PartIR express or propagate placement and shard-ing decisions [2, 13, 21, 23, 31]. OneFlow SBP and PyTorch DTensor represent split or shard, broadcast or replicate, and partial states [18, 32], while cross-mesh resharding optimizes layout transfer [35]. SemBridge starts after placement: its contract determines which observations must cross indepen-dent vendor domains. TrainVerify verifies parallelization equivalence between a logical model and a distributed training plan through sym-bolic dataflow graphs and solver-backed reasoning; Scalify 
+
+> 10 SemBridge
+
+checks production graph transformations through equality saturation and relational layout analysis [14, 36]. These sys-tems establish whole-graph equivalence. SemBridge checks consumer observations at a mixed-vendor communication boundary and lowers each certified obligation into a com-munication graph. 
+
+7.2 Heterogeneous LLM Serving 
+
+PagedAttention and Sarathi-Serve improve memory manage-ment and scheduling [1, 12]; Splitwise and DistServe separate prefill from decode [17, 34]; and HexGen, HexGen-2, and He-lix optimize heterogeneous placement or routing [10, 11, 15]. These systems decide where computation and requests run. SemBridge instead asks which boundary values and copies the fixed placement requires. Production pipeline runtimes also communicate compact sampler outputs in selected homogeneous paths. The vLLM GPU runner broadcasts sampled token IDs across pipeline ranks, and the vLLM-Ascend sampling design gathers com-pact sampler outputs rather than complete logits [25, 26]. A path-specific token handoff realizes the same P0 graph once eligibility is known. SemBridge derives that eligibil-ity from the requested surface, retains R0 for log-probability requests, and composes the token result surface with comple-tion and authority obligations across separate CUDA/NCCL and CANN/HCCL domains. 
+
+7.3 Collective Synthesis and Mixed-Vendor Communication 
+
+Blink, SCCL, P 2, TACCL, and MSCCLang construct or synthe-size collective programs [3, 4, 22, 27, 29]. AutoCCL tunes low-level parameters [30]; HeteCCL handles heterogeneous link capacities [5]; and MSCCL++ and HetCCL provide portable or mixed-vendor realization [6, 28]. These systems imple-ment or optimize a logical requirement. SemBridge selects the consumer-observable requirement that reaches them. 
+
+## 8 Discussion 
+
+8.1 Compiler Boundary 
+
+Placement fixes where values reside, SemBridge specifies what each consumer must observe, and collective backends determine how the checked logical graph executes. The con-tract makes the result surface explicit before transport: token-only requests produce a projection operation, log-probability requests retain complete logits, replica lineage enables repre-sentative transfer, and decision ownership selects the source. The checked plan then maps to ordinary transfers and native collectives. Full-logit transfer and source-side projection use identical forward traffic and result-frame counts, so their end-to-end difference comes from this compiler decision within one transport implementation. 
+
+8.2 Performance and Fabric-Aware Selection 
+
+In the measured capacity-spillover deployment, projection reduces result traffic by 99.9788–99.9959%, raises throughput by 8.92–80.20%, and lowers p95 total latency by 8.12–44.54% across the evaluated model and load points. Every MiniMax restart pair favors source projection at concurrency 1, 8, and 16. Representative delivery separately reduces TP4 traffic by 75.2–76.2% and raises throughput by 13.68–38.57% on communication-sensitive workloads. Compilation first uses the contract and checker to form the set of legal plans; a fabric-aware selector can then choose among them. Let 𝐵 𝑖 , 𝐹 𝑖 be plan 𝑖 ’s cross-domain payload bytes and frames, 𝛽 the effective end-to-end payload rate, 
+
+𝛼 the effective non-overlapped per-frame startup, and 𝐿 𝑖 
+
+the plan’s non-overlapped projection and local-collective cost. The effective payload rate includes device-to-host se-rialization, framing, network transfer, and host-to-device ingestion; local reconstruction and projection contribute to 
+
+𝐿 𝑖 . A specialized plan 𝑠 improves over reference 𝑟 when 
+
+𝐵 𝑟 − 𝐵 𝑠 
+
+𝛽 + 𝛼 (𝐹 𝑟 − 𝐹 𝑠 ) > 𝐿 𝑠 − 𝐿 𝑟 . (7) Byte and frame reductions strengthen the left-hand side; pro-jection and native collectives determine the local-cost differ-ence. The Dense and MoE forward/owner results show that two legal rewrites can occupy different critical paths. Restart pairs measure the net outcome, while the non-additive com-ponent timers identify transfer and local work. Equation 7 provides a decision criterion for checker-accepted plans: transfer savings must exceed projection and local-collective cost. 
+
+## 9 Conclusion 
+
+SemBridge makes consumer observations explicit at cross-stack communication boundaries through a typed con-tract, deterministic lowerer, and symbolic checker. Its com-piler/runtime path derives and executes full-logit reconstruc-tion, source projection, owner-token delivery, representative delivery, exact-shard transfer, and partial completion. Across three model families, token projection reduces result traffic by more than 99.97% and improves throughput throughout the measured MiniMax load range. 
+
+## Acknowledgments 
+
+Generative AI tools were used to assist with drafting and re-vising portions of the manuscript text. The authors reviewed and verified all generated content and take full responsibility for the final manuscript. 
+
+## References   
+
+> [1] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav Gulavani, Alexey Tumanov, and Ramachandran Ram-jee. 2024. Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve. In 18th USENIX Symposium on Operating Systems
+> 11
+
+G. Chen, J. Zhu, and Y. Lin 
+
+Design and Implementation (OSDI 24) . USENIX Association, 117–134. 
+
+https://www.usenix.org/conference/osdi24/presentation/agrawal 
+
+[2] Sami Alabed, Daniel Belov, Bart Chrzaszcz, Juliana Franco, Dominik Grewe, Dougal Maclaurin, James Molloy, Tom Natan, Tamara Norman, Xiaoyue Pan, Adam Paszke, Norman A. Rink, Michael Schaarschmidt, Timur Sitdikov, Agnieszka Swietlik, Dimitrios Vytiniotis, and Joel Wee. 2025. PartIR: Composing SPMD Partitioning Strategies for Machine Learning. In Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 . ACM, 794–810. doi: 10.1145/3669940.3707284 
+
+[3] Zixian Cai, Zhengyang Liu, Saeed Maleki, Madanlal Musuvathi, Todd Mytkowicz, Jacob Nelson, and Olli Saarikivi. 2021. Synthesizing Opti-mal Collective Algorithms. In Proceedings of the 26th ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming . ACM, 62–75. doi: 10.1145/3437801.3441620 
+
+[4] Meghan Cowan, Saeed Maleki, Madanlal Musuvathi, Olli Saarikivi, and Yifan Xiong. 2023. MSCCLang: Microsoft Collective Communication Language. In Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 . ACM, 502–514. doi: 10.1145/3575693.3575724 
+
+[5] Chenyang Hei, Fuliang Li, Jiayi Li, Jiamin Cao, Chengxi Gao, Xiuzhu Sha, Tongrui Liu, Dengke Zhang, Ennan Zhai, and Xingwei Wang. 2026. HeteCCL: Synthesizing Near-Optimal Collective Communica-tion Schedules for Heterogeneous GPU Clusters. In 23rd USENIX Sym-posium on Networked Systems Design and Implementation (NSDI 26) .USENIX Association, 2533–2551. https://www.usenix.org/conference/ nsdi26/presentation/hei 
+
+[6] Changho Hwang, Peng Cheng, Roshan Dathathri, Abhinav Jangda, Saeed Maleki, Madan Musuvathi, Olli Saarikivi, Aashaka Shah, Ziyue Yang, Binyang Li, Caio Rocha, Qinghua Zhou, Mahdieh Ghazimirsaeed, Sreevatsa Anantharamu, and Jithin Jose. 2026. MSCCL++: Rethinking GPU Communication Abstractions for AI Inference. In Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 . ACM, 1201– 1215. doi: 10.1145/3779212.3790188 
+
+[7] Abhinav Jangda, Jun Huang, Guodong Liu, Amir Hossein Nodehi Sa-bet, Saeed Maleki, Youshan Miao, Madanlal Musuvathi, Todd Mytkow-icz, and Olli Saarikivi. 2022. Breaking the Computation and Commu-nication Abstraction Barrier in Distributed Machine Learning Work-loads. In Proceedings of the 27th ACM International Conference on Ar-chitectural Support for Programming Languages and Operating Systems .ACM, 402–416. doi: 10.1145/3503222.3507778 
+
+[8] Xianyan Jia, Le Jiang, Ang Wang, Wencong Xiao, Ziji Shi, Jie Zhang, Xinyuan Li, Langshi Chen, Yong Li, Zhen Zheng, Xiaoyong Liu, and Wei Lin. 2022. Whale: Efficient Giant Model Training over Heteroge-neous GPUs. In 2022 USENIX Annual Technical Conference (USENIX ATC 22) . USENIX Association, 673–688. https://www.usenix.org/ conference/atc22/presentation/jia-xianyan 
+
+[9] Zhihao Jia, Matei Zaharia, and Alex Aiken. 2019. Beyond Data and Model Parallelism for Deep Neural Networks. In 
+
+Proceedings of Machine Learning and Systems , Vol. 1. 1–13. 
+
+https://proceedings.mlsys.org/paper_files/paper/2019/hash/ b422680f3db0986ddd7f8f126baaf0fa-Abstract.html 
+
+[10] Youhe Jiang, Ran Yan, Xiaozhe Yao, Yang Zhou, Beidi Chen, and Binhang Yuan. 2024. HexGen: Generative Inference of Large Lan-guage Model over Heterogeneous Environment. In Proceedings of the 41st International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 21946–21961. https: //proceedings.mlr.press/v235/jiang24f.html 
+
+[11] Youhe Jiang, Ran Yan, and Binhang Yuan. 2025. HexGen-2: Disaggregated Generative Inference of LLMs in Heterogeneous Environment. In International Conference on Learning Represen-tations . https://proceedings.iclr.cc/paper_files/paper/2025/hash/ 0b941a1e5fbce23fe46b049999d04ed0-Abstract-Conference.html 
+
+[12] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the 29th Symposium on Operating Systems Principles . ACM, 611–626. doi: 10.1145/3600006. 3613165 
+
+[13] Dmitry Lepikhin, HyoukJoong Lee, Yuanzhong Xu, Dehao Chen, Orhan Firat, Yanping Huang, Maxim Krikun, Noam Shazeer, and Zhifeng Chen. 2021. GShard: Scaling Giant Models with Condi-tional Computation and Automatic Sharding. In International Confer-ence on Learning Representations . https://openreview.net/forum?id= qrwe7XHTmYb 
+
+[14] Yunchi Lu, Youshan Miao, Cheng Tan, Peng Huang, Yi Zhu, Xian Zhang, and Fan Yang. 2025. TrainVerify: Equivalence-Based Ver-ification for Distributed LLM Training. In Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Principles . ACM, 237– 253. doi: 10.1145/3731569.3764850 
+
+[15] Yixuan Mei, Yonghao Zhuang, Xupeng Miao, Juncheng Yang, Zhihao Jia, and Rashmi Vinayak. 2025. Helix: Serving Large Language Models over Heterogeneous GPUs and Network via Max-Flow. In Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 . ACM, 586–602. doi: 10.1145/3669940.3707215 
+
+[16] MiniMax. 2026. MiniMax M2.7: Early Echoes of Self-Evolution. Official model release. https://www.minimax.io/news/minimax-m27-en 
+
+[17] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Íñigo Goiri, Saeed Maleki, and Ricardo Bianchini. 2024. Splitwise: Efficient Generative LLM Inference Using Phase Splitting. In 2024 ACM/IEEE 51st Annual International Symposium on Computer Architecture . IEEE, 118–132. doi: 10.1109/ISCA59077.2024.00019 
+
+[18] PyTorch Contributors. 2026. torch.distributed.tensor: Distributed Ten-sor Documentation. PyTorch documentation. https://docs.pytorch. org/docs/stable/distributed.tensor.html 
+
+[19] Qwen Team. 2025. Qwen3: Think Deeper, Act Faster. Official model release. https://qwenlm.github.io/blog/qwen3/ 
+
+[20] Qwen Team. 2026. Qwen3.5: Towards Native Multimodal Agents. Official model release. https://qwen.ai/blog?id=qwen3.5 
+
+[21] Keshav Santhanam, Siddharth Krishna, Ryota Tomioka, Andrew Fitzgibbon, and Tim Harris. 2021. DistIR: An Intermediate Repre-sentation for Optimizing Distributed Neural Networks. In Proceedings of the 1st Workshop on Machine Learning and Systems . ACM, 15–23. doi: 10.1145/3437984.3458829 
+
+[22] Aashaka Shah, Vijay Chidambaram, Meghan Cowan, Saeed Maleki, Madan Musuvathi, Todd Mytkowicz, Jacob Nelson, Olli Saarikivi, and Rachee Singh. 2023. TACCL: Guiding Collective Algorithm Synthe-sis using Communication Sketches. In 20th USENIX Symposium on Networked Systems Design and Implementation (NSDI 23) . USENIX Association, 593–612. https://www.usenix.org/conference/nsdi23/ presentation/shah 
+
+[23] Noam Shazeer, Youlong Cheng, Niki Parmar, Dustin Tran, Ashish Vaswani, Penporn Koanantakool, Peter Hawkins, HyoukJoong Lee, Mingsheng Hong, Cliff Young, Ryan Sepassi, and Blake Hecht-man. 2018. Mesh-TensorFlow: Deep Learning for Supercomput-ers. In Advances in Neural Information Processing Systems , Vol. 31. 10435–10444. https://proceedings.neurips.cc/paper/2018/hash/ 3a37abdeefe1dab1b30f7c5c7e581b93-Abstract.html 
+
+[24] Colin Unger, Zhihao Jia, Wei Wu, Sina Lin, Mandeep Baines, Carlos Efrain Quintero Narvaez, Vinay Ramakrishnaiah, Nirmal Prajapati, Pat McCormick, Jamaludin Mohd-Yusof, Xi Luo, Dheevatsa Mudigere, Jongsoo Park, Misha Smelyanskiy, and Alex Aiken. 2022. Unity: Ac-celerating DNN Training Through Joint Optimization of Algebraic Transformations and Parallelization. In 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI 22) . USENIX Association, 267–284. https://www.usenix.org/conference/osdi22/ 
+
+12 SemBridge presentation/unger 
+
+[25] vLLM Ascend Contributors. 2026. Sampling Path Optimization for NPU Model Runner V1. vLLM Ascend request for comments, issue 9269. https://github.com/vllm-project/vllm-ascend/issues/9269 
+
+[26] vLLM Contributors. 2026. Pipeline-Parallel Sampled-Token Hand-off in the vLLM GPU Model Runner. vLLM v0.19.0 source code. https://github.com/vllm-project/vllm/blob/v0.19.0/vllm/v1/ worker/gpu_model_runner.py 
+
+[27] Guanhua Wang, Shivaram Venkataraman, Amar Phanishayee, Nikhil Devanur, Jorgen Thelin, and Ion Stoica. 2020. Blink: Fast and Generic Collectives for Distributed ML. In Proceedings of Machine Learning and Systems , Vol. 2. 172–186. https://proceedings.mlsys.org/paper_files/ paper/2020/hash/cd3a9a55f7f3723133fa4a13628cdf03-Abstract.html 
+
+[28] Yuejie Wang, Tao Chang, Yuanyuan Zhao, Yulong Ao, Zeyu Gu, Zhiyu Li, Yanmin Jia, Yan Zhang, Mingjun Zhang, He Liu, Yongzhe He, Yonghua Lin, and Guyue Liu. 2026. HetCCL: Enabling Collective Communication for Mixed-Vendor Heterogeneous Clusters. CoRR 
+
+abs/2605.31000 (2026). doi: 10.48550/arXiv.2605.31000 
+
+[29] Ningning Xie, Tamara Norman, Dominik Grewe, and Dimitrios Vy-tiniotis. 2022. Synthesizing Optimal Parallelism Placement and Reduction Strategies on Hierarchical Systems for Deep Learn-ing. In Proceedings of Machine Learning and Systems , Vol. 4. ml-sys.org. https://proceedings.mlsys.org/paper_files/paper/2022/hash/ f0f9e98bc2e2f0abc3e315eaa0d808fc-Abstract.html 
+
+[30] Guanbin Xu, Zhihao Le, Yinhe Chen, Zhiqi Lin, Zewen Jin, Youshan Miao, and Cheng Li. 2025. AutoCCL: Automated Collective Com-munication Tuning for Accelerating Distributed and Parallel DNN Training. In 22nd USENIX Symposium on Networked Systems De-sign and Implementation (NSDI 25) . USENIX Association, 667–683. 
+
+https://www.usenix.org/conference/nsdi25/presentation/xu-guanbin 
+
+[31] Yuanzhong Xu, HyoukJoong Lee, Dehao Chen, Blake Hechtman, Yan-ping Huang, Rahul Joshi, Maxim Krikun, Dmitry Lepikhin, Andy Ly, Marcello Maggioni, Ruoming Pang, Noam Shazeer, Shibo Wang, Tao Wang, Yonghui Wu, and Zhifeng Chen. 2021. GSPMD: Gen-eral and Scalable Parallelization for ML Computation Graphs. CoRR 
+
+abs/2105.04663 (2021). doi: 10.48550/arXiv.2105.04663 
+
+[32] Jinhui Yuan, Xinqi Li, Cheng Cheng, Juncheng Liu, Ran Guo, Sheng-hang Cai, Chi Yao, Fei Yang, Xiaodong Yi, Chuan Wu, Haoran Zhang, and Jie Zhao. 2021. OneFlow: Redesign the Distributed Deep Learn-ing Framework from Scratch. CoRR abs/2110.15032 (2021). https: //arxiv.org/abs/2110.15032 
+
+[33] Lianmin Zheng, Zhuohan Li, Hao Zhang, Yonghao Zhuang, Zhifeng Chen, Yanping Huang, Yida Wang, Yuanzhong Xu, Danyang Zhuo, Eric P. Xing, Joseph E. Gonzalez, and Ion Stoica. 2022. Alpa: Au-tomating Inter- and Intra-Operator Parallelism for Distributed Deep Learning. In 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI 22) . USENIX Association, 559–578. https: //www.usenix.org/conference/osdi22/presentation/zheng-lianmin 
+
+[34] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xu-anzhe Liu, Xin Jin, and Hao Zhang. 2024. DistServe: Disaggregating Prefill and Decoding for Goodput-Optimized Large Language Model Serving. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI 24) . USENIX Association, 193–210. https: //www.usenix.org/conference/osdi24/presentation/zhong-yinmin 
+
+[35] Yonghao Zhuang, Lianmin Zheng, Zhuohan Li, Eric P. Xing, Qirong Ho, Joseph E. Gonzalez, Ion Stoica, Hao Zhang, and Hexu Zhao. 2023. On Optimizing the Communication of Model Parallelism. In Pro-ceedings of Machine Learning and Systems , Vol. 5. Curran Associates, 524–540. https://proceedings.mlsys.org/paper_files/paper/2023/hash/ a42cbafcabb6dc7ce77bfe2e80f5c772-Abstract-mlsys2023.html 
+
+[36] Kahfi S. Zulkifli, Wenbo Qian, Shaowei Zhu, Yuan Zhou, Zhen Zhang, and Chang Lou. 2025. Verifying Computational Graphs in Production-Grade Distributed Machine Learning Frameworks. CoRR 
+
+abs/2509.10694 (2025). doi: 10.48550/arXiv.2509.10694 
+
+13
