@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-16</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-17</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 9 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-16 21:47:04 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-17 22:23:59 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天筛读 9 篇论文（精读 2、速读 7），主线集中在 GPU 注意力算子与融合内核的编译优化。</p>
-<p>最值得看的是《AttnFuse》（9.0/10）用可组合 DSL 把注意力编译成融合 GPU 内核，以及《mKernel》（8.0/10）面向多 GPU、多节点的快速融合内核。</p>
-<p>普通读者可先读 AttnFuse 理解&quot;DSL 自动生成高性能核&quot;的思路，再按兴趣翻速读中的近似逻辑综合与 AI/HPC 交叉议题。</p>
+<p>今日精读7篇、速读12篇共19篇，长上下文LLM推理加速成为最大热点。最值得看的是ASPIRE异步批处理自推测解码（10.0分）与分离式LLM服务中学习型请求路由的实测校准（9.0分）。建议普通读者优先从ASPIRE入手，理解&quot;自推测解码+批处理&quot;如何兼顾长文本吞吐与延迟。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="AttnFuse: A Composable DSL for Compiling Attentions to Fused GPU Kernels">AttnFuse: A Composable DSL for Compiling Attentions to Fused GPU Kernels</span></li><li><span class="dpr-home-dashboard-paper-title" title="mKernel: Fast Multi-GPU, Multi-Node Fused Kernels">mKernel: Fast Multi-GPU, Multi-Node Fused Kernels</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ASPIRE: Asynchronous Batched Self-Speculative Decoding for Long-Context LLM Inference">ASPIRE: Asynchronous Batched Self-Speculative Decoding for Long-Context LLM Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="Calibrate, Then Route: A Measured Study of Learned Request Routing for Disaggregated LLM Serving">Calibrate, Then Route: A Measured Study of Learned Request Routing for Disaggregated LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="Where Should the KV Cache Live? Placement Policies Across GPU, CPU, and SSD for Long-Lived Sessions">Where Should the KV Cache Live? Placement Policies Across GPU, CPU, and SSD for Long-Lived Sessions</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>7</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="E-ALS: Approximation-Potential-Aware E-Graph Rewriting for Approximate Logic Synthesis">E-ALS: Approximation-Potential-Aware E-Graph Rewriting for Approximate Logic Synthesis</span></li><li><span class="dpr-home-dashboard-paper-title" title="SemBridge: Compiling Consumer Observations into Cross-Stack Communication Plans">SemBridge: Compiling Consumer Observations into Cross-Stack Communication Plans</span></li><li><span class="dpr-home-dashboard-paper-title" title="Stencil Computation at the Intersection of AI and HPC">Stencil Computation at the Intersection of AI and HPC</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="KVShareArena: KV-Cache Reuse Across Contexts and Model Checkpoints">KVShareArena: KV-Cache Reuse Across Contexts and Model Checkpoints</span></li><li><span class="dpr-home-dashboard-paper-title" title="FINNAS: FINN-Guided Hardware-Aware NAS and Pruning for FPGA Jet Substructure Classification">FINNAS: FINN-Guided Hardware-Aware NAS and Pruning for FPGA Jet Substructure Classification</span></li><li><span class="dpr-home-dashboard-paper-title" title="PipeSwift: Revisiting Pipeline Parallelism for Large-Scale Completion-Oriented Agentic LLM Serving">PipeSwift: Revisiting Pipeline Parallelism for Large-Scale Completion-Oriented Agentic LLM Serving</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>5</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>8</strong></span><span class="dpr-home-dashboard-tag">dse <strong>4</strong></span></div>
 </section>
 </div>
 
