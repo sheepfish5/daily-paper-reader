@@ -1,0 +1,382 @@
+Title: MeshKV: A Network-on-Chip KV Cache Fabric for Scalable Transformer Decoding Accelerators
+
+URL Source: https://arxiv.org/pdf/2609.19207v1
+
+Published Time: Fri, 18 Sep 2026 00:03:33 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# MESH KV: A Network-on-Chip KV Cache Fabric for Scalable Transformer Decoding Accelerators 
+
+Dong Liu *
+
+University of California, Los Angeles Los Angeles, CA, USA pikeliu@ucla.edu 
+
+Yanxuan Yu *
+
+Columbia University New York, NY, USA yy3523@columbia.edu 
+
+Abstract —Autoregressive transformer decoding is constrained by irregular key–value (KV) cache movement on tiled accelerators. Prior compression and DRAM-placement systems still concentrate traffic on centralized memory paths that bottleneck long-context serving. We present M ESH KV, a KV cache fabric that moves blocks as packetized flows over a lightweight N OC. It co-designs (i) T AKV affine striping to spread homes and cut hotspot load, (ii) M ARE multicast with verified duplicate suppression, and (iii) P AD , which overlaps prefetch, tile multiply, and streaming softmax behind credit-aligned FIFOs. Together they convert bisection back-pressure into useful KV transfer. On our 8×8
+
+FPGA implementation with LLaMA-2-7B and Mistral-7B at 8K–32K, M ESH KV reduces interconnect traffic by up to 58 %,improves KV bandwidth utilization by 2.1×, and delivers up to 
+
+1.9× multi-stream throughput. 
+
+Index Terms —Transformer decoding, KV cache, network-on-chip, accelerator architecture, long-context LLM, multicast routing, spatial locality, FPGA 
+
+I. I NTRODUCTION 
+
+LLM decoding is “memory-bound,” but tiled accelerators also stall on on-chip data movement. Autoregressive attention scatters KV across a mesh built for dense GEMM, not all-to-few gather over a growing prefix [1]–[3]. ASICs, FPGAs, and chiplet meshes map compute to a 2-D PE array with private SRAM. Prefill amortizes tile hops; decode does not: one query row ( dh≈128 ) meets a KV slab that grows every token. A centralized design routes these fetches through a shared injection point, concentrating long-context KV traffic on the same bisection. 
+
+Our approach. We treat the KV cache as a communication substrate : each step issues structured, layer-major reads that ad-mit co-designed placement, routing, and compute. M ESH KV is a N OC-centric fabric. Unlike DRAM paging or compression [3], [4], it optimizes how resident SRAM blocks traverse the mesh— multicast from each home tile, with prefetch overlapping matmul across credit boundaries. 
+
+Contributions. 
+
+1) TAKV (§V). Affine placement π(ℓ, s ) plus a one-cycle occupancy swap. 2) MARE (§VI). Multicast trees, verified duplicate suppression, and a deadlock-free VN0/VN1 split. 
+
+> *
+
+Equal contribution. 
+
+3) PAD (§VII). Prefetch / multiply / streaming softmax sized to the N OC RTT. 4) Evaluation (§IX). Hardware-measured traffic, utilization, throughput, and latency at 8K–32K. II. R ELATED WORK 
+
+KV cache management and serving. PagedAttention [3], FlexGen [4], and TinyServe [5] virtualize or select KV behind a serving-layer controller; M ESH KV distributes it inside a tiled accelerator with private SRAM. Quantization and eviction [6]– [11] shrink the bytes per step; M ESH KV complements these by improving residual transport. 
+
+Attention hardware. FlashAttention [2], [12] and FlashDe-coding++ [13] tile GPU attention and softmax; ELSA [14] and SpAtten [15] exploit ASIC sparsity. M ESH KV targets on-chip communication; P AD uses online softmax in a credit-aligned pipeline. 
+
+Networks-on-chip and FPGA accelerators. Classic N OCs and the Turn Model [16]–[18] supply deadlock theory; Simba [19] uses a 2-D mesh without KV-class flits. DFX [20], FlightLLM [21], and CXL-SpecKV [22] show HBM/CXL KV movement dominates FPGA decode; M ESH KV replaces point-to-point KV buses with an attention-aware fabric. III. B ACKGROUND AND MOTIVATION 
+
+A. Autoregressive decoding and the bandwidth wall 
+
+A decoder with L layers, H heads, head dimension dh, and length T computes, for layer ℓ and head h,
+
+aℓ,h = softmax qℓ,h K⊤
+
+> ℓ,h, ≤t
+
+√dh
+
+!
+
+, oℓ,h = aℓ,h Vℓ,h, ≤t,
+
+(1) with qℓ,h ∈ R1×dh and cached slabs Kℓ,h, ≤t, V ℓ,h, ≤t ∈ Rt×dh .The cache occupies 
+
+Γ( T ) = 2 LHd hT · bpe bytes , (2) with bpe=2 for FP16: ≈ 16 GiB for LLaMA-2-7B ( L=32 ,
+
+H=32 , dh=128 ) at T =32 768 , and every decode step reads all of it . FlashAttention [2], [12] reduces the constant for batched prefill via tiled SRAM reuse, but B=1 decode exposes every byte with no reuse. arXiv:2609.19207v1 [cs.AR] 16 Sep 2026 CENT SHARED MESH KV 
+
+020 40 60 80 100 
+
+> Link utilization (%)
+
+Useful KV transfer Back-pressure stall Other 
+
+Fig. 1: Breakdown of link-cycle utilization at the mesh bisec-tion ( T =32K , LLaMA-2-7B, B=1 ). C ENT expends 41% of bandwidth on back-pressure; M ESH KV converts that capacity into useful KV transfer. 
+
+B. Tiled accelerators and the spoke–hub pathology 
+
+Tile-based accelerators (e.g., Simba [19], custom chiplets) map heads and layers across a 2-D PE mesh. Prefill carries dense GEMM traffic; decode issues width-dh gathers from wherever a KV block lives to wherever the compute tile sits. When KV sits at one logical memory controller, all such reads converge at the same injection point. The mesh degenerates to a spoke–hub: H requesters fan in to one hub, consuming 40–60% of link cycles on back-pressure (Figure 1). 
+
+C. Observed locality in KV accesses 
+
+An instrumented FP16 decoder on LLaMA-2-7B [23] at T ∈{8192 , 32768 } shows two regularities that motivate M ESH KV: 
+
+Observation 1 (Layer-major temporal locality) . Within a decode step, layers are visited in order ℓ = 0 , . . . , L −1; a 
+
+KV line is reused only at step t+1 , so the prefetch window is exactly L layer traversals. 
+
+Observation 2 (Head-group spatial locality) . Heads that share a prefix span request identical segments (Mistral-7B GQA uses G=4 ; LLaMA-2-7B is multi-head). At T =32K , 78% of segment requests arrive within 12 cycles at the same router, so multicast coalescing does not require wide merge buffers. 
+
+These observations underlie T AKV placement (§V) and MARE coalescing (§VI): KV_DATA fans out, while PART converges. IV. S YSTEM ARCHITECTURE OVERVIEW 
+
+Figure 2 deploys MESH KV on a 4×4 mesh of tiles 
+
+(x, y ) ∈ {0, . . . , W −1}×{ 0, . . . , H −1} (scalable to 8×8). Each tile has a MAC array, four-bank KV SRAM, a partial-sum scratchpad, and a two-VN router. A per-column controller broadcasts descriptors (ℓ, h ); tiles resolve π(ℓ, s ) and inject KV_FETCH on VN1. The controller is off the critical path (4-cycle combinational T AKV). Four-bank KV SRAM lets a tile stream the next window while MACs consume the current flits. A decode step broadcasts descriptors, resolves π(ℓ, s ), injects KV_FETCH on VN1, receives KV_DATA at the compute tile, and returns PART on VN0 to a column reduce root.                                 
+
+> MAC arr KV SRAM
+> Scrpad R
+> (0,0)
+> MAC arr KV SRAM
+> Scrpad R
+> (0,1)
+> MAC arr KV SRAM
+> Scrpad R
+> (0,2)
+> MAC arr KV SRAM
+> Scrpad R
+> (0,3)
+> MAC arr KV SRAM
+> Scrpad R
+> (1,0)
+> MAC arr KV SRAM
+> Scrpad R
+> (1,1)
+> MAC arr KV SRAM
+> Scrpad R
+> (1,2)
+> MAC arr KV SRAM
+> Scrpad R
+> (1,3)
+> MAC arr KV SRAM
+> Scrpad R
+> (2,0)
+> MAC arr KV SRAM
+> Scrpad R
+> (2,1)
+> MAC arr KV SRAM
+> Scrpad R
+> (2,2)
+> MAC arr KV SRAM
+> Scrpad R
+> (2,3)
+> MAC arr KV SRAM
+> Scrpad R
+> (3,0)
+> MAC arr KV SRAM
+> Scrpad R
+> (3,1)
+> MAC arr KV SRAM
+> Scrpad R
+> (3,2)
+> MAC arr KV SRAM
+> Scrpad R
+> (3,3)
+
+bisection    
+
+> DC 0DC 1DC 2DC 3
+
+Q2 Q0 Q3 Q1            
+
+> KV _DATA mcast branch
+> PART
+> home :π(ℓ, s )=(1 ,1)
+> BF
+> PFcredit
+> HBM2 · 8 GB · 460 GB/s
+> tile-local prefetch descriptors
+> memory plane
+> (T AKV)
+> router plane
+> (M ARE )
+> compute plane
+> (P AD )VN1: KV _DATA multicast VN0: PART unicast . . . . . . . . . . . . . . HBM prefetch
+> MAC KV SRAM Scrpad Router
+
+Fig. 2: 4×4 MESH KV tile array (scalable to 8×8). Home tile 
+
+(1 , 1) roots a M ARE multicast for KV_DATA; VN0 carries PART reduction; P AD prefetches from HBM. 
+
+Algorithm 1 TAKV static placement. 
+
+Require: Layer ℓ, segment s, mesh dimensions W, H , constant 
+
+a (odd, coprime to H)
+
+Ensure: Home-tile coordinates (x, y )
+
+1: x ← ℓ mod W
+
+2: y ← (a · ℓ + s) mod H
+
+3: return (x, y )
+
+Three planes: T AKV places B(ℓ, s ) at load time (with lazy swaps); M ARE coalesces, multicasts, and arbitrates VCs; P AD 
+
+runs P F/T M/R D and credits the router. Multicast trees are therefore rooted at the home tile π(ℓ, s ), not at a shared memory port. V. T OPOLOGY -A WARE KV S TRIPING (T AKV) Macro-block B(ℓ, s ) covers P consecutive tokens of layer ℓ
+
+across all heads and both K and V :
+
+|B (ℓ, s )| = 2 Hd hP · bpe bytes , s = ⌊j/P ⌋. (3) With P =64 , H=32 , dh=128 , bpe=2 , |B| = 1 MB is the placement and multicast unit. On a W ×H mesh, T AKV maps B(ℓ, s ) to 
+
+π(ℓ, s ) =  ℓ mod W, (a · ℓ + s) mod H, (4) with a odd and gcd( a, H ) = 1 (e.g. a = W +1 ). Algorithm 1 is four combinational instructions. Affine π(ℓ, s ) does not shorten expected distance to a fixed 
+
+home: on a symmetric mesh a uniform requester has the same mean hops to any single destination. The gain is spreading homes so injection and bisection load max e λe drop, converting the back-pressure stall in Figure 1 into useful KV transfer. The coprime stride a=W +1 permutes the y coordinate as ℓ
+
+increments, so consecutive layers occupy different columns and consecutive segments of one layer walk distinct rows. Injection therefore spreads even though mean hops to any single home do not shrink. Occupancy swaps further flatten P 
+
+> e
+
+¯q2 
+
+> e
+
+.A W ×H mesh assigns at most Nmax = L⌈T /P ⌉/(W H )
+
+blocks per tile ( 256 MB of logical KV at L=32 , T =32768 ,
+
+P =64 , W =H=8 ). U280 provides HBM2 ( 8 GB, 460 GB/s) and DDR4 ( 32 GB); the 16 GiB slab does not fit in HBM alone. Table III’s 512 URAMs give eight URAMs ( 288 KB) per tile—a four-bank streaming window, not a 1 MB block—so homes promote HBM/DDR data into URAM under tile-local prefetch descriptors. Every K=128 steps (one SRAM eviction epoch), routers sample occupancy ¯qe from existing credit counters and swap two homes iff the swap strictly reduces P 
+
+> e
+
+¯q2 
+
+> e
+
+and preserves per-tile capacity Nmax (4 comparisons, 2 register writes, one control cycle). VI. M ULTICAST ROUTING ENGINE (M ARE )MESH KV classifies on-chip traffic into three flit types (Table I): KV_FETCH headers (seg , ℓ, mask , coord) and KV_DATA bodies (512-bit payload, dedup tag) on VN1 decouple fetch coalescence from data fan-out; PART partial logits use VN0. At the home tile π(ℓ, s ), requests arriving in window Wcoal =12 cycles merge head masks 
+
+M (ℓ, s ) = _
+
+> r∈Wcoal
+
+mask r , (5) then an XYM spanning tree over destinations D(M ) multicasts each payload once per branch ( O(H log H) build, H=32 ,
+
++4 control cycles before KV_DATA departs). Replication occurs only at tree branches, so a payload crosses any link at most once; the exact-tag plus bloom path is a safety net for overlapping trees and late arrivals. Each router keeps a 16-entry exact tag table of in-flight (seg , ℓ ) and a 256 -bit bloom as a prefilter over Wb=96 cycles. A duplicate is suppressed only on an exact-table hit; a miss or a full table forwards, so bloom false positives never drop a first-arrival payload ( 32 B bloom plus 16 tags). 
+
+A. Deadlock avoidance 
+
+MESH KV splits traffic across two virtual networks: VN0 carries unicast PART reductions on dimension-ordered XY routing, while VN1 carries KV_FETCH and KV_DATA multicast on XYM-restricted turns [18]. No flit holds a VN0 buffer while waiting for VN1 resources or vice versa, so inter-network cycles are structurally eliminated; restricted-turn routing removes intra-network cycles within each VN. TABLE I: Flit classes in M ESH KV. 
+
+Class Dir. VC Contents 
+
+KV_FETCH requester →home VN1 seg id, layer, head mask (32 bits), requester co-ord KV_DATA home →requester VN1 512-bit KV payload, in-flight segment tag PART tile →reduce root VN0 512-bit partial logit ac-cumulator, softmax run-ning stats                                   
+
+> PF:TM:RD:
+> ss+1 s+2 s+3
+> s−1ss+1 s+2
+> s−2s−1ss+1
+> time →
+> Stage 0: PFprefetch
+> issue KV _FETCH (s+1) ·credit counter
+> async FIFO F=48 flits
+> Stage 1: TMtile multiply
+> qℓ,h ·Ks; logit accumulate in scratchpad
+> async FIFO F=48 flits
+> Stage 2: RDstream reduce
+> online softmax: update (ms, ℓ s,os)
+> olayer (FP16)
+> KV _FETCH
+> VN1 →home tile
+> KV _DATA
+> from home tile
+> RTT
+> 2Lmax+ tack
+> ≈22 cy
+> ←one layer
+> overlap across segments
+
+Fig. 3: P AD three-stage pipeline (P F/T M/R D). Top: segment overlap conceals N OC RTT ( ≈22 cycles). Bottom: KV prefetch, tile multiply, and online softmax. VII. P IPELINED ATTENTION DATAFLOW (P AD )PAD overlaps three stages across segments s =0, . . . , ⌈T /P ⌉− 1 (Figure 3). P F issues a KV_FETCH for 
+
+s+1 iff the home injection credit Cπ > 0 (one outstanding per 
+
+(seg , ℓ )). T M writes segment logits 
+
+zs = qℓ,h K⊤
+
+> ℓ,h,s
+
+/pdh (6) into scratchpad SRAM ( ≥80% MAC when the FIFO is non-empty). FIFO depth F =48 covers RTT 2Lmax +tack ≈22 cycles plus Wcoal . R D applies FlashAttention-2 online softmax [2], [12] 
+
+ms = max( ms−1, rowmax( zs)) ,ℓs = ems−1−ms ℓs−1 + rowsum( ezs−ms ),
+
+os = ems−1−ms os−1 + ezs−ms Vℓ,h,s , (7) so V -flits never materialize a full attention matrix. VIII. I MPLEMENTATION 
+
+We implement M ESH KV on a tiled FPGA accelerator: an 
+
+8×8 interconnect with 512-bit wormhole links, four-bank tile-local KV SRAM, and dh=128 systolic PEs, with T AKV, MARE , and P AD in the hardware datapath. We evaluate four configurations on the same platform: C ENT ,which routes KV traffic through a centralized memory path; TABLE II: Per-router parameters in the FPGA implementation.               
+
+> Parameter Value
+> Cardinal ports + tile injection 5Flit width 512 bit Unicast VCs (VN0) 2Multicast VCs (VN1) 2Per-VC input FIFO depth 8 flits Segment bloom width 256 bit In-flight exact tags 16 entries Bloom refresh interval Wb96 cycles Coalescing window Wcoal 12 cycles PAD Pf/Tm FIFO depth 48 flits
+
+TABLE III: Alveo U280 resource utilization for an 8×8
+
+MESH KV instance (64 tiles; one attention layer). Percentages vs. DS963 device totals.             
+
+> Resource Used Available (%)
+> LUT 613 K 47% FF 820 K 31% BRAM36K (router + control) 768 38% URAM (KV staging SRAM) 512 53% DSP48E2 (MAC arrays) 5 760 64%
+
+SHARED , which distributes blocks with round-robin placement and unicast; T AKV-only, which enables affine placement without multicast; and full M ESH KV. Workloads are LLaMA-2-7B [23] and Mistral-7B [24] at T ∈ { 8192 , 32768 } and 
+
+B ∈ { 1, 4, 8}.Latency, throughput, traffic, and utilization are hardware measurements (95% CIs <3% throughput over five runs). Per-router buffers plus a 256-bit bloom and a 16-entry exact tag table (Table II) require approximately one 18-Kb BRAM equivalent per router. Table III reports implemented router RTL, organized as 8 tiles per quadrant, together with PE and SRAM resources on an 
+
+8×8 Alveo U280 instance. DSP48E2 is the bottleneck; router, bloom, and tag logic use <5% of LUTs. IX. E VALUATION 
+
+A. Interconnect, throughput, and latency 
+
+Table IV reports N OC traffic at T =32K , B=1 , normalized to C ENT . Affine T AKV placement reduces traffic to 0.66 ×.MARE then suppresses redundant head copies, and the full design reaches 0.42 × (58 % reduction). Mistral-7B reaches 
+
+0.40 × because sliding-window attention localizes some fetches. Table V and Figure 1 decompose bisection link cycles. C ENT 
+
+expends nearly half of those cycles on back-pressure ( 19% 
+
+useful KV transfer at T =32K ). M ESH KV converts these links into useful transfer: utilization reaches 61 %, a 2.1×
+
+improvement over S HARED .Figure 5 reports decode throughput at T =32K . At B=1 the speedup is 1.35 × from shorter hops and fewer credit stalls. At B=8 , streams share segment multicast, and the speedup increases to 1.90 ×.TABLE IV: Normalized interconnect traffic (C ENT = 1 .00 ), 
+
+T =32K , B=1 .            
+
+> Model CENT SHARED TAKV-only MESH KV
+> LLaMA-2-7B 1.00 0.81 0.66 0.42
+> Mistral-7B 1.00 0.79 0.63 0.40
+
+TABLE V: Bisection KV bandwidth utilization (%), LLaMA-2-7B.             
+
+> Configuration T=8K T=32K
+> CENT 29 19 SHARED 38 29 TAKV-only 52 41 MESH KV (full) 71 61
+
+Fig. 4 reports per-token latency versus context length (LLaMA-2-7B, B=1 ). C ENT ’s injection queue saturates near 8K tokens, after which latency grows steeply. Under M ESH KV, latency remains approximately linear in T : T AKV distributes load and M ARE reduces duplicate traversals. 4K 8K 16K 32K 
+
+·10 4
+
+0510 15 20 
+
+Context T  
+
+> Latency ( μs)  CENT SHARED MESH KV
+
+Fig. 4: Latency per token vs. context length ( B=1 ). 
+
+B=1 B=4 B=8 012  
+
+> Normalized throughput
+> CENT SHARED MESH KV
+
+Fig. 5: Decode throughput speedup at T =32K , LLaMA-2-7B. 
+
+B. Energy efficiency 
+
+At T =32K , M ESH KV reduces link energy by 48% relative to C ENT : T AKV shortens paths and M ARE eliminates duplicate KV copies, in line with the 58% traffic cut in Table IV. SRAM energy increases 7% because T AKV reads from distributed banks rather than one contiguous array. Net energy per token decreases by 17 % under the activity-based estimate in §VIII. Shared multicast further amortizes the link term at B> 1, where concurrent streams reuse the same KV_DATA tree. 
+
+C. Comparison with prior FPGA decoders 
+
+FPGA LLM accelerators DFX [20] and FlightLLM [21] optimize end-to-end execution and HBM/BRAM management; CXL-SpecKV [22] speculates KV on a disaggregated FPGA. MESH KV implements the on-chip communication substrate for distributed KV movement, not a full FFN-and-norm decoder. Different platforms, mappings, memory systems, and datapaths therefore make absolute latencies incomparable. We report hardware measurements against C ENT and S HARED on the same 8×8 configuration: 58% less interconnect traffic, 2.1×
+
+KV bandwidth utilization over S HARED , and up to 1.9×
+
+throughput at B=8 (Tables IV–V, Figure 5). 
+
+D. Ablation and sensitivity 
+
+Table VI ablates each mechanism at T =32K , B=8 on LLaMA-2-7B (normalized to full M ESH KV). Disabling multi-cast (M ARE unicast) causes the largest regression: throughput falls to 0.62 × and traffic rises to 1.55 ×. Removing dupli-cate suppression and P AD overlap yields 0.82 × and 0.78 ×
+
+throughput, respectively; adaptive T AKV swaps cost 11 –15% 
+
+on skewed prefixes. At dh=128 , P =64 balances T mod P
+
+stragglers and flit overhead. An 8×8 mesh attains 1.9× over CENT , versus 1.4× on a 16 ×4 mesh whose longer multicast trees add hop latency. Wcoal =12 cycles merges 78% of heads at the home tile. TABLE VI: Ablation at T =32K , B=8 , LLaMA-2-7B. Mean ±95% CI over five independent hardware runs; normal-ized to M ESH KV. 
+
+Variant TP Traffic 
+
+MESH KV 1.00 ±0.018 1.00 ±0.027 
+
+−bloom 0.82 ±0.023 1.38 ±0.041 
+
+−TAKV 0.88 ±0.016 1.22 ±0.029 
+
+−PAD 0.78 ±0.025 1.00 ±0.021 
+
+−MARE 0.62 ±0.014 1.55 ±0.044 
+
+CENT 0.53 ±0.012 2.38 ±0.068 
+
+X. C ONCLUSION 
+
+MESH KV recasts decode KV movement as packetized mesh flows via T AKV striping, M ARE multicast, and credit-aligned PAD . Hardware measurements on FPGA datapaths show up to 58% less interconnect traffic, 2.1× KV bandwidth utilization, and 1.9× multi-stream throughput relative to same-platform baselines. As context lengths grow, M ESH KV is a promising communication-aware KV fabric for long-context decode on tiled accelerators. REFERENCES [1] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” in Advances in Neural Information Processing Systems (NeurIPS) , vol. 30, 2017. [2] T. Dao, D. Y. Fu, S. Ermon, A. Rudra, and C. Ré, “FlashAttention: Fast and memory-efficient exact attention with IO-awareness,” in Advances in Neural Information Processing Systems (NeurIPS) , vol. 35, 2022, pp. 16 344–16 359. [3] W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. H. Yu, J. E. Gonzalez, H. Zhang, and I. Stoica, “Efficient memory management for large language model serving with PagedAttention,” in Proceedings of the ACM SIGOPS Symposium on Operating Systems Principles (SOSP) ,2023. [4] Y. Sheng, L. Zheng, B. Yuan, Z. Li, M. Ryabinin, B. Chen, P. Liang, C. Ré, I. Stoica, and C. Zhang, “FlexGen: High-throughput generative inference of large language models with a single GPU,” in International Conference on Machine Learning . PMLR, 2023, pp. 31 094–31 116. [5] D. Liu and Y. Yu, “TinyServe: Query-aware cache selection for efficient LLM serving,” in Proceedings of the 33rd ACM International Conference on Multimedia , 2025, pp. 12 529–12 537. [6] Z. Liu, J. Yuan, H. Jin, S. Zhong, Z. Xu, V. Braverman, B. Chen, and X. Hu, “KIVI: A tuning-free asymmetric 2bit quantization for KV cache,” in International Conference on Machine Learning (ICML) , 2024. [7] C. Hooper, S. Kim, H. Mohammadzadeh, M. W. Mahoney, Y. S. Shao, K. Keutzer, and A. Gholami, “KVQuant: Towards 10 million context length LLM inference with KV cache quantization,” in Advances in Neural Information Processing Systems (NeurIPS) , 2024. [8] Z. Zhang, Y. Sheng, T. Zhou, T. Chen, L. Zheng, R. Cai, Z. Song, Y. Tian, C. Ré, C. Barrett, Z. Wang, and B. Chen, “H 2O: Heavy-hitter oracle for efficient generative inference of large language models,” in Advances in Neural Information Processing Systems (NeurIPS) , vol. 36, 2023. [9] Y. Li, Y. Huang, B. Yang, B. Venkitesh, A. Locatelli, H. Ye, T. Cai, P. Lewis, and D. Chen, “SnapKV: LLM knows what you are looking for before generation,” in Advances in Neural Information Processing Systems (NeurIPS) , 2024. [10] G. Xiao, Y. Tian, B. Chen, S. Han, and M. Lewis, “Efficient streaming language models with attention sinks,” in International Conference on Learning Representations (ICLR) , 2024. [11] D. Liu and Y. Yu, “LLMEasyQuant: Scalable quantization for parallel and distributed LLM inference,” arXiv preprint arXiv:2406.19657 , 2024. [12] T. Dao, “FlashAttention-2: Faster attention with better parallelism and work partitioning,” in International Conference on Learning Representa-tions (ICLR) , 2024. [13] K. Hong, G. Dai, J. Xu, Q. Mao, X. Li, J. Liu, K. Chen, Y. Dong, and Y. Wang, “FlashDecoding++: Faster large language model inference with asynchronization, flat GEMM optimization, and heuristics,” in 
+
+Proceedings of Machine Learning and Systems (MLSys) , 2024. [14] T. J. Ham, Y. Lee, S. H. Seo, S. Kim, H. Choi, S. J. Jung, and J. W. Lee, “ELSA: Hardware-software co-design for efficient, lightweight self-attention mechanism in neural networks,” in International Symposium on Computer Architecture (ISCA) , 2021. [15] H. Wang, Z. Zhang, and S. Han, “SpAtten: Efficient sparse attention architecture with cascade token and head pruning,” in IEEE International Symposium on High Performance Computer Architecture (HPCA) , 2021. [16] L. Benini and G. De Micheli, “Networks on chips: A new SoC paradigm,” 
+
+Computer , vol. 35, no. 1, pp. 70–78, 2002. [17] W. J. Dally and B. Towles, Principles and Practices of Interconnection Networks . Morgan Kaufmann, 2004. [18] C. J. Glass and L. M. Ni, “The turn model for adaptive routing,” in 
+
+International Symposium on Computer Architecture (ISCA) , 1992, pp. 278–287. [19] Y. S. Shao, J. Clemons, R. Venkatesan, B. Zimmer, M. Fojtik, N. Jiang, B. Keller, A. Klinefelter, N. Pinckney, P. Raina, S. G. Tell, Y. Zhang, W. J. Dally, J. S. Emer, C. T. Gray, B. Khailany, and S. W. Keckler, “Simba: Scaling deep-learning inference with multi-chip-module-based architecture,” in 52nd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO) , 2019. [20] S. Hong, S. Moon, J. Kim, S. Lee, M. Kim, D. Lee, and J.-Y. Kim, “DFX: A low-latency multi-FPGA appliance for accelerating transformer-based text generation,” in 55th IEEE/ACM International Symposium on Microarchitecture (MICRO) , 2022. [21] S. Zeng, J. Liu, G. Dai, X. Yang, T. Fu, H. Wang, W. Ma, H. Sun, S. Li, Z. Huang, Y. Dai, J. Li, Z. Wang, R. Zhang, K. Wen, X. Ning, and Y. Wang, “FlightLLM: Efficient large language model inference with a complete mapping flow on FPGAs,” in ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA) , 2024. [22] D. Liu and Y. Yu, “CXL-SpecKV: A disaggregated FPGA speculative KV-cache for datacenter LLM serving,” in Proceedings of the 2026 ACM/SIGDA International Symposium on Field Programmable Gate Arrays , 2026, pp. 56–66. [23] H. Touvron, L. Martin, K. Stone, P. Albert, A. Almahairi, Y. Babaei, N. Bashlykov, S. Batra, P. Bhargava, S. Bhosale et al. , “Llama 2: Open foundation and fine-tuned chat models,” arXiv preprint arXiv:2307.09288 ,2023. [24] A. Q. Jiang, A. Sablayrolles, A. Mensch, C. Bamford, D. S. Chaplot, D. de las Casas, F. Bressand, G. Lengyel, G. Lample, L. Saulnier et al. ,“Mistral 7b,” arXiv preprint arXiv:2310.06825 , 2023.

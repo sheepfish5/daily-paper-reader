@@ -1,107 +1,15 @@
 {
-  "generated_at": "2026-09-17T22:12:17.624397+00:00",
-  "updated_date": "20260917",
+  "generated_at": "2026-09-18T21:58:55.111341+00:00",
+  "updated_date": "20260918",
   "carryover_days": 9,
   "tag_states": {
     "li": {
-      "updated_date": "20260917",
+      "updated_date": "20260918",
       "carryover_days": 9,
-      "items": [
-        {
-          "id": "2609.18675v1",
-          "source": "arxiv",
-          "title": "HBFlex: A Flexible Memory System for Bridging Fine-Grained LLM States and Coarse-Grained HBF Parallel Execution",
-          "abstract": "Large language models (LLMs) require increasing memory capacity to accommodate growing model weights and KV caches. High-Bandwidth Flash (HBF) offers high memory density and aggregate read bandwidth through massive plane-level parallelism, making it an attractive option for LLM serving. However, serving LLMs entirely from HBF introduces three challenges: fine-grained KV reads create placement and access imbalance, incremental writes interfere with foreground reads, and mixed KV lifetimes amplify garbage collection. Hybrid HBM/HBF designs retain HBM to support dynamic KV management, but this allocation reduces the HBF resources available under a fixed packaging budget, limiting aggregate HBF bandwidth.   We present HBFlex, a full-HBF memory system with coordinated optimizations for KV reads, writes, and reclamation. HBFlex balances KV placement and attention accesses to improve plane utilization. It aggregates incremental updates and schedules writeback within sufficiently long compute windows to reduce write--read interference. It also combines lifetime-guided block packing with deferred reclamation to reduce valid-page migration. We evaluate HBFlex through trace-driven simulation across different configurations. HBFlex achieves average throughput speedups of up to 1.58$\\times$ over FlashAccel and 3.30$\\times$ over H3, benefiting from higher HBF bandwidth and more efficient management of dynamic KV-cache reads, writes, and erases.",
-          "authors": [
-            "Shuzhang Zhong",
-            "Weikai Xu",
-            "Yifan Zhou",
-            "Tongbin Zhao",
-            "Tenghao Zhao",
-            "Yifei Kang",
-            "Cunyin Chang",
-            "Shu Li",
-            "Guangyu Sun",
-            "Meng Li"
-          ],
-          "primary_category": "cs.AR",
-          "categories": [
-            "cs.AR"
-          ],
-          "published": "2026-09-16T13:52:28+00:00",
-          "link": "https://arxiv.org/pdf/2609.18675v1",
-          "tags": [
-            "keyword:dse",
-            "keyword:li",
-            "query:dse",
-            "query:li"
-          ],
-          "llm_score": 8.0,
-          "llm_evidence_en": "flexible memory system for KV cache and LLM serving states",
-          "llm_evidence_cn": "面向KV缓存与LLM服务状态的内存系统",
-          "llm_evidence": "面向KV缓存与LLM服务状态的内存系统",
-          "canonical_evidence": "面向KV缓存与LLM服务状态的内存系统",
-          "llm_tldr_en": "HBFlex designs a flexible HBM/HBF memory system to handle fine-grained KV reads, incremental writes, and mixed KV lifetimes, improving aggregate bandwidth for LLM serving memory demands.",
-          "llm_tldr_cn": "大模型推理需要容纳不断增长的模型权重与KV缓存，高带宽闪存（HBF）凭借高密度与大聚合读带宽成为候选，但细粒度KV读、增量写与混合生命周期带来放置失衡、读写干扰与垃圾回收问题。本文提出HBFlex灵活内存系统，协调细粒度LLM状态与粗粒度HBF并行执行，在不牺牲HBF带宽的前提下支持动态KV管理。该工作为LLM服务的KV缓存内存层次设计提供了新方案。",
-          "llm_tldr": "大模型推理需要容纳不断增长的模型权重与KV缓存，高带宽闪存（HBF）凭借高密度与大聚合读带宽成为候选，但细粒度KV读、增量写与混合生命周期带来放置失衡、读写干扰与垃圾回收问题。本文提出HBFlex灵活内存系统，协调细粒度LLM状态与粗粒度HBF并行执行，在不牺牲HBF带宽的前提下支持动态KV管理。该工作为LLM服务的KV缓存内存层次设计提供了新方案。",
-          "llm_tags": [
-            "query:li"
-          ],
-          "matched_query_tag": "query:li",
-          "matched_query_text": "KV cache",
-          "matched_requirement_id": "req-4",
-          "selection_source": "carryover_cache",
-          "paper_id": "2609.18675v1",
-          "carry_days": 1
-        },
-        {
-          "id": "2609.18112v1",
-          "source": "arxiv",
-          "title": "Token Latency Fairness: Performance Isolation for Multi-Tenant LLM Serving",
-          "abstract": "LLM serving is typically offered as a shared, multi-tenant service, where high-demand workloads from one client can cause latency SLO violations for others. Existing solutions for performance isolation equalize client throughput in the long run, for example through queueing and batching fairness. However, these approaches do not provide latency isolation guarantees; as a result, well-behaved clients can still experience significant degradation to their token-level latencies.   In this paper, we present FairInference, which provides the novel δ-token fairness guarantee: for a well-behaved client, if a token is generated in d time units in isolation, it will be generated within d + δ time units in multi-tenant execution, providing strong latency isolation guarantees for LLM serving. To achieve this, FairInference addresses a key challenge of LLM serving: bounding delays from sharing GPU resources without support for fine-grained scheduling or resource allocation. In FairInference, the scheduler enforces per-token deadlines, while bounding the delays from GPU compute sharing and accounting for the additional delays introduced by the shared KV caching in GPU memory. We show that FairInference effectively bounds token-level latency spikes for well-behaved clients and improves overall throughput compared to state-of-the-art LLM serving systems.",
-          "authors": [
-            "Dev Bali",
-            "Soujanya Ponnapalli",
-            "Yichuan Wang",
-            "Natacha Crooks",
-            "Scott Shenker",
-            "Matei Zaharia"
-          ],
-          "primary_category": "cs.DC",
-          "categories": [
-            "cs.DC",
-            "cs.LG"
-          ],
-          "published": "2026-09-16T04:33:08+00:00",
-          "link": "https://arxiv.org/pdf/2609.18112v1",
-          "tags": [
-            "keyword:dse",
-            "keyword:li",
-            "query:dse",
-            "query:li"
-          ],
-          "llm_score": 8.0,
-          "llm_evidence_en": "Multi-tenant LLM serving with token-level latency isolation guarantee",
-          "llm_evidence_cn": "多租户LLM服务的令牌级延迟隔离保证",
-          "llm_evidence": "多租户LLM服务的令牌级延迟隔离保证",
-          "canonical_evidence": "多租户LLM服务的令牌级延迟隔离保证",
-          "llm_tldr_en": "Multi-tenant LLM serving lets heavy clients inflate others token latencies beyond SLOs; FairInference introduces a delta-token fairness guarantee bounding per-token latency inflation, giving strong latency isolation for well-behaved clients.",
-          "llm_tldr_cn": "多租户LLM服务中，高负载客户端会导致其他客户端的令牌级延迟超出SLO，而现有公平方案只均衡长期吞吐，无法提供延迟隔离保证。本文提出FairInference，引入δ-令牌公平性保证：行为良好的客户端在共享执行中每令牌延迟至多比隔离时增加δ。该保证把性能隔离从吞吐层面推进到令牌级延迟层面，为多租户推理提供更强的隔离能力。",
-          "llm_tldr": "多租户LLM服务中，高负载客户端会导致其他客户端的令牌级延迟超出SLO，而现有公平方案只均衡长期吞吐，无法提供延迟隔离保证。本文提出FairInference，引入δ-令牌公平性保证：行为良好的客户端在共享执行中每令牌延迟至多比隔离时增加δ。该保证把性能隔离从吞吐层面推进到令牌级延迟层面，为多租户推理提供更强的隔离能力。",
-          "llm_tags": [
-            "query:li"
-          ],
-          "matched_query_tag": "query:li",
-          "matched_query_text": "LLM serving",
-          "matched_requirement_id": "req-5",
-          "selection_source": "carryover_cache",
-          "paper_id": "2609.18112v1",
-          "carry_days": 1
-        }
-      ]
+      "items": []
     },
     "dse": {
-      "updated_date": "20260917",
+      "updated_date": "20260918",
       "carryover_days": 9,
       "items": []
     }

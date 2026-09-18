@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-17</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-18</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 11 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>6</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-17 22:23:59 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-18 22:06:31 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读7篇、速读12篇共19篇，长上下文LLM推理加速成为最大热点。最值得看的是ASPIRE异步批处理自推测解码（10.0分）与分离式LLM服务中学习型请求路由的实测校准（9.0分）。建议普通读者优先从ASPIRE入手，理解&quot;自推测解码+批处理&quot;如何兼顾长文本吞吐与延迟。</p>
+<p>今日扫读 11 篇（精读 6、速读 5），重点落在 LLM 推理加速与 KV Cache、首 token 时延这两条硬骨头上。最值得看的是 MeshKV 用片上网络做 KV Cache 织构（9.0），以及 PrefixBench-H100 对 H100 上前缀复用与首 token 时延的实测刻画（9.0）。普通读者若时间有限，可先读这两篇的结论图，再顺带看 SiliconBench 对比统一内存桌面端的速度与显存取舍。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">6 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ASPIRE: Asynchronous Batched Self-Speculative Decoding for Long-Context LLM Inference">ASPIRE: Asynchronous Batched Self-Speculative Decoding for Long-Context LLM Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="Calibrate, Then Route: A Measured Study of Learned Request Routing for Disaggregated LLM Serving">Calibrate, Then Route: A Measured Study of Learned Request Routing for Disaggregated LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="Where Should the KV Cache Live? Placement Policies Across GPU, CPU, and SSD for Long-Lived Sessions">Where Should the KV Cache Live? Placement Policies Across GPU, CPU, and SSD for Long-Lived Sessions</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="MeshKV: A Network-on-Chip KV Cache Fabric for Scalable Transformer Decoding Accelerators">MeshKV: A Network-on-Chip KV Cache Fabric for Scalable Transformer Decoding Accelerators</span></li><li><span class="dpr-home-dashboard-paper-title" title="PrefixBench-H100: Characterizing Prefix Reuse and Time-to-First-Token in H100 LLM Serving">PrefixBench-H100: Characterizing Prefix Reuse and Time-to-First-Token in H100 LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="D-Quant: Driftable Entropy Coding for KV Cache Quantization">D-Quant: Driftable Entropy Coding for KV Cache Quantization</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>7</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>6</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">12 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="KVShareArena: KV-Cache Reuse Across Contexts and Model Checkpoints">KVShareArena: KV-Cache Reuse Across Contexts and Model Checkpoints</span></li><li><span class="dpr-home-dashboard-paper-title" title="FINNAS: FINN-Guided Hardware-Aware NAS and Pruning for FPGA Jet Substructure Classification">FINNAS: FINN-Guided Hardware-Aware NAS and Pruning for FPGA Jet Substructure Classification</span></li><li><span class="dpr-home-dashboard-paper-title" title="PipeSwift: Revisiting Pipeline Parallelism for Large-Scale Completion-Oriented Agentic LLM Serving">PipeSwift: Revisiting Pipeline Parallelism for Large-Scale Completion-Oriented Agentic LLM Serving</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="SiliconBench: Speed, Memory, and Fidelity for LLM Serving on Unified-Memory Desktops">SiliconBench: Speed, Memory, and Fidelity for LLM Serving on Unified-Memory Desktops</span></li><li><span class="dpr-home-dashboard-paper-title" title="Understanding and Exploiting Diagonal Attention Sparsity in Autoregressive Image Generation">Understanding and Exploiting Diagonal Attention Sparsity in Autoregressive Image Generation</span></li><li><span class="dpr-home-dashboard-paper-title" title="CovR: Coverage-Aware Hardware Verification via Reasoning-Guided Reinforcement Learning">CovR: Coverage-Aware Hardware Verification via Reasoning-Guided Reinforcement Learning</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>8</strong></span><span class="dpr-home-dashboard-tag">dse <strong>4</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span><span class="dpr-home-dashboard-tag">li <strong>2</strong></span></div>
 </section>
 </div>
 
