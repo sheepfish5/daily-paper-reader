@@ -1,0 +1,436 @@
+Title: Locus: A Framework for Exploring and Optimizing Point Addition Hardware for Zero-Knowledge Proofs
+
+URL Source: https://arxiv.org/pdf/2609.18846v1
+
+Published Time: Thu, 17 Sep 2026 01:24:37 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Locus: A Framework for Exploring and Optimizing Point Addition Hardware for Zero-Knowledge Proofs 
+
+# Gaurav Kuwar, Alhad Daftardar, Jianqiao Mo, Siddharth Garg, and Brandon Reagen 
+
+New York University Tandon School of Engineering Brooklyn, NY, USA {gk2657, ajd9396, jm8782, sg175, bjr5}@nyu.edu 
+
+## Abstract 
+
+Zero-Knowledge Proofs (ZKPs) are critical for privacy-preserving and verifiable computation, but their cryptographic primitives im-pose high computational overheads. One such primitive is point addition (PADD) on elliptic curves. Several prior works have im-plemented PADDs in hardware, but only for a few specific elliptic curves and design points, leaving a large design space unexplored, and lacking systematic guidance on hardware design trade-offs. To address this gap, we present Locus , a framework dedicated to optimizing and exploring point addition hardware. Given the pa-rameters of any elliptic curve in a supported equation form, Locus automatically generates ASIC and FPGA implementations of PADD, enabling systematic exploration of the PADD design space. Using Locus, we conduct the first comprehensive hardware-focused study of PADD designs, exploring trade-offs over 1,000 design points. On a 12nm technology node, our framework produces PADD designs that yield a 2 .71 × geomean speedup and 3 .11 × geomean area re-duction compared to prior ASICs, 34 .67 × geomean speedup over CPU, and 3 .15 × geomean speedup on end-to-end proof generation when integrated into a prior ZKP accelerator at iso-area. Locus is available at https://github.com/cryptolets/cryptolets/tree/locus. 
+
+## CCS Concepts 
+
+• Hardware → High-level and register-transfer level synthe-sis ; • Security and privacy → Cryptography .
+
+## Keywords 
+
+Zero-Knowledge Proofs, Cryptography, Hardware Acceleration 
+
+ACM Reference Format: 
+
+Gaurav Kuwar, Alhad Daftardar, Jianqiao Mo, Siddharth Garg, and Brandon Reagen. 2026. Locus: A Framework for Exploring and Optimizing Point Addition Hardware for Zero-Knowledge Proofs. In IEEE/ACM International Conference on Computer-Aided Design (ICCAD ’26), November 08–12, 2026, San Jose, CA, USA. ACM, New York, NY, USA, 9 pages. https://doi.org/10. 1145/3831252.3834141 
+
+## 1 Introduction 
+
+Zero-Knowledge Proofs [5] are cryptographic protocols that enable a prover to convince a verifier that a computation was carried out correctly, without revealing any information about the private in-puts. ZKPs have emerged as a key primitive for applications like                
+
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> ICCAD ’26, San Jose, CA, USA
+> © 2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2873-0/2026/11 https://doi.org/10.1145/3831252.3834141 PipeZK SZKP zkSpeed zkPHIRE 020 40 60 80 100
+> Runtime (%)
+> 76% 89% 71% 63%
+> PipeZK SZKP zkSpeed zkPHIRE 020 40 60 80 100
+> Compute Area (%)
+> 68% 71% 65% 58% MSM NTT Sumcheck Other
+
+Figure 1: MSM Runtime and Compute Area breakdown in prior end-to-end ZKP accelerators at iso-problem-size ( 220 ). MSM clearly dominates in both area and runtime. BLS12-377  
+
+> BN254
+> BLS12-381
+> MNT4753
+> Secp256k1
+> Ed25519
+> Ed448
+> Short Weierstrass Twisted
+> Edwards
+> Zero-Knowledge Proofs
+> Cryptocurrency/Bitcoin
+> Digital Signatures
+> Applications
+
+Figure 2: Curves grouped by equation form and applications. 
+
+confidential payments, rollups and validity proofs in blockchains, verifiable outsourced computation, and privacy-preserving machine learning [11]. As these deployments scale, prover-side cost (i.e., latency, energy, and hardware resources) quickly becomes a bottle-neck, motivating dedicated hardware acceleration. A core operation in many ZKP constructions [6, 13, 35] is the commitment scheme. This allows a prover to commit to a polyno-mial (which encodes the computation being proven) and later open it at points chosen by the verifier. Pairing-based SNARKs such as Groth16 [13], as well as popular commitment schemes such as KZG [17] (used by HyperPlonk [6]) and Hyrax [34], require evaluating linear combinations of elliptic curve points, implemented as multi-scalar multiplications (MSM). Prior system-level profiling shows that MSM consistently dominates both proving time (60–90% of runtime) and compute area (more than half) in ZKP hardware accel-erators [7–9, 22, 39], as shown in Figure 1. The MSM itself is built from elliptic-curve point additions (PADD). PADDs are expensive, each typically requiring tens of field multiplications [1, 7–9, 18, 39]. In practical ZKP workloads, MSM sizes routinely exceed 2 20 points or more, meaning the prover performs millions of PADD operations. In zkSpeed, for example, MSMs incur 4 billion field multiplications [7]. Consequently, ZKP provers spend the majority of their time, energy, and area inside these repeated PADD operations. Therefore, understanding and optimizing PADD performance is critical for scaling future ZKP systems. As shown in Figure 2, elliptic-curve point addition (PADD) is a fundamental building block not only in ZKPs but also in blockchain signature verification (e.g., BLS, ECDSA), secure messaging, and arXiv:2609.18846v1 [cs.AR] 16 Sep 2026 ICCAD ’26, November 08–12, 2026, San Jose, CA, USA Gaurav Kuwar, Alhad Daftardar, Jianqiao Mo, Siddharth Garg, and Brandon Reagen 
+
+key-exchange protocols. Despite this broad relevance, prior hard-ware accelerators typically develop one highly specialized PADD design per curve. These implementations provide useful curve-specific optimizations for ASIC [7–9, 18, 39] and FPGA [1, 28, 29, 40] but offer no unified methodology for exploring microarchitectural trade-offs across curves, design choices, or hardware targets. This fragmentation is increasingly limiting. While cryptographic algorithms are often compared using asymptotic complexity, real hardware behavior depends on additional factors (including pipeline depth, area, and on-chip memory) that asymptotic models do not capture. As a result, theoretical cost alone cannot predict the ac-tual performance of PADD in modern architectures, and design-ers lack a hardware-grounded way to reason about curve- and microarchitecture-level choices. To address this gap, we introduce Locus , a framework for explor-ing and optimizing point addition and MSM hardware for ZKPs and other elliptic-curve applications. Locus implements highly op-timized primitives to construct efficient PADD units, systematically characterizes the PADD design space across many curves and mi-croarchitectural choices, and generates synthesizable RTL for ASIC and FPGA backends. Locus makes the following contributions: 
+
+• We perform the first systematic hardware-centric study of elliptic-curve point addition across a broad set of select curves used in ZKPs, blockchain validation, and digital signatures. Locus ex-plores over 1,000 design points by sweeping key PADD-specific design optimizations such as multiplier decomposition, system-atic fixing of constants, etc. 
+
+• We provide an extensible toolchain that takes curve parameters and design configurations as input, automatically generating RTL with comparable ASIC/FPGA metrics and enabling rapid exploration of curve- and microarchitecture-level choices. 
+
+• We integrate Locus PADDs into full MSM pipelines and a prior end-to-end ZKP accelerator to evaluate system-level behavior under large ZKP workloads, showing how PADD-level optimiza-tions translate to improved MSM and proving performance. 
+
+• We generate PADD designs with 2.71 × geomean speedup and 3.11 × area reduction over prior ASICs, 34 .67 × geomean speedup over CPU, 2 .72 × speedup over prior ASIC MSMs at iso-area, and 3.15 × geomean speedup on end-to-end proof generation when integrated into a prior ZKP accelerator at iso-area. 
+
+## 2 Background 2.1 Elliptic Curves 
+
+Elliptic curves are sets of points (𝑥, 𝑦 ) over a finite field F𝑞 (where 𝑞 
+
+is a large prime) defined by a non-singular algebraic equation. Two common equation forms in cryptography are Short Weierstrass: 
+
+𝑦 2 = 𝑥 3 + 𝑎𝑥 + 𝑏 , and Twisted Edwards: 𝑎𝑥 2 + 𝑦 2 = 1 + 𝑑𝑥 2𝑦 2.Our framework provides plug-and-play support for both forms and is easily extensible to others. Cryptographers have established standardized named curves , each with a purposefully chosen prime field modulus 𝑞 and curve coefficients, whose security has been extensively studied. Therefore, although Locus supports any curve in these forms (and is extensible to other forms), in this paper, we focus our evaluation on a set of these standardized and relevant named curves spanning both forms, as shown in Figure 2. 
+
+## 2.2 Multi-Scalar Multiplication 
+
+MSMs are dot products between a vector of scalars and a vector of 2D/3D points on an elliptic curve. MSMs are expensive because point multiplication is achieved by repeated point addition, and the scalars are typically 256 - 753 bits. Pippenger’s Algorithm [27] is often used to reduce the computational cost by partitioning scalar multiplications across parallel windows , or chunks of wide scalars, followed by combining reduction steps. Several prior works use this technique [1, 7–9, 15, 18, 18–20, 29, 33, 36, 39, 40]. However, elliptic-curve point coordinates are also 256 - 753 bits, requiring expensive large-bitwidth modular arithmetic for a single point addition. 
+
+## 2.3 Point Addition 
+
+Point addition on an elliptic curve is geometrically defined as fol-lows: given two distinct points 𝑃 (𝑥, 𝑦 ) and 𝑄 (𝑥, 𝑦 ), draw a line through them; it intersects the curve at a third point −𝑅 , and 
+
+𝑅 = 𝑃 + 𝑄 is the reflection of −𝑅 over the 𝑥 -axis. In the case where 
+
+𝑃 = 𝑄 , we must perform a different operation called point doubling (PDBL), which uses the tangent line at 𝑃 instead. The standard point addition formula, using affine coordinates 
+
+(𝑥, 𝑦 ), requires a computationally expensive modular inversion. To avoid this cost, points can be transformed into alternative coordi-nate systems that trade the inversion for additional, but relatively cheaper, modular multiplications. This transformation modifies the algebraic formulas for addition and doubling. We implement Short Weierstrass curves in Jacobian coordinates (𝑋, 𝑌, 𝑍 ) and Twisted Edwards curves in Extended Projective coordinates (𝑋, 𝑌, 𝑍,𝑇 ),each requiring its own formula. For these formulas, we reference the Explicit-Formulas Database [4], which catalogs efficient point addition formulas across coordinate systems. Most ZKP protocols use Short Weierstrass curves, whose point addition formulas distinguish addition and doubling, necessitat-ing runtime branching and an equality check. On the other hand, Twisted Edwards curves tend to use unified addition formulas, which use less modular multiplications. Prior works [1, 18, 19, 29, 40] leverage birational equivalence , a mapping that allows BLS12-377 (a popular Short Weierstrass curve for ZKPs) to be expressed in the more efficient Twisted Edwards form. We denote this variant as BLS12-377* throughout the paper. 
+
+## 2.4 Related Work 
+
+Prior works on MSM acceleration optimize PADD units using curve-specific multiplier configurations. Several target FPGAs; MSMAC [28] applies Karatsuba multipliers for the BN254 (or BN128) curve on FPGA, while CycloneMSM, HardcamlMSM, and BSTMSM im-plement BLS12-377* PADDs using Karatsuba and constant multi-pliers [1, 29, 40]. Others use ASIC techniques. PriorMSM [18] uses Karatsuba-based PADDs for the BLS12-377* curve, while SZKP [9] and zkSpeed [7] use high-level synthesis tools to synthesize curve-specific PADDs for BN254, MNT4753, and BLS12-381. PipeZK [39] targets the same curves with custom, hand-tuned PADDs. Each of these works consequently builds MSM accelerators around a particular hand-tuned PADD configuration, leaving lim-ited exploration of alternative PADD microarchitectures that may offer different trade-offs in latency, area, and throughput. As a result, the broader PADD design space—and its impact on MSM efficiency—has not been systematically characterized. Locus: A Framework for Exploring and Optimizing Point Addition Hardware for Zero-Knowledge Proofs ICCAD ’26, November 08–12, 2026, San Jose, CA, USA 
+
+## 3 The Locus Framework 
+
+Locus is an extensible, plug-and-play framework for generating op-timized PADD designs across elliptic-curve equation forms and any 
+
+curve parameters. Users can simply provide the sweep specification and curve parameters in configuration files. Locus automates the entire flow, from design generation to verification and performance analysis, while evaluating multiple designs in parallel across avail-able CPU threads to enable large-scale design-space exploration. The framework’s modular structure allows easy extension to other equation forms and future development. Locus is built on top of High-Level Synthesis (HLS), specifically Catapult HLS, which converts high-level languages into Register-Transfer Level (RTL) hardware description languages. Prior ZKP accelerators [7–9] also use HLS, but largely treat it as a black box: they rely on default flows and built-in primitives (e.g., Catapult’s native multipliers) to obtain rough area estimates, leaving signifi-cant performance on the table. In contrast, Locus implements its own optimized cryptographic primitives, including large-bitwidth multipliers, modular arithmetic, and point addition units, as pa-rameterized HLS source code. This allows us to expose core mi-croarchitectural choices as explicit design knobs and apply targeted HLS-level optimizations, producing designs that are significantly more efficient than prior works. Point addition is a directed acyclic graph (DAG) of modular multiplications, additions, and subtractions. Among these, modular multiplication (Modmul) dominates the area and latency of the PADD unit, as well as other cryptographic workloads [10, 26, 30, 32]. Locus targets the key bottlenecks within Modmul, enabling it to compose highly optimized PADDs. 
+
+## 3.1 Addressing the Multiplier Bottleneck 
+
+A direct Modmul ( (𝐴 × 𝐵 ) mod 𝑞 ) requires an expensive division to reduce modulo 𝑞 . Montgomery [24] and Barrett [3] reduction are two standard algorithms that eliminate this division. Locus im-plements both as separate kernels. Montgomery reduction uses a precomputed constant 𝑞 ′ and requires operands to be in the Mont-gomery domain, while Barrett requires only a precomputed con-stant 𝜇 , but using a multiplier with 2 × the Modmul operand bitwidth. Each exposes different area and latency trade-offs depending on the modulus 𝑞 , so Locus exposes the choice as a design knob. Even with an optimized reduction algorithm, each Modmul still requires three large-bitwidth integer multiplications, which remain the critical hardware bottleneck. 
+
+3.1.1 Decomposed Multipliers. Karatsuba [16] and Schoolbook are techniques that decompose large multiplications into smaller partial products using algebraic identities. Schoolbook splits each operand into two halves, producing four partial products. Karatsuba re-duces this to three , trading one multiplication for two additions and two subtractions. These decompositions can be applied recur-sively, breaking partial products down further at each level. While Karatsuba achieves lower area due to fewer partial products, the ad-ditional additions and subtractions typically result in higher latency, as they lie on the critical path. Moreover, decomposition cannot be applied indefinitely; each level adds recombination overhead (additions, shifts, adder trees), and beyond a certain recursive depth, area can actually increase. At the same time, Schoolbook is not Recursive 
+
+> Programming
+> Model
+> Compile
+> Hardware
+> Product
+> Adder
+> Tree
+> Base
+> Muls
+
+Figure 3: Decomposed Karatsuba Multiplier for operand width 𝜆 = 256 bits at Karatsuba Depth = 2 and Base Width = 64 bits. We include details on how deeper levels’ multiplier bitwidths are derived mathematically. 
+
+always the fastest choice: depending on the bitwidth and timing constraints, Karatsuba at a specific depth can match Schoolbook’s latency while using less area. The optimal depth and decomposition strategy therefore depends on operand bitwidth. Since different curves operate at different bitwidths, a fixed choice could be sub-optimal across curves, motivating Locus to expose these as design knobs. While prior works [1, 18, 20, 28, 29, 40] use these techniques, they rely on static, hand-picked configurations. To address these challenges, Locus implements custom param-eterized multipliers using a 3-layer recursive model, where each layer uses a different decomposition strategy: Karatsuba → School-book → Baseline (Catapult’s native multiplier). Starting from the top level, Locus applies Karatsuba decomposition for the config-ured number of recursion levels ( Karatsuba Depth ), then switches to Schoolbook, and finally to Baseline multipliers once operands reach a configurable Base Width (⪅ 64 bits for ASICs), where Cata-pult’s native multipliers are generally efficient. A Karatsuba Depth 
+
+of 0 corresponds to pure Schoolbook decomposition, with higher depth progressively reducing the number of partial products. Locus exposes both Karatsuba Depth and Base Width as explicit design knobs. Figure 3 shows how this model is compiled into a hybrid Karatsuba multiplier, with baseline multipliers in parallel followed by a pipelined adder tree at the hardware level. Squaring ( 𝐴 × 𝐴 ) similarly reduces partial products without the additional overhead of Karatsuba, by exploiting the symmetry of equal operands. Locus adds a squaring layer on top of the existing 3-layer multiplier model, generating optimized squaring primitives that compose into Modular Squaring (Modsq) units. This is particu-larly valuable since approximately one-third of operations in Short Weierstrass PADD formulas are Modsqs. 
+
+3.1.2 Constant Multipliers. Two out of the three multiplications in a Modmul involve constant parameters. When these constants are known at design time, the corresponding variable multiplier can be replaced with a constant multiplier, which uses the shift-add method, where multiplications by 0-bits in the constant are com-piled away, hence lower Hamming weight constants produce more efficient hardware. Non-Adjacent Form (NAF) encoding, a signed-bit representation that minimizes the number of non-zero digits, further reduces the Hamming weight. For low latency, these con-stant multipliers are implemented as adder trees. Locus leverages Catapult’s native support for constant multiplier generation. We denote replacing a variable multiplier with a constant multiplier as 
+
+fixing that parameter, and variable otherwise. Whether to fix a con-stant is not a straightforward choice: depending on the parameter’s ICCAD ’26, November 08–12, 2026, San Jose, CA, USA Gaurav Kuwar, Alhad Daftardar, Jianqiao Mo, Siddharth Garg, and Brandon Reagen 
+
+Hamming weight, the area and latency of the constant multiplier can vary. This makes the optimal fixing strategy curve-dependent, motivating Locus to expose it as a design knob. Additionally, PADD formulas sometimes involve multiplication by curve coefficients ( 𝑎 ,
+
+𝑑 , 𝑘 = 2𝑑 ), which can additionally be fixed. In total, Locus exposes the reduction constants ( 𝑞 ′, 𝜇 ), the prime modulus ( 𝑞 ), and the curve coefficients ( 𝑎 , 𝑑 , 𝑘 ) each independently as fixed or variable .
+
+3.1.3 HLS Optimizations. In decomposed multipliers, adder trees dominate latency, and constant multipliers rely entirely on adder trees. Catapult HLS has a Clustering feature that replaces regular adders with Carry Save Adders (CSAs) with much lower, and con-stant latencies across bitwidths at only moderate area costs. We find that PADDs with CSAs achieve up to 1 .5× speedup. 
+
+## 3.2 Multi-Precision 
+
+Multi-precision arithmetic is an alternative approach where one or more smaller, shared word width arithmetic units are used to com-pute larger bitwidth arithmetic, as opposed to full-bitwidth single-precision . This provides large area savings, but with a heavy latency and throughput penalty. CPUs [12, 38] and GPUs [37] use multi-precision for cryptographic arithmetic. In Locus, we implement textbook [21] multi-precision modular primitives for comparison. 
+
+## 3.3 The Point Addition Unit 
+
+With Locus’s optimized modular arithmetic primitives in place, Lo-cus composes them into complete PADD and PDBL units, where all design knobs come together. Each PADD formula is implemented using these primitives, supporting both single-precision and multi-precision designs. For each curve and configuration, Locus gener-ates a PADD design with area and latency metrics, enabling design-space exploration across curves to identify optimal configurations. 
+
+## 3.4 Optimizing MSM Performance 
+
+With optimized PADD and PDBL units in hand—the core building blocks for MSM acceleration—Locus evaluates their impact on end-to-end MSM performance. We first identify Pareto-optimal PADDs from the design space and use their area and latency metrics in a lightweight analytical MSM model. Algorithm 1 presents a simpli-fied, first-order latency model for dense Pippenger MSMs following SZKP’s architecture [9]. The model assumes uniform scalars and an SZKP-style scheduler that serially accumulates bucket partial sums; it does not explicitly model more aggressive priority-based or greedy scheduling strategies [18, 20, 39]. The algorithm parame-ters are the scalar bitwidth 𝜆 (set by the curve), the window size 
+
+𝑤 , and the number of points 𝑃 . The hardware parameters are the number of parallel MSM PEs 𝐾 and the pipeline depths 𝑡 add and 𝑡 dbl 
+
+of the PADD and PDBL units. Setting all three to 1 estimates the 
+
+Algorithm 1 MSM Latency Model  
+
+> 1:
+
+𝑇 sort = 𝑃 · 𝜆 /𝑤 𝐾 ⊲ Bucket Sorting  
+
+> 2:
+
+𝑇 br = (2𝑡 add · ( 2𝑤 − 1)) · 𝜆 /𝑤 𝐾 ⊲ Bucket Reduction  
+
+> 3:
+
+𝑇 wr = (𝐾 · 𝑤 · 𝑡 dbl ) · 𝜆 /𝑤 𝐾 ⊲ Window Reduction  
+
+> 4:
+
+𝑇 = 𝑇 sort + 𝑇 br + 𝑇 wr ⊲ Total  
+
+> 5:
+
+Find 𝑤 ∗ = arg min 𝑤 𝑇 (𝑤, 𝑃, 𝜆, 𝐾, 𝑡 𝑎𝑑𝑑 , 𝑡 𝑑𝑏𝑙 )
+
+Table 1: PADD Design Space for ASIC Design Setting Values          
+
+> Curve Type BN254, BLS12-377, BLS12-381, MNT4753, Secp256k1, Ed25519, Ed448, BLS12-377* Modmul Algorithm Montgomery, Barrett Multiplier Type Baseline, Schoolbook, Karatsuba Karatsuba Depth 1, 2, 3, 4 Prime ( 𝑞 ) Type Fixed, Variable Reduction Const Type Fixed, Variable Equation Coefficient Type Fixed, Variable Precision Type Single-Precision, Multi-Precision Multi-Prec word width 16, 32, 64, 128
+
+number of PADD operations required by the MSM. Lastly, while Al-gorithm 1 shows only the compute-side formulation, our evaluation accounts for memory bandwidth; prior work reports 30–80 GB/s bandwidth demand and finds these MSMs remain compute-bound under DDR/HBM constraints [7–9]. In MSM architectures, the optimal window size 𝑤 ∗ is often cho-sen to minimize PADD operations. While sorting dominates, 𝑤 
+
+cannot be made arbitrarily large: increasing 𝑤 reduces the number of windows but exponentially increases bucket-reduction work. The optimal 𝑤 ∗ shifts when latency costs (e.g., 𝑡 add , 𝑡 dbl ) and area constraints are included, motivating a hardware-aware search. MSM accelerators typically select the window size after con-structing the MSM architecture and running time-consuming, cycle-accurate simulations over workloads of length 2 20 –2 24 points [1, 7, 9, 18, 20, 29, 40]. Because these evaluations already sweep a large parameter space (e.g., window size and number of PEs), prior works generally evaluate a single PADD design, often specialized to a par-ticular curve, leaving PADD microarchitectural variation largely unexplored. In contrast, our analytical model prunes over 10 ,000 MSM configurations in under 10 seconds and remains within 5% of cycle-accurate simulation for the evaluated SZKP-style configu-rations. Pareto-optimal candidates are then validated with cycle-accurate simulation and synthesis, enabling a substantially larger joint algorithm–hardware search. 
+
+## 4 Experimental Setup 
+
+Using Locus, we perform a comprehensive design space sweep across parameter combinations shown in Table 1. Locus supports Initiation Interval (II) > 1 designs, but we focus our evaluation on fully-pipelined II = 1 designs for single-precision implementations. For baseline PADDs, we use baseline (Catapult’s native) multipliers and keep all constants variable, as in prior works [9]. 
+
+ASIC Implementation. We use Siemens Catapult HLS 2025.1 with a GF 12nm library for all PADD designs, targeting a 1 GHz clock (except designs with baseline multiplier designs at ≥ 512 bits, clocked at 667 MHz). We use Synopsys Design Compiler 2026.03 for area and power estimates. For MSM experiments, we use the latency model from Algorithm 1 together with on-chip memory area estimates from the GF12 SRAM compiler to perform the initial design-space sweeps. We validate selected design points using cycle-accurate simulation following the methodology of [9, 23], and find our model is within 5% of actual latency. 
+
+FPGA Implementation. We use Vivado v2024.2 for RTL syn-thesis at varying clock speeds. All designs are evaluated on two Locus: A Framework for Exploring and Optimizing Point Addition Hardware for Zero-Knowledge Proofs ICCAD ’26, November 08–12, 2026, San Jose, CA, USA 
+
+representative AMD-Xilinx FPGA platforms: Versal HBM (VH1782) for state-of-the-art capabilities, and UltraScale+ (VU9P) for com-parison with established literature benchmarks. 
+
+Testing and Verification. Locus validates all generated designs, including PADD units and all primitives (modular and integer arith-metic units), against software reference implementations within a custom cryptographic library. The library is implemented in Python and generates cryptographically sound random and edge-case in-puts for each kernel. This verification is fully integrated into Locus’s automated pipeline, which generates a configurable number of test samples with golden models and verifies both the C++ HLS source code with the Open SystemC Initiative (OSCI) flow and generated RTL with Siemens QuestaSim 2026.2. All designs in our evaluation have been validated through this pipeline using 1,000 samples. 
+
+## 5 Evaluation Results 
+
+In this section, we explore the PADD design space, optimizations, and insights on ASIC designs. We quantify the impact of each optimization through an ablation study and by analyzing key design knobs in isolation. We then compare against prior ASIC, FPGA, and CPU implementations and showcase rapid exploration of optimized PADD formulas. Finally, we conduct a case study on MSM, and evaluate on an end-to-end ZKP accelerator using Locus PADDs. 
+
+## 5.1 Pareto Space Analysis 
+
+Figure 4 shows the large design space for all fully-pipelined, single-precision PADDs across named curves, highlighting Locus’s ability to explore this space and identify Pareto-optimal designs. We an-alyze Montgomery and Barrett Modmul types separately, finding Pareto-optimal points for each. Montgomery-based designs always yield the fastest implemen-tation across all evaluated curves and also produce smaller designs for the majority of cases (5 of 8). However, for a select few curves (Ed25519 and Secp256k1), Barrett achieves roughly 30% smaller designs compared to Montgomery. This is largely due to the curve’s prime modulus, which yields a Barrett reduction constant ( 𝜇 ) with a lower NAF Hamming weight than Montgomery’s ( 𝑞 ′), and therefore a more area-efficient constant multiplier. When comparing the fastest and smallest Pareto-optimal de-signs, several curves exhibit proportional area-latency trade-offs. However, certain curves deviate from this trend. For BLS12-377 and BLS12-381 using Montgomery Modmuls, the trade-off favors the fastest design: we achieve more speedup (42% and 58%) compared 
+
+Table 2: Design Knobs for Best Performance Designs 
+
+Curve Montgomery Barrett Fastest Smallest Fastest Smallest ct qt rct kar ct qt rct kar ct qt rct kar ct qt rct kar 
+
+BN254 - F V 0 - V F 2 - V F 0 - V F 2BLS12-377 - F F 2 - V F 3 - F F 2 - V F 3BLS12-381 - F F 2 - V F 3 - F F 2 - V F 3MNT4753 - V F 0 - V F 4 - F F 3 - V V 4Secp256k1 - F V 0 - F F 2 - F F 0 - F F 2Ed25519 F F F 1 F F F 2 F F F 0 V F F 2BLS12-377 ∗ F F F 2 V V F 3 F F F 2 V V F 3Ed448 F F F 1 F F F 3 F F F 2 F F F 3
+
+ct =curve coefficient type, qt =prime q type, rct =reduction constant type, 
+
+V=variable, F=fixed, kar =karatsuba depth. 10 20 30 40 50 60 70 80 
+
+Latency (ns)  
+
+> 10 0
+> 10 1
+> Log Area (mm²)
+> ModMul Type Montgomery Barrett Curve BLS12-377 BLS12-381 BN254 MNT4753 Secp256k1 BLS12-377 *
+> Ed25519 Ed448
+
+Figure 4: Design Space of PADD across named curves with Pareto-optimal points highlighted. 
+
+to area increase (10% and 20%). Conversely, for MNT4753 using Montgomery Modmuls, the trade-off favors the smallest design. Table 2 shows which settings yield optimal designs. We find that Schoolbook doesn’t always result in the fastest optimal de-sign, but low to mid range Karatsuba depth does. The smallest designs consistently use the deepest Karatsuba depth available for the curve’s bitwidth. The curve- and reduction- specific constants have an impact on optimal Karatsuba depth: for Ed25519, Ed448, and MNT4753, the Karatsuba depth differs for the fastest designs across Montgomery and Barrett Modmuls. For Barrett, fixed reduc-tion constants always result in the fastest designs because Barrett reduction constants are 2 × the bitwidth of the target datatype. 
+
+## 5.2 Design Choices and Their Impact 
+
+In this section, we analyze the impact of Locus’s key design choices on PADD performance. We begin with an ablation study showing how each optimization cumulatively contributes to the performance of optimal PADDs. We then examine Karatsuba depth and constant-fixing independently, isolating their individual impact. Finally, we compare single- and multi-precision designs. 
+
+5.2.1 Ablation Study. Figure 5 shows the cumulative impact of each optimization on the fastest and smallest Locus PADDs. Optimized multipliers contribute the majority of gains in both latency and area across all curves, achieving roughly 2 × speedup and area 025 50 75      
+
+> Latency (ns)
+> 1.9× 2.0× 2.0× 1.9× 2.0× 2.7× 2.3× 2.6× 2.6× 2.2× 2.7× 3.4× 1.6× 1.5× 1.5× 1.6× 1.4× 2.0× 1.8× 1.9× 1.7× 1.8× 2.3× 3.0×
+> 050 100 150
+> 2.9× 3.3× 2.1× 2.5×
+> BN254 BLS12-377 BLS12-381 Secp256k1 Ed25519 Ed448
+> 0510
+> Area (mm 2)
+> 2.4× 1.9× 1.9× 2.4× 2.3× 1.9× 2.3× 2.9× 2.5× 2.2× 3.8× 6.0× 2.6× 2.8× 2.8× 2.8× 2.5× 2.9× 2.9× 3.3× 3.1× 4.6× 4.1× 7.9×
+> Baseline + Opt. Mult. + Opt. Const Fixing Fastest Smallest
+> MNT4753
+> 020 40
+> 1.8× 1.9× 3.0× 3.2×
+
+Figure 5: Ablation Study: latency and area for each optimiza-tion applied cumulatively over the baseline, for fastest and smallest Locus PADDs. Annotations show speedups and area reductions with respect to the baseline. ICCAD ’26, November 08–12, 2026, San Jose, CA, USA Gaurav Kuwar, Alhad Daftardar, Jianqiao Mo, Siddharth Garg, and Brandon Reagen 254 381 384     
+
+> 10 2
+> 10 3
+> Log ADP (mm 2 × ns)  Montgomery
+> 254 381 384
+> Barrett
+> 753 768
+> 10 3
+> 10 4
+> Montgomery
+> 753 768
+> Barrett
+> Bitwidth
+> baseline kar=0 kar=1 kar=2 kar=3 kar=4
+
+Figure 6: Area × Delay across bitwidths for Montgomery & Barrett PADDs over Karatsuba depths (kar), with all constants variable, with baseline for comparison. 020 40                   
+
+> Latency (ns)  coef var coef fixed
+> 025 50
+> BN254 BLS12-377 BLS12-381 Secp256k1 Ed25519 Ed448
+> 05
+> Area (mm 2) qvar, q0var
+> qvar, q0fixed
+> qfixed, q0var
+> qfixed, q0fixed
+> MNT4753
+> 020
+
+Figure 7: Fixing Constants in isolation with Montgomery Modmuls and Schoolbook Decomposition. 
+
+reduction alone. Constant-fixing provides an additional ∼20% and 
+
+∼30% latency and area reduction respectively, but varies by curve. Certain curves have special-form prime moduli with low Ham-ming weight. Within our evaluated curves, Secp256k1 and Ed25519 both use pseudo-Mersenne primes [25], and Ed448 [14] uses a Soli-nas prime. Constant-fixing exhibits more pronounced gains for these curves with an additional 40–60% area reduction for the small-est PADDs, compared to 6–13% for other curves. Notably, Ed448 achieves up to 3 .4× speedup and nearly 8 × area reduction over the baseline, the highest among all evaluated curves, highlighting the importance of prime modulus selection in PADD hardware design. 
+
+5.2.2 Impact of Karatsuba Depth. We isolate the effect of Karatsuba depth on PADD performance. Figure 6 shows Area Delay Product (ADP) across bitwidths for varying depths, with all constants set to variable and Short Weierstrass formula. Compared to the baseline, designs with our multipliers produce 4-8 × better ADP across all evaluated bitwidths. Lowest ADP typically occurs at intermediate depths (1-3), where it can be up to 30% better than at the shallowest depth. Non-power-of-2 bitwidths exhibit different optimal depths: Montgomery-based 768-bit designs achieve lowest ADP at kar = 2, while 753-bit achieves it at kar = 3. This sensitivity is noteworthy as most common named curves operate on non-power-of-2 bitwidths. Barrett continues the trend of performing worse than Montgomery due to its higher computational cost. 
+
+5.2.3 Impact of Fixing Constants. Figure 7 shows latency and area across different constant-fixing combinations and curves, using Montgomery Modmuls and Schoolbook decomposition as our con-trolled baseline. Our experiments reveal that the relationship be-tween constant-fixing and performance is highly curve-dependent and non-obvious. While fixing all constants consistently produces the smallest area footprint, optimal latency requires nuanced, curve-specific configurations. For instance, BN254 achieves lowest latency 254 381 384 753 768     
+
+> 10 4
+> 10 6
+> 10 8
+> 10 10
+> Log ADP × II
+> Montgomery
+> baseline mp 16 mp 32 mp 64 mp 128
+> 254 381 384 753 768
+> Barrett
+> Bitwidth
+
+Figure 8: Area × Delay × II product for Montgomery & Barrett based Multi-Precision PADD designs across word widths with baseline for reference. 
+
+when fixing 𝑞 while keeping 𝑞 ′ variable, whereas MNT4753 exhibits the opposite pattern—preferring variable 𝑞 with fixed 𝑞 ′. BLS12-377 shows particularly unusual behavior: despite fully-variable outper-forming the variable-𝑞 , fixed-𝑞 ′ configuration, fixing all constants ultimately yields the lowest latency. Fixing curve coefficients has minimal impact in most cases, though it slightly degrades latency for Ed448. Combined with other design knobs like Karatsuba depth, these interactions become even more complex, making Locus key to uncovering which configurations are optimal. 
+
+5.2.4 Single-precision vs Multi-precision. We use ADP × II as our comparison metric to fairly account for lower throughput (II > 1) in multi-precision implementations. Figure 8 shows multi-precision designs perform significantly worse than even the single-precision baseline across all evaluated bitwidths, but exhibit better ADP ×
+
+II as word width increases. While multi-precision achieves much lower area by resource sharing, its latency penalty is severe and is compounded by the inability to fully pipeline.This makes it less suitable for the high-throughput PADD requirements of ZKP accel-erators. We note that multi-precision may still be relevant in heavily resource-constrained settings, but for the performance targets of ZKP acceleration, optimized single-precision dominates, motivating our focus on optimizing within the single-precision design space. 
+
+## 5.3 Locus PADDs vs. Prior Work 
+
+5.3.1 ASIC. Using Locus, we generate PADDs following the ap-proach of prior works [7, 9] (baseline multipliers with constant-fixing disabled) to compare with our corresponding best performant designs (Table 3). We find that our fastest designs achieve a 2 .71 ×
+
+geomean speedup, while our smallest designs achieve a 3 .11 × ge-omean area reduction over prior works. Our power and power density estimates are consistent with prior works [31]. 
+
+Table 3: Locus vs. Prior ASICs                                                            
+
+> Curve Design Freq. Latency (ns) Area (mm 2)Power (W) BN254
+> Baseline HLS 1 GHz 63 5.10 4.72 Locus Fastest 1 GHz 27 ( 2.33 ×)2.21 (2.31 ×)5.13 Locus Smallest 1 GHz 35 ( 1.80 ×)1.76 (2.90 ×)3.64
+> BLS12-381
+> Baseline HLS 1 GHz 82 11.94 8.26 Locus Fastest 1 GHz 31 ( 2.65 ×)4.65 (2.57 ×)6.83 Locus Smallest 1 GHz 49 ( 1.67 ×)3.88 (3.08 ×)7.11
+> BLS12-377
+> Baseline HLS 1 GHz 82 11.70 8.12 Locus Fastest 1 GHz 31 ( 2.65 ×)3.88 (3.01 ×)5.87 Locus Smallest 1 GHz 44 ( 1.86 ×)3.54 (3.30 ×)7.15
+> MNT4753
+> Baseline HLS 667 MHz 169.5 45.89 21.76 Locus Fastest 1 GHz 51 ( 3.32 ×)24.00 (1.91 ×)44.16 Locus Smallest 1 GHz 68 ( 2.49 ×)14.43 (3.18 ×)23.04
+
+Locus: A Framework for Exploring and Optimizing Point Addition Hardware for Zero-Knowledge Proofs ICCAD ’26, November 08–12, 2026, San Jose, CA, USA 
+
+Table 4: Locus vs. Prior FPGA - BLS12-377*                                                                                
+
+> Design Model LUTs Regs DSPs Cycles Fmax (MHz) Latency (μs) Locus Fastest VU9P 313,438 262,880 4,361 50 291 0.172
+> Locus Min-DSP VU9P 498,716 369,423 2,436 52 259 0.201
+> Locus Balanced VU9P 416,597 289,739 3,402 53 277 0.191
+> Locus High-Fmax VU9P 505,704 437,901 4,032 75 408 0.184
+> Locus Fastest VH1782 344,658 296,964 4,592 51 308 0.166
+> Locus Min-DSP VH1782 569,452 417,245 1,512 69 241 0.286
+> Locus Balanced VH1782 355,861 289,557 2,898 65 279 0.233
+> CycloneMSM [1] VU9P 310,717 337,944 2,268 96 250 0.384
+> HardcamlMSM [29] VU9P –––238 278 0.856
+> BSTMSM [40] U250 –––260 300 0.867
+
+Table 5: Latency (ns) and Speedup of Locus vs CPU Curve CPU 1 Thread Locus Fastest FPGA (Speedup vs CPU) Locus Fastest ASIC (Speedup vs CPU/FPGA) BN254 522.28 431.35 (1.21 ×) 27.00 (19.34 × / 15.98 ×)BLS12-381 1019.86 558.49 (1.83 ×) 31.00 (32.90 × / 18.02 ×)BLS12-377 998.57 561.74 (1.78 ×) 31.00 (32.21 × / 18.12 ×)MNT4753 3597.22 – 51.00 (70.53 × / –) 
+
+Table 6: MSM Design Space 
+
+Design Setting Values 
+
+Scalar Width ( 𝜆 ) 254 (BN254), 253 (BLS12-377) 255 (BLS12-381), 753 (MNT4753) PE Count ( 𝐾 ) 1, 2, 4, 8, 16 Window size ( 𝑤 ) 5 − 20 
+
+Words on-chip ( 𝑃 ′) 1K, 2K, . . . 256K 
+
+5.3.2 FPGA. Prior works on FPGA [1, 29, 40] largely implement BLS12-377*. For comparison, we implement CycloneMSM’s PADD formula. We select designs targeting different objectives: match-ing prior work clock speeds, minimizing DSPs (a critical resource constraint), and balanced designs (Table 4). On the VU9P FPGA, Locus designs achieve 2-5 × speedup with 1.3-1 .9× fewer cycles than CycloneMSM and 3-5 × fewer cycles than HardcamlMSM and BSTMSM. Locus produces designs that achieve clock speeds as high as 408 MHz in just 75 cycles. Our min-DSP design uses only 7.4% more DSPs than CycloneMSM, while delivering nearly 2 × speedup, though with higher LUT and register usage. On the state-of-the-art VH1782 FPGA, our min-DSP variant uses only 1,512 DSPs—the lowest among implementations with reported DSP counts—while maintaining low cycles and latencies. While Locus designs use more LUTs, prior works generally tar-get a single implementation, whereas Locus generates a design space spanning diverse resource–performance trade-offs, enabling designers to select configurations that best match their constraints. 
+
+5.3.3 Speedup over CPU. In Table 5, we compare the latencies of our fastest VH1782 FPGA and ASIC designs against a single-threaded AMD EPYC 7502 CPU, using point-addition implementa-tions from the arkworks [2] library, a widely used and optimized Rust library for finite-field and elliptic-curve arithmetic used in ZKP protocols. We evaluate major ZKP curves (MNT4753 designs are too large to fit on our FPGAs); our FPGA designs achieve 1.21-1.83 × speedups, and our ASIC designs achieve 19-70 × and 15-18 ×
+
+speedup over CPU and their FPGA counterparts, respectively. 
+
+5.3.4 Rapid Algorithm Exploration. CycloneMSM achieves excep-tional PADD performance by optimizing the PADD formula for BLS12-377 on Short Weierstrass BLS12-377 on Twisted Edwards BLS12-377* CycloneMSM 020 40  
+
+> Latency (ns)
+> 1.00× 2.38× 3.10×
+
+Latency Area  
+
+> 024
+> Area (mm²)
+> 1.00× 2.28× 2.98×
+
+Figure 9: Comparison of fastest BLS12-377 designs for differ-ent PADD formulas on ASIC. Annotations show speedup and area reduction compared to BLS12-377 on Short Weierstrass. 0 200 400 600 800 010 20 30 40 50                   
+
+> Total MSM Area (mm²)  BN254
+> 1.60 ×speedup 2.26 ×less area
+> 200 400 600 800 10 20 30 40 50
+> BLS12-377
+> 2.73 ×speedup 3.05 ×less area
+> Baseline Locus
+> 200 400 600 800
+> MSM Latency (ms)
+> 10 20 30 40 50
+> Total MSM Area (mm²)  BLS12-381
+> 3.02 ×speedup 2.91 ×less area
+> 1000 1500 2000 2500 3000
+> MSM Latency (ms)
+> 20 30 40 50
+> MNT4753
+> 4.47 ×speedup 2.73 ×less area
+
+Figure 10: Pareto-optimality space of our MSMs versus base-line designs in a 50 mm 2 area budget. Horizontal arrows are annotated with the iso-area speedup compared to fastest baselines. Vertical arrows are annotated with the iso-latency (where possible) area reduction compared to fastest baselines. Table 7: Optimal MSM configurations using Baseline and Locus PADD designs. Total workload length is 224 , and 𝑃 ′ refers to the number of points stored on-chip. 
+
+Curve Fastest Baseline Design Fastest Locus Design 
+
+𝑤 ∗ 𝐾 𝑃 ′ 𝑡 𝑎𝑑𝑑 𝑡 𝑑𝑏𝑙 𝑤 ∗ 𝐾 𝑃 ′ 𝑡 𝑎𝑑𝑑 𝑡 𝑑𝑏𝑙 
+
+BN254 11 8 8K 63 32 8 16 64K 27 14 
+
+BLS12-377 8 4 8K 82 41 11 8 32K 31 16 
+
+BLS12-381 8 4 2K 82 41 11 8 32K 31 16 
+
+MNT4753 7 1 1K 113 56 10 2 2K 58 29 BLS12-377*, specifically eliminating a key Modmul bottleneck. Us-ing Locus, we generate this design on ASIC, and find that Cy-cloneMSM’s PADD achieves 3 .10 × speedup and 2 .98 × area reduc-tion versus standard Short Weierstrass (Figure 9), achieving a very low 10 ns latency. This demonstrates Locus’s ability to rapidly explore algorithmic optimizations and assess hardware metrics. 
+
+## 5.4 Locus MSMs vs. Prior Work 
+
+We now evaluate Locus PADDs in end-to-end MSM implementa-tions. We study four curves used in prior ZKP ASICs [7–9, 18, 39] using the latency model from Algorithm 1 and the areas of synthe-sized PADDs and memory in our cost model. We first extract the Pareto-optimal PADD designs for each curve from Figure 4. Then, for each Pareto-optimal PADD, we sweep all MSM configurations from Table 6 and construct the MSM-level Pareto curves (Figure 10) ICCAD ’26, November 08–12, 2026, San Jose, CA, USA Gaurav Kuwar, Alhad Daftardar, Jianqiao Mo, Siddharth Garg, and Brandon Reagen 
+
+Table 8: PADD Configurations for End-to-End Analysis                                     
+
+> Design Tech Node Freq. PADD Stages Approach
+> SZKP 22nm 300 MHz 38 Baseline HLS A12nm 667 MHz 113 Baseline HLS B12nm 667 MHz 34 Locus C12nm 1 GHz 51 Locus D12nm 667 MHz 113 Baseline HLS E12nm 667 MHz 34 Locus F12nm 1 GHz 51 Locus G12nm 1 GHz 51 Locus (2 PADD)
+
+Table 9: Groth16 Runtime (ms) on MNT4753. Speedups are relative to Design A for 5-bit windows, Design D for 7-bit windows.                                                                                           
+
+> Workload Size Designs with Window Size = 5 Designs with Window Size = 7 SZKP ABCDEFGAES 16384 17.20 15.89 4.99 4.89 (3.25 ×)8.19 4.50 3.52 (2.33 ×)1.96 (4.19 ×)SHA2 32768 33.09 30.05 9.49 9.28 (3.24 ×)11.65 7.60 5.64 (2.07 ×)3.19 (3.65 ×)RSA 98304 98.09 87.53 28.37 27.42 (3.19 ×)26.34 20.90 14.67 (1.79 ×)8.72 (3.02 ×)RSASigVer 131072 128.30 114.88 36.59 35.65 (3.22 ×)32.30 26.33 18.36 (1.76 ×)10.65 (3.03 ×)MerkleTree 294912 300.88 262.87 88.20 83.91 (3.13 ×)73.32 63.98 43.87 (1.67 ×)27.39 (2.68 ×)Auction 557056 572.20 496.99 168.70 159.65 (3.11 ×)136.27 122.16 83.23 (1.64 ×)52.70 (2.59 ×)Chip Area (mm 2)91.00 65.08 23.10 34.97 67.27 25.29 37.16 61.23
+
+assuming a 50 mm 2 area budget. We validate the predicted latencies with cycle-accurate simulation of the SZKP architecture. For fair comparison with prior works (zkSpeed and SZKP), we implement their PADDs (i.e., Catapult-generated without Locus optimizations), targeting the same technology node we use. From Figure 10 we see that across all curves, the fastest baseline MSMs are 2 − 3× larger than equivalent Locus designs at iso-latency. For context, zkSpeed’s MSM compute area is 105 mm 2. A 3 × reduction would shrink this to 35 mm 2, lowering their total compute area from 163 to 94 mm 2, a 42% overall reduction. Compared to iso-area, Locus designs achieve geomean 2 .72 × speedup. The speedup gains are more pronounced at higher bitwidths (e.g. for MNT4753) because baseline designs cannot clock at 1 GHz; Locus’s approach enables these bitwidths to clock at 1 GHz. Comparing the fastest Locus designs with the fastest baseline designs, Locus achieves roughly 2 − 4× improvement in performance per area across curves. This is because Locus’s optimizations yield faster, smaller PADDs as seen in Table 7. This allows for more MSM PEs and additional on-chip memory to reduce pipeline fill/drain penalties. As a result, Locus improves both PADD efficiency and end-to-end MSM performance. 
+
+## 5.5 End-to-End ZKP Evaluation 
+
+To evaluate the system-level impact of Locus PADDs beyond MSM, we integrate our optimal PADD designs into an SZKP-style ar-chitecture focusing on the NTT and dense MSM critical path for Groth16. SZKP’s original evaluation targets TSMC 22nm technol-ogy node with the MNT4753 curve, using MSM window size 𝑤 = 5and a 38-stage PADD pipeline clocked at 300 MHz. Since our ASIC evaluation targets GF 12nm, we progressively modify the design one parameter at a time, as summarized in Table 8, to separate the effects of technology scaling, Locus optimization, frequency scaling, window size, and additional PADD parallelism. We also use Locus-optimized Modmuls in NTT butterflies, using the same de-sign as SZKP. We then use cycle-accurate simulation to determine end-to-end runtime; runtimes and area are reported in Table 9. We first consider 𝑤 = 5. Design A ports SZKP’s straight-line HLS design to 12nm, where the PADD reaches a maximum fre-quency of 667 MHz with a 113-stage pipeline, nearly 3 × deeper than the original 38-stage design at 300 MHz. At 𝑤 = 5, there are only 2 5 − 1 = 31 buckets, far fewer than the 113 pipeline stages, preventing full PADD utilization. With Locus optimizations at iso-frequency (Design B), we obtain a 34-stage PADD, improving uti-lization and reducing the runtime considerably. Tuning up the frequency to 1 GHz (Design C), Locus-optimized PADDs still meet timing, though the PADD depth extends to 51 stages. While this represents a lower-utilization MSM architecture than with a 34-stage PADD, the frequency increase is enough to yield an overall reduced runtime, at a higher area cost. As such, Design C achieves 3.19 × geomean speedup over Design A. To achieve better utilization (and a lower PADD op count), we can increase the window size to 𝑤 = 7 with 2 7 − 1 = 127 buckets. This does not affect the PADD area, but does increase the memory requirement slightly (bucket accumulation registers and number of queues). Consequently, we can see Design D is slightly larger than Design A, but the PADD depth is less than the number of buckets, significantly improving utilization and reducing runtime. We ob-serve similar trends for Designs E-G, except that transitioning from 
+
+𝐸 → 𝐹 exhibits greater improvement because the PADD depth is still much less than bucket count. With Locus’s area-saving opti-mizations, we can include a second PADD in Design G, achieving geomean speedup of 3 .15 × over Design D with less area. These results highlight a broader architectural insight: SZKP’s simple scheduling schemes (e.g., round-robin, longest-queue, etc.) rely on the pipeline depth being short relative to the number of buck-ets in order to achieve near-perfect utilization. As we scale to higher frequencies and larger bitwidths, PADDs require increasingly deep pipelines that violate this assumption, degrading utilization and limiting the benefits of technology scaling. Locus PADDs tame this pipeline depth at 1 GHz, preserving SZKP’s simple scheduling with-out requiring more complex schedulers like those in [18, 20, 39]. Therefore, Locus not only improves PADD-level metrics but also enables the overall accelerator architecture to scale. 
+
+## 6 Conclusion 
+
+We present Locus, a framework for exploring and optimizing elliptic-curve point addition hardware. Using Locus, we perform the first comprehensive hardware-focused exploration of the PADD design space across curves used in ZKPs, blockchains, and digital signa-tures, spanning 1,000+ designs and exposing key architectural trade-offs. Locus rapid generates and evaluates PADD implementations tailored to performance and area targets across ASICs and FPGAs. We integrate optimized PADDs into an MSM and a full ZKP accel-erator, demonstrating gains at both the MSM and proof-generation levels. Looking forward, Locus can be extended to other crypto-graphic modules using its optimized modular-arithmetic units. 
+
+## Acknowledgments 
+
+This work was supported by NSF CAREER award #2340137, NSF CIRC GRAND #2450539, and NSF NeTs #2504400, and generous support from DTCC, AMD and Google. The views, opinions, and/or findings expressed are those of the authors and do not necessarily reflect the views of sponsors. Locus: A Framework for Exploring and Optimizing Point Addition Hardware for Zero-Knowledge Proofs ICCAD ’26, November 08–12, 2026, San Jose, CA, USA 
+
+## References 
+
+[1] Kaveh Aasaraai, Don Beaver, Emanuele Cesena, Rahul Maganti, Nicolas Stalder, and Javier Varela. 2022. FPGA Acceleration of Multi-Scalar Multiplication: Cy-cloneMSM. Cryptology ePrint Archive, Paper 2022/1396. https://eprint.iacr.org/ 2022/1396 [2] arkworks contributors. 2022. arkworks zkSNARK ecosystem . https://arkworks.rs [3] Paul Barrett. 1986. Implementing the Rivest Shamir and Adleman Public Key En-cryption Algorithm on a Standard Digital Signal Processor. In Advances in Cryptol-ogy - CRYPTO ’86, Santa Barbara, California, USA, 1986, Proceedings (Lecture Notes in Computer Science, Vol. 263) . Springer, 311–323. doi:10.1007/3-540-47721-7_24 [4] Daniel J Bernstein. 2007. Explicit-formulas database. (2007). http://www. hyperelliptic.org/EFD [5] Manuel Blum, Paul Feldman, and Silvio Micali. 1988. Non-interactive zero-knowledge and its applications. In Proceedings of the Twentieth Annual ACM Sym-posium on Theory of Computing (Chicago, Illinois, USA) (STOC ’88) . Association for Computing Machinery, New York, NY, USA, 103–112. doi:10.1145/62212.62222 [6] Binyi Chen, Benedikt Bünz, Dan Boneh, and Zhenfei Zhang. 2022. HyperPlonk: Plonk with Linear-Time Prover and High-Degree Custom Gates. Cryptology ePrint Archive, Paper 2022/1355. https://eprint.iacr.org/2022/1355 [7] Alhad Daftardar, Jianqiao Mo, Joey Ah-kiow, Benedikt Bünz, Ramesh Karri, Sid-dharth Garg, and Brandon Reagen. 2025. Need for zkSpeed: Accelerating Hyper-Plonk for Zero-Knowledge Proofs. In Proceedings of the 52nd Annual International Symposium on Computer Architecture (ISCA ’25) . Association for Computing Machinery, New York, NY, USA, 1986–2001. doi:10.1145/3695053.3731021 [8] Alhad Daftardar, Jianqiao Mo, Joey Ah-kiow, Benedikt Bünz, Siddharth Garg, and Brandon Reagen. 2026. zkPHIRE: A Programmable Accelerator for ZKPs over HIgh-degRee, Expressive Gates. In 2026 IEEE International Symposium on High Performance Computer Architecture (HPCA) . 1–15. doi:10.1109/HPCA68181. 2026.11408480 [9] Alhad Daftardar, Brandon Reagen, and Siddharth Garg. 2024. SZKP: A Scalable Accelerator Architecture for Zero-Knowledge Proofs. In Proceedings of the 2024 International Conference on Parallel Architectures and Compilation Techniques (PACT ’24) . ACM, 271–283. doi:10.1145/3656019.3676898 [10] Austin Ebel and Brandon Reagen. 2026. Osiris: A Systolic Approach to Accel-erating Fully Homomorphic Encryption. ACM Trans. Archit. Code Optim. 23, 1, Article 21 (March 2026), 27 pages. doi:10.1145/3788287 [11] Karthik Garimella, Negar Neda, Austin Ebel, Nandan Kumar Jha, and Brandon Reagen. 2025. Network and Compiler Optimizations for Efficient Linear Alge-bra Kernels in Private Transformer Inference. In 2025 IEEE/ACM International Conference On Computer Aided Design (ICCAD) . IEEE, 1–10. [12] Torbjrn Granlund and Gmp Development Team. 2015. GNU MP 6.0 Multiple Precision Arithmetic Library . Samurai Media Limited, London, GBR. [13] Jens Groth. 2016. On the Size of Pairing-based Non-interactive Arguments. Cryptology ePrint Archive, Paper 2016/260. https://eprint.iacr.org/2016/260 [14] Mike Hamburg. 2015. Ed448-Goldilocks, a new elliptic curve. Cryptology ePrint Archive, Paper 2015/625. https://eprint.iacr.org/2015/625 [15] Zhuoran Ji, Zhiyuan Zhang, Jiming Xu, and Lei Ju. 2024. Accelerating Multi-Scalar Multiplication for Efficient Zero Knowledge Proofs with Multi-GPU Systems. In 
+
+Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3 (La Jolla, CA, USA) 
+
+(ASPLOS ’24) . Association for Computing Machinery, New York, NY, USA, 57–70. doi:10.1145/3620666.3651364 [16] Anatolii Alexeevich Karatsuba. 1995. The complexity of computations. Proceed-ings of the Steklov Institute of Mathematics-Interperiodica Translation 211 (1995), 169–183. [17] Aniket Kate, Gregory M. Zaverucha, and Ian Goldberg. 2010. Constant-Size Commitments to Polynomials and Their Applications. In Advances in Cryptol-ogy - ASIACRYPT 2010 , Masayuki Abe (Ed.). Springer Berlin Heidelberg, Berlin, Heidelberg, 177–194. [18] Changxu Liu, Hao Zhou, Patrick Dai, Li Shang, and Fan Yang. 2024. PriorMSM: An Efficient Acceleration Architecture for Multi-Scalar Multiplication. ACM Trans. Des. Autom. Electron. Syst. 29, 5, Article 77 (Aug. 2024), 26 pages. doi:10. 1145/3678006 [19] Changxu Liu, Hao Zhou, Lan Yang, Zheng Wu, Patrick Dai, Yinlong Li, Shiyong Wu, and Fan Yang. 2025. Myosotis: An Efficiently Pipelined and Parameterized Multiscalar Multiplication Architecture via Data Sharing. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 44, 7 (2025), 2738–2750. doi:10.1109/TCAD.2024.3524364 [20] Changxu Liu, Hao Zhou, Lan Yang, Jiamin Xu, Patrick Dai, and Fan Yang. 2024. Gypsophila: A Scalable and Bandwidth-Optimized Multi-Scalar Multiplication Architecture. In Proceedings of the 61st ACM/IEEE Design Automation Conference 
+
+(San Francisco, CA, USA) (DAC ’24) . Association for Computing Machinery, New York, NY, USA, Article 94, 6 pages. doi:10.1145/3649329.3658259 [21] Alfred J. Menezes, Scott A. Vanstone, and Paul C. Van Oorschot. 1996. Handbook of Applied Cryptography (1st ed.). CRC Press, Inc., USA. [22] Jianqiao Mo, Alhad Daftardar, Joey Ah-Kiow, Kaiyue Guo, Benedikt Bünz, Sid-dharth Garg, and Brandon Reagen. 2025. Mtu: The multifunction tree unit for accelerating zero-knowledge proofs. In Proceedings of the 14th International Workshop on Hardware and Architectural Support for Security and Privacy . 19–27. [23] Jianqiao Mo, Jayanth Gopinath, and Brandon Reagen. 2023. Haac: A hardware-software co-design to accelerate garbled circuits. In Proceedings of the 50th Annual International Symposium on Computer Architecture . 1–13. [24] Peter L. Montgomery. 1985. Modular Multiplication Without Trial Division. Math. Comp. 44, 170 (1985), 519–521. http://www.jstor.org/stable/2007970 [25] Kaushik Nath and Palash Sarkar. 2018. Efficient Arithmetic In (Pseudo-)Mersenne Prime Order Fields. Cryptology ePrint Archive, Paper 2018/985. https://eprint. iacr.org/2018/985 [26] Negar Neda, Austin Ebel, Benedict Reynwar, and Brandon Reagen. 2024. CiFlow: Dataflow Analysis and Optimization of Key Switching for Homomorphic Encryp-tion. In 2024 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) . 61–72. doi:10.1109/ISPASS61541.2024.00016 [27] Nicholas Pippenger. 1976. On the evaluation of powers and related problems. In 
+
+17th Annual Symposium on Foundations of Computer Science (sfcs 1976) . 258–263. doi:10.1109/SFCS.1976.21 [28] Pengcheng Qiu, Guiming Wu, Tingqiang Chu, Changzheng Wei, Runzhou Luo, Ying Yan, Wei Wang, and Hui Zhang. 2024. MSMAC: Accelerating Multi-Scalar Multiplication for Zero-Knowledge Proof. In Proceedings of the 61st ACM/IEEE Design Automation Conference (San Francisco, CA, USA) (DAC ’24) . Association for Computing Machinery, New York, NY, USA, Article 66, 6 pages. doi:10.1145/ 3649329.3655672 [29] Andy Ray, Benjamin Devlin, Fu Yong Quah, and Rahul Yesantharao. 2024. Hard-caml MSM: A High-Performance Split CPU-FPGA Multi-Scalar Multiplication Engine. In Proceedings of the 2024 ACM/SIGDA International Symposium on Field Programmable Gate Arrays (Monterey, CA, USA) (FPGA ’24) . Association for Computing Machinery, New York, NY, USA, 33–39. doi:10.1145/3626202.3637577 [30] Nikola Samardzic, Simon Langowski, Srinivas Devadas, and Daniel Sanchez. 2024. Accelerating Zero-Knowledge Proofs Through Hardware-Algorithm Co-Design. In 2024 57th IEEE/ACM International Symposium on Microarchitecture (MICRO) .366–379. doi:10.1109/MICRO61859.2024.00035 [31] Deepraj Soni, Mohammed Nabeel, Negar Neda, Ramesh Karri, Michail Mani-atakos, and Brandon Reagen. 2023. Quantifying the Overheads of Modular Mul-tiplication. In 2023 IEEE/ACM International Symposium on Low Power Electronics and Design (ISLPED) . 1–6. doi:10.1109/ISLPED58423.2023.10244324 [32] Deepraj Soni, Negar Neda, Naifeng Zhang, Benedict Reynwar, Homer Gamil, Benjamin Heyman, Mohammed Nabeel, Ahmad Al Badawi, Yuriy Polyakov, Kellie Canida, Massoud Pedram, Michail Maniatakos, David Bruce Cousins, Franz Franchetti, Matthew French, Andrew Schmidt, and Brandon Reagen. 2023. RPU: The Ring Processing Unit. In 2023 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) . 272–282. doi:10.1109/ISPASS57527. 2023.00034 [33] Jianming Tong, Jingtian Dang, Simon Langowski, Tianhao Huang, Asra Ali, Jeremy Kun, Srini Devadas, and Tushar Krishna. 2026. MORPH: Enabling AI ASICs for Zero Knowledge Proof. In Proceedings of the 63nd Annual ACM/IEEE Design Automation Conference (Los Angeles, California, United States) (DAC ’26) .[34] Riad S. Wahby, Ioanna Tzialla, Abhi Shelat, Justin Thaler, and Michael Walfish. 2018. Doubly-Efficient zkSNARKs Without Trusted Setup. In 2018 IEEE Sympo-sium on Security and Privacy (SP) . 926–943. doi:10.1109/SP.2018.00060 [35] Tiancheng Xie, Yupeng Zhang, and Dawn Song. 2022. Orion: Zero Knowledge Proof with Linear Prover Time. In Advances in Cryptology - CRYPTO 2022 - 42nd Annual International Cryptology Conference, CRYPTO 2022, Santa Barbara, CA, USA, August 15-18, 2022, Proceedings, Part IV (Lecture Notes in Computer Science, Vol. 13510) , Yevgeniy Dodis and Thomas Shrimpton (Eds.). Springer, 299–328. doi:10.1007/978-3-031-15985-5_11 [36] Zhengbang Yang, Lutan Zhao, Peinan Li, Han Liu, Kai Li, Boyan Zhao, Dan Meng, and Rui Hou. 2025. LegoZK: A Dynamically Reconfigurable Accelerator for Zero-Knowledge Proof. In 2025 IEEE International Symposium on High Performance Computer Architecture (HPCA) . 113–126. doi:10.1109/HPCA61900.2025.00020 [37] Naifeng Zhang and Franz Franchetti. 2025. Code Generation for Cryptographic Kernels using Multi-word Modular Arithmetic on GPU. In Proceedings of the 23rd ACM/IEEE International Symposium on Code Generation and Optimization (Las Vegas, NV, USA) (CGO ’25) . Association for Computing Machinery, New York, NY, USA, 476–492. doi:10.1145/3696443.3708948 [38] Naifeng Zhang, Sophia Fu, and Franz Franchetti. 2025. Towards Closing the Performance Gap for Cryptographic Kernels Between CPUs and Specialized Hardware. In Proceedings of the 58th IEEE/ACM International Symposium on Microarchitecture (MICRO ’25) . Association for Computing Machinery, New York, NY, USA, 1704–1718. doi:10.1145/3725843.3756120 [39] Ye Zhang, Shuo Wang, Xian Zhang, Jiangbin Dong, Xingzhong Mao, Fan Long, Cong Wang, Dong Zhou, Mingyu Gao, and Guangyu Sun. 2021. PipeZK: acceler-ating zero-knowledge proof with a pipelined architecture. In Proceedings of the 48th Annual International Symposium on Computer Architecture (Virtual Event, Spain) (ISCA ’21) . IEEE Press, 416–428. doi:10.1109/ISCA52012.2021.00040 [40] Baoze Zhao, Wenjin Huang, Tianrui Li, and Yihua Huang. 2023. BSTMSM: A High-Performance FPGA-based Multi-Scalar Multiplication Hardware Accelerator. In 
+
+2023 International Conference on Field Programmable Technology (ICFPT) . 35–43. doi:10.1109/ICFPT59805.2023.00009
