@@ -1,0 +1,295 @@
+Title: Design Space Exploration of In-Memory Computing Implementations for Discrete Fourier Transform
+
+URL Source: https://arxiv.org/pdf/2609.21537v1
+
+Published Time: Mon, 21 Sep 2026 00:44:29 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Design Space Exploration of In-Memory Computing Implementations for Discrete Fourier Transform 
+
+Sofia Tatidis *, Philip Nielsen *, Liang Liu *, and Mojtaba Mahdavi §
+
+> *
+
+Dept. of Electrical and Information Technology, Lund University, Sweden 
+
+> §
+
+Ericsson Research, Lund, Sweden 
+
+Abstract —Although memristor-based in-memory computing (IMC) has been widely investigated for brain-inspired neuro-morphic workloads, systematic evaluations of its energy, latency, and signal-to-noise ratio (SNR) trade-offs across diverse system parameters remain scarce for classical digital signal processing (DSP). To address this gap, this paper introduces a compre-hensive hardware-aware design framework for systematically mapping algorithmic workloads onto IMC architectures, using the discrete Fourier transform (DFT) as a case study. Tailored to the stringent performance requirements of a DFT accelera-tor for 5G orthogonal frequency-division multiplexing (OFDM) systems, we propose a novel mapping scheme that reduces energy consumption per computation by 53% compared with conventional mapping techniques. Additionally, we present acomparative study of resistive random-access memory (RRAM) and ferroelectric tunnel junction (FTJ) technologies with identical numbers of programmable states but distinct conductance ranges, demonstrating the importance of device-informed architectural co-design. By bridging the gap between emerging IMC architec-tures and rigid DSP constraints, this work provides a pathway toward energy-efficient edge accelerators for future wireless communication systems. 
+
+I. I NTRODUCTION 
+
+The discrete Fourier transform (DFT) is one of the most fundamental algorithms in digital signal processing and plays a central role in modern communication and multimedia systems. Importantly, it enables orthogonal frequency-division multiplexing (OFDM), a key modulation technique in wire-less communication systems supporting high data throughput. OFDM systems require real-time processing of input data within a time frame determined by the bandwidth, which also defines the size of the DFT. The fast Fourier transform (FFT), an efficient implementa-tion of the DFT, has significantly reduced computational com-plexity, making real-time signal processing feasible in a wide range of embedded and high-performance systems, including OFDM. Despite algorithmic optimizations, conventional hard-ware implementations of DFT architectures remain constrained by the von Neumann computing paradigm, in which memory and processing units are physically separated. This separation results in frequent and energy-intensive data transfers, leading to increased latency, higher power consumption, and limited scalability. As technology scales and data-intensive workloads continue to grow, the memory wall and bandwidth limitations have become major bottlenecks, particularly for large trans-form sizes and high-throughput applications. In-memory computing (IMC) has emerged as a promising solution to these challenges by performing computations di-rectly within memory arrays, thereby significantly reducing data movement. Memristive crossbar arrays, in particular, fa-cilitate the efficient implementation of matrix-vector multipli-cations, which form the computational core of DFT operations. The feasibility of IMC-based DFT/FFT implementations using memristor crossbar arrays is evaluated in [1]–[3]. In [1], a memristor-based crossbar array DFT was simulated as an accelerator for multiple-input multiple-output (MIMO) detec-tors. The proposed architecture is compared with conventional CMOS implementations and shown to achieve significant improvements in latency and power for 256- to 1024-point DFTs. In [2], a memristive image reconstructor for medical applications is implemented and evaluated, demonstrating the feasibility of DFT computation in memristor-enabled IMC. The architecture used in [1], [2] is further optimized for energy efficiency and area in [3] by introducing stacked matrices, effectively reducing peripheral overhead. The IMC-based DFT implementation is impacted, in a non-trivial way, by design parameters in algorithm mapping, cross-bar architecture, and device features. The trade-offs among energy consumption, timing performance, and signal-to-noise ratio (SNR) across different system parameters have not yet been systematically investigated. To bridge this gap, in this paper we present a design space exploration framework that enables such cross-level design trade-off and optimization for mapping DFT on a IMC platform. More specifically, we  
+
+> •
+
+Propose a new architecture which leverages the symmet-ric properties of the DFT to halve the crossbar size.  
+
+> •
+
+Investigate crossbar tiling strategies to mitigate the static IR drop effect and lower the required ADC resolution.  
+
+> •
+
+Study the impact of input/coefficient bit-widths and data flow on SNR, energy consumption and processing time.  
+
+> •
+
+Evaluate different IMC devices and analyze the impact of device imperfections at system level, using a 1024-point DFT implementation aimed for OFDM modulation. II. B ACKGROUND 
+
+A. Orthogonal Frequency-Division Multiplexing 
+
+The principle of OFDM is to use multiple orthogonal subcarriers to modulate data for wireless transmission. In an OFDM system, as shown in Fig. 1, the transmitter modulates the signal by performing the inverse DFT on the frequency-encoded signal before transmission. At the receiver, the DFT is then applied to demodulate and recover the original frequency-domain signal. The sampling rate of the OFDM receiver is 
+
+fs = fsc × NDF T , (1) arXiv:2609.21537v1 [eess.SP] 18 Sep 2026 S/P DFT Data  sink  ADC  Analog Rx P/S     
+
+> S/P IDFT Data source DAC Analog Tx P/S Fig. 1. Simplified overview of an OFDM system with IDFT and DFT operations highlighted.
+
+where fsc is the subcarrier spacing and NDF T is the length of the DFT. The entire OFDM symbol is received after 
+
+NDF T × 1 
+
+> fs
+
+seconds, at which point the receiver must be ready to process the next symbol. This, in turn, defines the throughput requirement of the DFT accelerator. Fundamentally, the DFT computes the frequency spectrum of a discrete-time signal x = [ x0, x 1, · · · , x N −1] by transform-ing N time-domain samples, xn, into N frequency-domain samples, Xk, according to 
+
+Xk = 
+
+> N−1
+
+X
+
+> n=0
+
+xnW nk ∗ N (2) where X = [ X0, X 1, · · · , X ∗ N − 1] denotes the DFT output, 
+
+W nk N = e−j2πnk/N represents the complex-valued coefficients known as twiddle factors , and n, k = 0 , 1, · · · , N − 1. Con-ventional pipelined FFT implementations buffer and process the input elements according to the corresponding butterfly operation flow, whereas the IMC architectures considered in this paper require the full input vector to be available before the core computation can be performed. This necessitates careful design of the input buffering. 
+
+B. In-Memory Computing 
+
+In-memory computing introduces a paradigm shift by em-bedding computational functionality directly within memory arrays, thereby alleviating fundamental constraints of con-ventional architectures, particularly the von Neumann bottle-neck. Among emerging device technologies, memristors 1 have gained significant attention due to their ability to simultane-ously store and process information in the analog domain, making them strong candidates for IMC hardware implemen-tations [4]. Each memristive cell can be programmed to encode multibit data (e.g., 6-bit precision), depending on the number of stable and distinguishable conductance states it can reliably support. Technologies such as ferroelectric tunnel junctions (FTJs) and resistive random-access memory (RRAM) fall into this category and differ in material composition, switching mechanisms, scalability, and endurance characteristics [4]. Fig. 2 illustrates an M × M crossbar array , in which memristive elements are programmed according to the entries of an M × M conductance matrix, G. The input vector 
+
+V = [ V1, · · · , V M ]T is applied across the rows of the array. Exploiting Ohm’s law for multiplication and Kirchhoff’s cur-rent law for accumulation, the crossbar inherently computes the dot product between the input vector and each column of the array as         
+
+> 1For conciseness, the term memristor is used throughout this work to refer broadly to the considered memristive devices. DAC
+> DAC DAC ADC ADC ADC ADC
+> Fig. 2. A memristor-based crossbar array of size M×M.
+
+Ii =
+
+> M
+
+X
+
+> j=1
+
+Gi,j Vj , i = 1 , · · · , M (3) where Gi,j denotes the element at the intersection of the i-th row and j-th column of matrix G. Consequently, the crossbar performs the matrix-vector multiplication (MVM) 
+
+I = GV , (4) where I = [ I1,· · · , I M ]T represents the output current vector collected from the columns. As depicted in Fig. 2, interfacing the analog crossbar with digital processing units requires data conversion stages. Specifically, digital-to-analog converters (DACs) translate binary input words ( Vi) into corresponding analog voltages, while analog-to-digital converters (ADCs) quantize the resulting column currents into digital values. These converters can be allocated per column for maximum parallelism or shared in a time-multiplexed configuration to reduce hardware overhead and power consumption. 
+
+C. Key Challenges of Analog IMC 
+
+The inherent nonidealities of analog memristive devices and IR drop in crossbar arrays degrade the signal-to-noise ratio (SNR) of IMC computations. Conductance variation and read noise can degrade the SNR by up to 20 points, while IR drop in large crossbars can result in SNR values below 0. Additionally, data conversion can dominate the overall energy consumption while remaining essential for digitally interfaced IMC. Several techniques can improve the main figures of merit (FoMs): energy per computation (EPC), time per computation (TPC), and SNR. However, improvements in one metric should not come at the expense of the others. It is therefore crucial to evaluate all three FoMs throughout the design process and consider their trade-offs to achieve realistic system-level performance. III. D ESIGN FRAMEWORK 
+
+As outlined in Fig. 3, design considerations exist at sev-eral levels, ranging from algorithmic considerations such as quantization, through the physical mapping and architecture of the implementation, down to the device level. All three levels affect system performance and cannot be optimized in isolation. The main objective of this design-space exploration is to evaluate the design in terms of the FoMs against the system requirements to determine whether the target perfor-mance is met. The following sections describe these design considerations, their impact on the FoMs, and their interplay. At the end of this section, we detail the simulation process used for evaluation. Architecture  
+
+> Device
+> - Conductance states
+> - Device non-idealities
+> - Read time
+> Design Considerations
+> System Requirements
+> Evaluate FoM
+> Design
+> Requirements inform evaluation
+> Iterate
+> Algorithm mapping
+> - Input & Coefficient resolution
+> - ADC resolution
+> - Input representation
+> Architecture
+> - Crossbar size, tiling
+> - ADC configuration
+> - Input scheme Fig. 3. The iterative cross-level design process with key considerations and evaluation points.
+
+A. Design Considerations 1) Algorithmic Mapping: To leverage IMC for accelerating computations, coefficients are programmed into the cross-bar devices at a certain resolution. Together with the input bit width, the coefficient resolution determines the level of quantization and sets the SNR ceiling of the computation, while also influencing the required ADC resolution. Inputs and coefficients can take both positive and negative values, whereas memristors can only be programmed with positive conductances. Two main methods are used to map the full value range onto the devices: offset mapping shifts all values into the positive domain, whereas differential mapping repre-sents each coefficient using separate devices for its positive and negative components. Inputs can similarly be supplied using separate sets for positive and negative values. 
+
+2) Architecture: The physical mapping of the algorithm affects both energy consumption and latency. Using fewer, larger crossbars minimizes the number of costly ADCs but may increase the required ADC resolution, thereby increasing energy consumption. A large crossbar can be partitioned into tiles, where, for square tiles, the tile size T denotes the number of devices per column. IMC-based architectures can support multibit input voltages; however, high input resolutions are costly because both DAC and ADC operations are energy intensive. An alternative to multibit inputs is to supply the input vector in a bit-wise manner. Under this scheme, the crossbar array processes one bit from each input word during each read cycle. After all read cycles are completed, the full DFT result is reconstructed using Shift-and-Add units placed after the ADCs. This approach requires only 1-bit DACs due to the serial nature of the inputs, resulting in notably lower hardware overhead than the parallel-input approach, at the cost of longer computation time. The ADCs can either be shared among columns to minimize chip area or individually allocated for latency-critical applications. 
+
+3) Device: Each memristive device is limited by the num-ber of distinguishable conductance states that can be reliably programmed and is subject to nonidealities, which together shape the system-level performance of IMC. Read noise refers to fluctuations in the readout values and depends on the read time, read voltage, and device conductance. Longer read times can reduce read noise without necessarily becoming the dominant contributor to TPC. Conductance variation refers to differences in conductance among devices programmed to the same state, arising from material properties and the programming technique. IR drop in large crossbars is also a major contributor to SNR degradation and is influenced by the device conductance and wire resistance. While reprogrammability and write endurance are impor-tant considerations for neuromorphic computing, they are not considered in this evaluation because the DFT coefficients remain constant. An extension of this design framework could incorporate device reprogramming for adaptive algorithms. 
+
+4) Cross-level Interplay: As memristors support a limited number of programmable states, careful mapping is required to represent coefficients at the desired resolution. To increase the coefficient resolution beyond that supported by a single device, each coefficient can be partitioned into smaller segments and mapped onto multiple devices, a technique referred to as coefficient slicing. However, using multiple devices per coefficient increases the required crossbar size, which can lead to non-negligible SNR degradation due to IR drop. This demonstrates how optimizing one design aspect can adversely affect another. In fact, design considerations across all levels are interdependent, highlighting the need for continuous eval-uation of the FoMs throughout the design process to achieve balanced performance within the system requirements. 
+
+B. Simulation Environment 
+
+To evaluate the FoMs, a simulation framework is established using DNN+NeuroSim V1.5 [5] as the primary simulation engine. NeuroSim provides a behavioral simulator for SNR evaluation and a hardware analyzer for evaluating EPC and TPC. To address limitations in static IR drop modeling, we augment the framework with Badcrossbar [6]. NeuroSim is also extended to support the evaluation of crossbar tiling. The SNR of the DFT is evaluated by simulating the analog MVM. During crossbar initialization, each memory cell is assigned either a normal state or a permanent fault state based on the stuck-at-fault rate. Noise is added to the ideal conductance state of each element Gi,j in the conductance matrix as 
+
+Gi,j = Gprog + N (Gprog , σ 2
+
+> read
+
+),Gprog = ( Gi,j,ideal + N (Gi,j,ideal , σ 2
+
+> prog
+
+)) × ( tt0
+
+)v (5) where Gi,j,ideal is the ideal conductance of element i, j in G,
+
+σprog and σread are the standard deviations of the programming and read noise, respectively, for each state, t is the retention time, v is the drift coefficient, and t0 is the time constant, assumed to be 1 s. The crossbar output is calculated according to (4) and subsequently quantized and truncated to emulate ADC sensing. EPC and TPC are extracted using a modified NeuroSim an-alyzer by isolating the SubArray module. To ensure simulation fidelity for large crossbars, the standard models are extended to include a resistive energy model for wordline/bitline ohmic losses and a first-order Elmore delay model for interconnect RC delay. X+re  X-re  X-im X+im 
+
+> W+re W+im
+> W-re W-im
+> W+re W+im W+re W+im W+re W+im
+> W-re W-im W-re W-im W-re W-im
+> N
+> 2N (a)
+
+X+re 
+
+X-re 
+
+X-im 
+
+X+im 
+
+W+re  W-re 
+
+W-re 
+
+W-im 
+
+W+im 
+
+W+im  W-im 
+
+W+re  W-im  W+im 
+
+W+im  W+re  W-re 
+
+W-im  W-re  W+re 
+
+4N 
+
+4N  (b) X+re                
+
+> X-re
+> X-im
+> X+im V+re V-re V+im V-im
+> V-re V+re V-im V+im
+> V+re V-re V+im V-im
+> V-re V+re V-im V+im
+> 2N
+> 2N
+> Vre =W re [:, 0, .., N/2]
+> Vim =W im [:, 1, .., N/2-1] (c) Fig. 4. Architectural progression of the IMC-based complex DFT implementations. To simplify the diagram, data conversions and digital logic are omitted. (a) Naive architecture. (b) Merged architecture. (c) Symmetry architecture.
+
+IV. DFT M APPING ONTO IMC A RCHITECTURES 
+
+The mapping of the DFT to crossbars can be readily derived from (2). Three different hardware architectures for imple-menting the DFT using memristor crossbars are presented and compared, as illustrated in Fig. 4. All three architectures assume differential representation of the coefficients, where positive and negative values are programmed into separate devices. Although this technique can result in greater hardware overhead [3], it has been shown to be more robust to state-independent errors than alternative approaches [7]. 
+
+A. Naive Architecture 
+
+The architecture used in [2] naively maps the DFT operation onto multiple separate crossbars (Fig. 4a). This approach requires eight N × 2N arrays to separately process the differ-ential representations of the real and imaginary components of the input signal and twiddle factors. While conceptually straightforward, this mapping incurs a severe area and energy penalty due to the extensive use of peripheral circuitry for ADC and digital post-processing. 
+
+B. Merged Architecture 
+
+To minimize the use of costly peripherals, the computation matrices can be concatenated into a single crossbar [3]. As shown in Fig. 4b, the entire DFT is mapped onto one large array which results in a 4N ×4N crossbar array. This approach reduces the peripheral footprint compared with the Naive architecture, notably reducing the number of ADCs from 
+
+2N × 8 to 4N , but suffers from substantial IR drop. 
+
+C. Symmetry Architecture 
+
+We propose a novel mapping of the DFT to address the limitations of the Naive and Merged architectures. The Sym-metry architecture (Fig. 4c) exploits the conjugate symmetry of the DFT for real-valued inputs ( x ∈ RN ), for which the output satisfies X[N − k] = X∗[k]. Consequently, only the first half of the spectrum requires analog computation. The crossbar evaluates N/ 2 + 1 unique real components and 
+
+N/ 2 − 1 unique imaginary components, effectively halving the required number of weight columns to an N × N array. The full spectrum is digitally reconstructed using the complex conjugate of the first half of the outputs by negating the imaginary components: 
+
+X[k]= 
+
+(
+
+XRe [k] + j · XIm [k], 0 ≤ k ≤ N
+
+> 2
+
+XRe [N − k] − j · XIm [N −k], N 
+
+> 2
+
+< k ≤ N −1 (6) This is extended to complex inputs ( x = a + jb ) by exploiting the linearity of the DFT to independently process the real vectors a and b in parallel across two separate arrays (or a shared array). Let A and B denote the respective fully reconstructed transforms of a and b using (6). The final complex output is then digitally combined as: 
+
+Xtotal [k] =  ARe [k] − BIm [k] + j ·  AIm [k] + BRe [k]. (7) This requires two 2N × 2N crossbars and maintains the same number of ADCs while halving the total memristor area compared with the Merged architecture, thereby reducing the effect of IR drop. 
+
+D. Peripheral Circuitry 1) Digital post-processing: All three architectures require some degree of post-processing. The bit-serial input scheme requires shift-and-add operations to reconstruct the full output after all input cycles are completed. After which the crossbar outputs needs to be combined. In our investigation, this is performed digitally after the ADCs, but it could potentially be implemented using memristor-based logic as well. 
+
+2) Input buffering: We assume that the entire OFDM symbol is received before the input vector is transformed in a single MVM. This requires storage or buffering of the inputs until the entire symbol has been received. The time required to receive the symbol is several orders of magnitude longer than the DFT processing time. Clever system design could enable a single DFT engine to be shared among several input streams in a multiple-antenna system, but this is beyond the scope of this investigation. 
+
+3) ADC: The ADC is a central component of the DFT engine, as it is power-hungry, time-consuming, and contributes to quantization error. In this paper, a SAR ADC is selected and modeled in a simplified manner as specified in the user manual of the simulator [5]. The ADC resolution is derived from the formula in [3] but further optimized to account for the stacked differential coefficients, as defined by (8): 
+
+BADC =
+
+(
+
+log 2 N + b + 1 , Merged architecture 
+
+log 2 N + b, otherwise (8) E. Device Comparison 
+
+Two memristor devices are compared to investigate the impact of different device properties on system performance. In [8], a TiN/HfZrO 4/W FTJ memristor [9] is identified as a promising device for analog in-memory computing, achieving 92% classification accuracy on the MNIST dataset. The dy-namic range and number of programmable states of the FTJ device were extended to 7 bits in [10]. A comprehensive com-parison of analog resistive memories for in-memory learning found the RRAM device in [11] to exhibit good performance in terms of dynamic range and endurance, two key figures of merit for online learning [12]. The FTJ device has lower conductance and read voltage, while the RRAM device has a wider dynamic range and can be programmed with a larger number of states. Key parameters used to simulate these devices are listed in Table I.          
+
+> TABLE I SELECT DEVICE PARAMETERS USED FOR SIMULATING MEMRISTOR DEVICES .
+> Device Bits/device G max/G min Technology
+> FTJ [8]–[10] 71.2nS/ 0.12 nS 22 nm RRAM [11] 725 μS/ 0.25 μS 14 nm
+
+Additionally, the devices are subject to different levels of read noise. A longer read pulse provides more robust readouts. In [13], the following relationship between read noise r and read time τ is proposed for read-noise and read-time analysis: 
+
+τ = Rr2V 2
+
+> read
+
+(2 kB T + qeVread ) (9) where R is the average device resistance, Vread is the read voltage, kB is the Boltzmann constant, and qe is the elementary charge. The required read pulse width for two read-noise scenarios is presented in Table II.           
+
+> TABLE II READ NOISE AND READ TIME SCENARIOS
+> rA=2% rB=5% FTJ RRAM FTJ RRAM
+> τ19.9 ns 0.136 ns 2.55 ns 0.022 ns
+
+V. D ESIGN SPACE EXPLORATION AND PERFORMANCE 
+
+EVALUATION 
+
+Using the design considerations in Sec. III-A, we iteratively apply the design framework to identify a suitable design that meets the system requirements while balancing the three FoMs. The DFT for an OFDM system is used as a case study, but the design framework can be applied to different algorithms and system requirements. 
+
+A. Architecture Evaluation 
+
+As a case study, we consider an OFDM system with a bandwidth of 30 MHz, a subcarrier spacing of 30 kHz, and 936 subcarriers. A 1024-point DFT/IDFT is therefore appro-priate for modulating the subcarriers. The three architectures outlined in Sec. IV are compared in Fig. 5a, demonstrating                   
+
+> TABLE III LATENCY BREAKDOWN FOR THE FTJ DEVICE ACROSS ARCHITECTURES .
+> Latency (ns) Arch. ADC Array Adder Total
+> Naive 151.46 0.82 1.24 153.53 Merged 159.27 1.41 1.30 161.99 Symmetry 151.34 0.94 1.24 153.53
+
+that the Symmetry architecture successfully eliminates the ADC-dominated energy bottlenecks by reducing the number of required ADCs. The energy breakdown differs substantially between the two devices. The RRAM device has an overall higher energy consumption, while the ADC is the dominant energy contributor for the FTJ device. Nonetheless, by ex-ploiting conjugate symmetry to reduce the crossbar area, the Symmetry architecture achieves the lowest energy consump-tion with on-par latency, as shown in Table III, establishing it as the most hardware-efficient architecture across both devices. For the FTJ device, the Symmetry architecture reduces energy consumption by 29% compared with the Merged architecture, while for the RRAM device, it achieves a 53% reduction com-pared with the Naive architecture. In the subsequent analysis, the Symmetry architecture is used as the base architecture. 
+
+B. Coefficient Mapping 
+
+The number of bits used to represent the twiddle factors is a major factor in determining the SNR of an ideal memristor. Both the RRAM and FTJ devices support 7-bit programming per device, corresponding to 128 states. Four different config-urations are compared, in which 4- and 7-bit coefficients are mapped to single devices, while 11- and 14-bit coefficients require two devices. For this investigation, the input resolution is fixed at 8 bits to isolate the effect of coefficient quantization to some extent. Similarly, IR drop is not simulated in order to isolate the impact of read and programming noise for the respective devices. Higher-resolution twiddle factors reduce quantization error and can potentially improve the SNR; how-ever, as shown in Fig. 5b, there is virtually no improvement in SNR beyond 7 bits per device due to device nonidealities. Using fewer states per device could potentially mitigate the impact of these nonidealities and reduce the ADC resolution requirement according to (8). In fact, for the RRAM device, 4-bit coefficients result in only slightly lower SNR than higher resolutions and approach the performance of an ideal device. As demonstrated in the subsequent sections, the impact of IR drop is non-negligible; therefore, 7-bit devices are used in the subsequent analyses for both devices. 
+
+C. Mitigating IR drop 
+
+While the previous section considered the performance of memristor crossbars without IR drop, the SNR can be severely degraded by IR drop in large crossbars. By partitioning the crossbar into smaller tiles, acceptable SNR can be maintained. To identify a suitable tiling configuration, we limit the investi-gation to the 2% read-noise scenario for simplicity. In Figs. 5d and 5e, the SNRs for different tile sizes are compared for the FTJ and RRAM devices, respectively. The results reveal two notable insights. First, SNR is severely degraded by the IR (a) (b) (c)    
+
+> (d) (e) (f) Fig. 5. (a) Architecture energy breakdown, where N, M, and S denote Naive, Merged, and Symmetry, respectively. (b) Coefficient-resolution comparison. (c) Input-resolution tradeoff comparison, where A and B denote 2% and 5% read noise, respectively. (d)–(e) Tiling analysis for (d) the FTJ and (e) the RRAM device. (f) ADC column sharing.
+
+drop associated with large crossbars. For both devices, the SNR decreases by more than 20 dB when increasing the tile size from 64 to 1024. Second, the FTJ device is considerably more robust to IR drop than the RRAM device, underscoring the need for device-aware design evaluation. For the FTJ device, the SNR varies little for tile sizes up to 256, while energy consumption decreases consistently because FTJ-based crossbars are more strongly dominated by ADC energy. This makes a tile size of 256 a suitable choice in terms of both SNR and energy. According to (1), a full input vector is received every 33 μs, at which point the DFT engine must be ready to accept the next input. In terms of timing, all tile configurations complete the computation well within this limit for 8-bit inputs, providing no motivation for using smaller tiles. The trade-off between SNR and EPC differs substantially for the RRAM device, as it is far more sensitive to IR drop, experiencing a 5 dB reduction in SNR even at the smallest tile size. At the same time, the energy penalty associated with smaller tiles is less severe than for the FTJ device. Nonetheless, a tile size of 64 is required to maintain an SNR above 20 dB, which incurs an additional energy cost. 
+
+D. Input Resolution and Trade-Off Discussion 
+
+Input resolution is a key factor in determining the ideal SNR ceiling, and under the bit-wise scheme, both energy and latency scale linearly with resolution. In Fig. 5c, the FoMs associated with increasing the input bit width are examined for both noise scenarios. A 6-bit input provides the best SNR while maintaining low EPC and TPC. This effect is more pronounced for the FTJ device under low read noise but less noticeable at higher read-noise levels. As smaller tiles are employed for the RRAM device, the ADC resolution requirement and crossbar size are reduced, thereby lowering TPC. For both devices, the read time is negligible because latency is dominated by data conversion, as shown in Table III. This favors the longer read times to achieve lower read noise. As observed in Sec. V-C, the TPC satisfies the system timing requirement with considerable margin. Because the TPC is several orders of magnitude shorter than the available processing interval, resource sharing can be employed to reduce hardware overhead. As the ADC is typically physically larger than the crossbar itself, floorplanning could benefit from sharing ADCs among crossbar columns. In Fig. 5f, the number of columns sharing a single ADC is investigated, showing that a single ADC can be shared across an entire tile while sat-isfying the timing requirement, albeit with an energy penalty. Moreover, the available timing margin could potentially be leveraged in a MIMO system by sharing the DFT engine among multiple antennas. However, as the primary motivation for IMC is to limit data movement, the implications of such resource sharing, together with the required input buffering, must be considered before practical implementation. VI. C ONCLUSION 
+
+The presented analysis demonstrates that practical IMC-based DSP design requires cross-level design-space explo-ration, as device characteristics and architectural choices intro-duce coupled trade-offs among energy, latency, and SNR. The evaluated DFT case study further demonstrates the feasibility of IMC for future wireless communication systems. More broadly, the proposed framework enables systematic identifi-cation of system-level bottlenecks and their underlying device-and architecture-level causes, providing guidance for both IMC architecture design and device-level research targeting specific DSP applications. REFERENCES [1] G. Yuan, C. Ding, R. Cai, X. Ma, Z. Zhao, A. Ren, B. Yuan, and Y. Wang, “Memristor crossbar-based ultra-efficient next-generation base-band processors,” in 2017 IEEE 60th International Midwest Symposium on Circuits and Systems (MWSCAS) , 2017, pp. 1121–1124. [2] H. Zhao, Z. Liu, J. Tang, B. Gao, Q. Qin, J. Li, Y. Zhou, P. Yao, Y. Xi, Y. Lin, H. Qian, and H. Wu, “Energy-efficient high-fidelity image reconstruction with memristor arrays for medical diagnosis,” Nature Communications , vol. 14, no. 1, p. 2276, 2023. [3] J. Wen, A. Baroni, E. Perez, M. Uhlmann, M. Fritscher, K. Krishne-Gowda, M. Ulbricht, C. Wenger, and M. Krstic, “Towards reliable and energy-efficient rram based discrete fourier transform accelerator,” in 
+
+2024 Design, Automation & Test in Europe Conference& Exhibition (DATE) , 2024, pp. 1–6. [4] X. Yang, B. Taylor, A. Wu, Y. Chen, and L. O. Chua, “Research progress on memristor: From synapses to computing systems,” IEEE Trans. on Circuits and Sys. I: Regular Papers , vol. 69, no. 5, pp. 1845–1857, 2022. [5] J. Read, M.-Y. Lee, W.-H. Huang, Y.-C. Luo, A. Lu, and S. Yu, “Neu-rosim v1.5: Improved software backbone for benchmarking compute-in-memory accelerators with device and circuit-level non-idealities,” IEEE Trans on Computer-Aided Design of Integrated Circuits and Systems ,Mar 2026. [6] D. Joksas and A. Mehonic, “badcrossbar: A python tool for computing and plotting currents and voltages in passive crossbar arrays,” SoftwareX , vol. 12, p. 100617, 2020. [Online]. Available: https://www.sciencedirect.com/science/article/pii/S2352711020303307 [7] T. P. Xiao, B. Feinberg, C. H. Bennett, V. Prabhakar, P. Saxena, V. Agrawal, S. Agarwal, and M. J. Marinella, “On the Accuracy of Analog Neural Network Inference Accelerators,” IEEE Circuits and Systems Magazine , vol. 22, no. 4, pp. 26–48, 2022. [8] M. Borg, C. Papadopoulos, A. Guerin, R. Athle, and S. Bastani, “Prospects of analog in-memory computing using ferroelectric tunnel junctions,” Neuromorphic Computing and Engineering , vol. 5, no. 2, p. 024006, May 2025, focus issue on Devices, Circuits and Systems for Unconventional Computing. [Online]. Available: https://doi.org/10.1088/2634-4386/add0d9 [9] R. Athle and M. Borg, “Ferroelectric tunnel junction memristors for in-memory computing accelerators,” Advanced Intelligent Systems , vol. 6, no. 3, p. 2300554, 2024. [Online]. Available: https://advanced.onlinelibrary.wiley.com/doi/abs/10.1002/aisy.202300554 [10] U. ¨ Ozdemir, R. Athle, H. Sj¨ oland, and M. Borg, “Extending the Dynamic Range and Endurance of Ferroelectric Tunnel Junctions by Conductance Growth Control,” IEEE Transactions on Electron Devices , vol. 73, no. 2, pp. 794–800, Feb. 2026. [11] S. Choi, S. H. Tan, Z. Li, Y. Kim, C. Choi, P.-Y. Chen, H. Yeon, S. Yu, and J. Kim, “SiGe epitaxial memory for neuromorphic computing with reproducible high performance based on engineered dislocations,” 
+
+Nature Materials , vol. 17, no. 4, pp. 335–340, Apr. 2018. [12] Y. Xi, B. Gao, J. Tang, A. Chen, M.-F. Chang, X. S. Hu, J. V. D. Spiegel, H. Qian, and H. Wu, “In-memory Learning with Analog Resistive Switching Memory: A Review and Perspective,” Proceedings of the IEEE , vol. 109, no. 1, pp. 14–42, Jan. 2021. [13] Lundstedt, Hugo and H˚ akansson Struglics, Erik, “Implementing In-Memory Computation Architectures for Digital Pre-Distortion Using Ferroelectric Tunnel Junction Memristors,” Master’s thesis, Lund University, Lund, Sweden, 2026. [Online]. Available: https://lup.lub.lu.se/student-papers/record/9236166

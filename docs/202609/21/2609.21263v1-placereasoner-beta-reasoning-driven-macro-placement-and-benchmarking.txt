@@ -1,0 +1,667 @@
+Title: PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking
+
+URL Source: https://arxiv.org/pdf/2609.21263v1
+
+Published Time: Mon, 21 Sep 2026 00:26:30 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 
+
+## QIUFENG LI, The George Washington University, USA 
+
+## CHENGXUAN WANG, University of California, Los Angeles, USA 
+
+## RONGQIAN CHEN, The George Washington University, USA 
+
+## QUAN CHENG, Brown University, USA 
+
+## YIHUI REN, Brookhaven National Laboratory, USA 
+
+## CHIA-TUNG HO, NVIDIA Corp, USA 
+
+## DAVID Z. PAN, UT Austin, USA 
+
+## TIAN LAN, The George Washington University, USA 
+
+## WEIDONG CAO ✉, The George Washington University, USA 
+
+Automated macro placement remains a fundamental challenge in VLSI physical design. Despite decades of research, existing approaches predominantly optimize hand-crafted proxy objectives, such as estimated wirelength, and typically produce placements through one-shot numerical optimization, limiting their ability to incorporate visual layout context, codified design expertise, and downstream physical-design feedback in a unified loop. We present PlaceReasoner-Beta , a verifier-guided multi-agent framework that reformulates macro placement as a closed-loop reasoning problem rather than black-box optimization. A vision-language model (VLM) planner generates candidate placements from the floorplan image, macro specifications, and connectivity structure; a geometric verifier enforces physical legality and expert placement principles; a physical verifier refines candidates using early implementation feedback; and a post-route optimizer further improves promising layouts using final PPA. To enable reproducible evaluation, we introduce 
+
+PlaceReasoner-Bench , a fully open end-to-end benchmark built from open RTL designs, EDA tools, and technology libraries. It comprises 8 designs at two aspect ratios, yielding 16 tasks with fixed floorplans and I/O assignments, so methods differ only in macro positions and orientations and are evaluated using routed PPA and DRC rather than pre-route proxies. Across the benchmark, PlaceReasoner-Beta achieves the best timing among DRC-clean methods on all square tasks, reducing post-route TNS by 61.2% at 1:1 and 53.0% at 2:1 relative to the classical baseline field. It also shortens routed wirelength on most designs despite never explicitly optimizing it, demonstrating that reasoning over spatial structure under physical-design feedback can improve end-to-end layout quality beyond proxy-objective optimization. CCS Concepts: • Do Not Use This Code → Generate the Correct Terms for Your Paper ; Generate the Correct Terms for Your Paper ; Generate the Correct Terms for Your Paper; Generate the Correct Terms for Your Paper. Additional Key Words and Phrases: Macro placement, VLM, Agentic, Benchmark, Reasoning 
+
+Authors’ Contact Information: Qiufeng Li, qiufeng.li@gwu.edu, The George Washington University, DC, USA; Chengxuan Wang, University of California, Los Angeles, Los Angeles, USA, chengxuan99@ucla.edu; Rongqian Chen, The George Washington University, DC, USA; Quan Cheng, Brown University, Providence, USA; Yihui Ren, Brookhaven National Laboratory, Upton, USA; Chia-Tung Ho, NVIDIA Corp, Santa Clara, CA, USA; David Z. Pan, UT Austin, Austin, Texas, USA; Tian Lan, The George Washington University, DC, USA; Weidong Cao, The George Washington University, DC, USA, weidong.cao@gwu.edu. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. © 2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. Manuscript submitted to ACM Manuscript submitted to ACM 1arXiv:2609.21263v1 [cs.AI] 18 Sep 2026 2 Qiufeng Li et al.   
+
+> ACM Reference Format:
+> Qiufeng Li, Chengxuan Wang, Rongqian Chen, Quan Cheng, Yihui Ren, Chia-Tung Ho, David Z. Pan, Tian Lan, and Weidong Cao. 2018. PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking. In Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 27 pages. https: //doi.org/XXXXXXX.XXXXXXX
+
+1 Introduction 
+
+Macro placement is a critical stage in modern very-large-scale integrated circuit (VLSI) physical design, where hundreds to thousands of macros (i.e., large circuit blocks) must be arranged within a constrained floorplan to optimize power, performance, and area (PPA) while satisfying physical requirements such as die dimensions, aspect ratio, and I/O locations [33]. Unlike standard-cell placement, macro placement is dominated by large, heterogeneous objects and long-range geometric interactions, making placement decisions highly consequential to downstream routing, timing, and design-rule closure. In practice, experienced designers therefore iteratively inspect layouts, reason about connectivity and physical constraints, and refine macro positions and orientations based on feedback from downstream physical-design tools [20]. However, the increasing scale and complexity of modern designs, coupled with aggressive time-to-market requirements, make such expert-driven iteration increasingly difficult to sustain, motivating extensive research on automated macro placement methods [35]. Existing approaches typically formulate macro placement as a constrained optimization problem and employ classical optimization, analytical methods, gradient-based techniques, or reinforcement learning to search the placement space [1, 5, 7–9, 13, 19, 21, 24, 26, 34]. While these methods have substantially advanced automated physical design, they remain limited in their ability to reason about the full design context and to optimize for end-to-end physical-design quality. Three challenges are particularly important. 
+
+First, existing methods predominantly optimize proxy objectives rather than end-to-end design quality. 
+
+Most macro placement approaches rely heavily on metrics such as half-perimeter wirelength (HPWL) as optimization objectives [19]. Although computationally efficient, HPWL is only an indirect surrogate for final chip quality and does not fully capture routing congestion, timing, macro orientation, pin accessibility, or design-rule violations. Consequently, minimizing a proxy objective does not necessarily produce a placement that remains effective after detailed placement and routing. Closing this gap requires placement frameworks that can reason from intermediate layout characteristics to downstream physical-design outcomes. Second, existing methods have limited ability to perform multimodal reasoning and leverage domain knowledge. Expert placement is not simply numerical optimization: designers simultaneously interpret design specifications, connectivity information, and visual layout structures; identify problematic patterns such as congested channels or poorly oriented macros; and apply placement heuristics accumulated through design experience. Conventional optimization algorithms, in contrast, largely treat the placement engine as a black-box search procedure. They provide limited mechanisms for integrating heterogeneous design information, explicitly reasoning about visual structures, or explaining why a particular placement should be modified. Third, existing methods face substantial challenges in efficient and flexible design-space exploration. 
+
+Evaluating a candidate placement with realistic physical-design flows can require computationally expensive placement, routing, timing, and design rule constraint (DRC) analysis. Yet optimization-based approaches may require hundreds or thousands of search iterations, many of which provide limited actionable information for subsequent decisions. Furthermore, many methods are designed around a fixed floorplan geometry and must be substantially re-optimized when the die dimensions or aspect ratio changes. Such rigidity is problematic because practical floorplanning frequently evolves in response to PPA, packaging, I/O, and manufacturing constraints. 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 3These challenges motivate a shift from placement as black-box optimization toward placement as iterative, tool-grounded reasoning . Recent advances in large language and vision-language models (LLM/VLM) [6, 15, 30, 37, 41, 43] provide an opportunity to develop agentic systems that can interpret multimodal design information, decompose complex placement tasks, invoke specialized tools, inspect their outputs, and iteratively revise decisions. However, realizing this opportunity for VLSI macro placement requires more than simply applying a foundation model to generate coordinates. An effective framework must combine domain-specific placement knowledge, visual reasoning, geometric verification, EDA-tool interaction, and downstream physical-design feedback within a reproducible optimization loop. This work presents PlaceReasoner-Beta , a multi-agent vision-language framework for reasoning-driven VLSI macro placement. Given a floorplan image, macro descriptions, die/core specifications, and design connectivity, PlaceReasoner-Beta coordinates specialized agents that collaboratively generate, verify, and refine candidate placements. A planner agent proposes placement strategies and candidate layouts; a geometric checker evaluates physical constraints and placement principles; a physical design checker analyzes intermediate implementation feedback and identifies issues that are difficult to capture with simple placement objectives; and a post-route optimizer uses final PPA and DRC results to guide further refinement. All agents share a domain-specific skill pack that encapsulates EDA tool interaction and distilled placement knowledge, enabling the system to reason about layout structures and physical design outcomes rather than directly generating fragile tool commands. Through this closed-loop architecture, PlaceReasoner-Beta transforms macro placement from a monolithic optimization problem into an inspectable, verifiable, and iterative reasoning process .To enable systematic evaluation of agentic macro placement systems, we further introduce PlaceReasoner-Bench ,an open end-to-end benchmark designed to evaluate placement quality under realistic downstream physical-design flows. Unlike existing benchmarks that predominantly focus on square (1:1) floorplans, PlaceReasoner-Bench evaluates eight open-source designs under both 1:1 and 2:1 aspect ratios, yielding 16 tasks that explicitly test robustness to changing floorplan geometry in practical design scenarios. For each task, the floorplan and I/O pin assignment are fixed, isolating macro positions and orientations as the primary variables. More importantly, placement quality is evaluated after a complete place-and-route flow using routed PPA and DRC violations, rather than relying solely on pre-route proxy metrics such as HPWL. The benchmark is implemented entirely using open-source EDA tools and technology libraries, including Yosys [40] and OpenROAD [2] with Nangate45 [27], enabling reproducible evaluation without commercial tool licenses. Extensive experiments across the 16 benchmark tasks demonstrate the effectiveness of reasoning-driven placement. PlaceReasoner-Beta achieves the best timing among all DRC-clean methods on every 1:1 task, reducing post-route total negative slack by 61 .2% at 1:1 and 53 .0% at 2:1 relative to classical baselines. It is also the only evaluated method that successfully routes all eight elongated (2:1) designs with no more than two DRC violations. Notably, PlaceReasoner-Beta improves routed wirelength on most designs even though wirelength is never directly optimized, suggesting that explicit reasoning over layout geometry combined with downstream physical-design feedback can produce higher-quality end-to-end layouts than optimizing a single proxy objective. Overall, this work makes two contributions: (1) an agentic, multimodal framework that integrates placement reasoning, domain knowledge, geometric verification, and physical-design feedback for VLSI macro place-ment; and (2) an open, end-to-end benchmark that evaluates agentic placement systems using realistic post-route PPA and DRC outcomes across diverse floorplan geometries. Together, they establish a foundation for developing and systematically benchmarking agentic AI systems for next-generation physical-design automation. 
+
+> Manuscript submitted to ACM
+
+4 Qiufeng Li et al. 
+
+2 Background and Related Work 2.1 VLSI Physical Design Workflow 
+
+VLSI physical design translates a synthesized logic netlist into a manufacturable physical layout through a sequence of tightly coupled optimization stages, including floorplanning and macro placement, standard-cell placement, clock-tree synthesis (CTS), and routing [18, 19] (Fig. 1). Among these stages, macro placement is particularly consequential :the positions and orientations of large circuit blocks, such as SRAMs, often numbering in the hundreds, establish the geometric structure within which all downstream tools must operate and can therefore strongly influence final power, performance, and area (PPA). In practice, macro placement is not a single-shot optimization problem but an iterative reasoning process that combines multimodal design context, placement expertise, and physical-design feedback . Designers first interpret the floorplan context from multiple sources: the die/core geometry and I/O locations from the visual layout, together with the die/core specifications, macro inventory, connectivity, and dataflow information from design descriptions. They then apply established placement principles, such as peripheral placement and cluster locality, to reason about pin accessibility, macro connectivity, relative positioning, and available whitespace, generating multiple candidate layouts [29]. Before invoking expensive EDA tools, designers visually inspect these candidates and repair obvious geometric problems, such as narrow routing channels between macros, excessive whitespace fragmentation, or macro orientations that place pins away from the logic they serve. The surviving candidates are progressively evaluated through downstream physical-design stages, where early placement and routing feedback reveals congestion, timing, and other physical constraints. Clearly inferior candidates are discarded, while promising layouts are iteratively refined until the design approaches physical closure. Setup  Macro  
+
+> Placement
+> Stdcell
+> Placement
+> CTS &
+> Routing
+> Iterative refinement Feedback
+> Netlist
+> PDK + digital libraries
+> +
+> Fig. 1. A typical VLSI physical design workflow. Each stage shows its layout snapshot. Macro placement, the stage we target, fixes the large blocks (orange) and thereby the whitespace and channels left to stdcell placement (red) and CTS & routing (green). The inner blue arc refines a placement from geometric inspection alone and is cheap, whereas the outer one returns only after a full downstream run.
+
+This workflow highlights a fundamental characteristic of expert macro placement: de-signers optimize not a single numerical objective, but a sequence of interdepen-dent decisions informed by visual struc-ture, domain knowledge, and increas-ingly expensive physical feedback . Al-though this human-driven process provides no guarantee of global optimality, it remains highly effective because designers can rec-ognize structural problems, adapt placement strategies to different floorplan geometries, and use downstream tool feedback to revise earlier decisions. Emulating this reasoning loop, rather than merely automating coordinate optimization, is therefore a key opportunity for agentic approaches to VLSI macro placement. 
+
+2.2 Automated Placement Methods and Benchmarks 
+
+Automated macro placement has been widely studied over the past few decades and has evolved along two major directions, classical optimization and learning-based methods , with support from a relatively small set of public benchmarks. Despite substantial progress, existing approaches largely formulate macro placement as a numerical search problem and evaluate candidates using proxy objectives. This paradigm differs fundamentally from expert placement, where designers jointly reason over layout geometry, connectivity, design constraints, and downstream physical-design 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 5feedback. We review these approaches below and highlight three gaps that motivate PlaceReasoner-Beta : (1) proxy-driven rather than end-to-end optimization, (2) limited multimodal and iterative reasoning, and (3) insufficiently realistic and reproducible benchmarking .
+
+Classical methods. Classical macro-placement approaches [5, 7, 8, 13, 19, 22, 24, 34] can be broadly categorized into three families. Packing-based methods represent macro-to-macro geometric relationships using compact structures such as sequence pairs and B*-trees, enabling efficient exploration of feasible floorplans [5]. Analytical methods [1, 16, 25, 42] formulate placement as continuous optimization, minimizing differentiable objectives that typically combine smoothed wirelength with density and overlap penalties; DREAMPlace [24] is a representative example. Hierarchy-aware methods [10–12, 19, 28] exploit design hierarchy and architectural structure by grouping logically related blocks and incorporating these relationships into mixed-size placement to improve routability. Despite their different formulations, these methods share a common optimization paradigm: they rely primarily on hand-crafted numerical objectives, with wirelength serving as the dominant proxy for placement quality .Such objectives are attractive because they are computationally efficient, but they incompletely capture the factors that determine final design quality, including routing congestion, timing, pin accessibility, macro orientation, and DRC violations. Consequently, a placement that is optimal under the surrogate objective may perform poorly after detailed placement and routing. Moreover, these methods generally produce placements through monolithic numerical optimization, providing limited mechanisms for interpreting a layout, identifying structural defects, or incorporating qualitative observations and downstream physical-design feedback into subsequent decisions. The first gap, therefore, is the disconnect between proxy optimization and end-to-end physical-design quality. Learning-based methods. Learning-based approaches seek to reduce dependence on manually designed optimization moves and cost functions by learning placement strategies from data or interaction [14]. Google introduced deep reinforcement learning (RL) to sequentially place macros based on learned policies [26]. MaskPlace [22] formulates placement as a visual representation-learning problem and improves wirelength while enforcing non-overlap constraints, while ChiPFormer [21] employs offline RL and adapts to unseen designs to improve placement efficiency. These methods demonstrate that learned representations and policies can capture placement patterns beyond explicit optimization heuristics. However, their reward functions remain predominantly tied to wirelength or related placement-level objectives, and the learned policies do not explicitly reason over the heterogeneous information available to human designers, such as floorplan images, textual design specifications, connectivity, and physical-design feedback. Recent advances in vision-language models (VLMs) [31, 37] provide a promising opportunity to bridge this gap. Modern VLMs have demonstrated increasingly strong multimodal and spatial reasoning capabilities [6, 32, 38], including object localization, relative-position reasoning, alignment, and geometric relationship understanding. These capabilities are particularly relevant to macro placement, where decisions depend on both visual layout structure and semantic relationships among circuit blocks. VeoPlace [36] represents an early step in this direction by using a VLM to shape the search space of an underlying placer, such as an analytical engine, rather than directly generating and refining macro layouts. MAGE [17] further explores a multi-agent architecture based on VLMs for physical design. However, its dependence on commercial EDA tools and a proprietary technology node limits independent reproduction and systematic evaluation. More fundamentally, existing VLM-based approaches have not yet fully established a closed-loop reasoning paradigm for macro placement . An effective agentic placer should do more than predict coordinates: it should interpret the design context, propose candidate layouts, inspect their geometric validity, obtain physical-design feedback, diagnose problems, and revise the placement accordingly. The second gap is therefore the lack of an agentic, multimodal, and feedback-driven framework that explicitly models the iterative reasoning process 
+
+> Manuscript submitted to ACM
+
+6 Qiufeng Li et al. 
+
+of expert macro placement. PlaceReasoner-Beta addresses this gap by placing VLM-based agents directly in the decision loop, where specialized agents collaboratively propose, inspect, verify, and refine layouts using both geometric reasoning and downstream physical-design feedback. 
+
+Benchmarks. The evaluation infrastructure for macro placement is considerably less mature than the algorithmic landscape. ChiPBench [39] provides an open-source end-to-end physical-design flow across 20 circuits, but approximately half contain no macros, while its floorplans are relatively loosely constrained, using around 30% utilization compared with the 60 ∼70% commonly encountered in practice. RTL-MP [19, 20] provides six macro-containing designs with downstream place-and-route (P&R) scripts, enabling evaluation beyond placement-only metrics. However, each design is evaluated at only a single aspect ratio, and its flow depends on commercial EDA tools and a proprietary 12 nm foundry technology, limiting independent reproduction. PDAgent-Bench [23] evaluates agents across ten full physical-design tasks, but targets general flow-level agent competence rather than isolating the quality of macro placement itself. These limitations expose a third gap: the lack of an open, realistic, and geometrically diverse benchmark specifically designed to evaluate macro-placement reasoning . In particular, existing benchmarks provide limited variation in floorplan geometry, rely in some cases on commercial or proprietary implementation flows, and often emphasize placement-level proxies or broad flow-level success rather than the quality of the resulting routed design. A meaningful benchmark for agentic macro placement should therefore (i) contain realistic macro-intensive designs, (ii) test robustness across different floorplan geometries, (iii) provide a fully reproducible open-source implementation flow, and (iv) evaluate placements using downstream PPA and DRC outcomes rather than relying solely on pre-route proxies. 
+
+PlaceReasoner-Beta addresses these three gaps jointly. It introduces a reasoning-driven multi-agent framework in which VLM agents use multimodal design context and domain knowledge to generate, inspect, and iteratively refine macro placements under physical-design feedback. In parallel, PlaceReasoner-Bench provides an open end-to-end benchmark with multiple floorplan aspect ratios and post-route evaluation based on PPA and DRC outcomes. Together, the framework and benchmark shift macro placement from single-objective coordinate optimization toward iterative, multimodal, and physically grounded reasoning , while providing a reproducible foundation for systematically evaluating future agentic approaches to VLSI physical design. 
+
+3 PlaceReasoner-Beta 3.1 Framework Overview 
+
+PlaceReasoner-Beta is an agentic framework for VLSI macro placement that treats placement as a closed-loop reasoning and verification problem rather than one-shot coordinate optimization. Given a floorplan image, macro specifications, I/O locations, connectivity information, and natural-language design objectives, PlaceReasoner-Beta reasons about the position and orientation of each macro by combining visual-spatial reasoning with codified placement knowledge. The framework is designed around a key observation from expert physical design: high-quality placement emerges through successive rounds of proposal, inspection, physical evaluation, and refinement, rather than from optimizing a single placement objective. This design introduces three challenges that an agentic placement framework must address. 
+
+First, physical feedback is expensive and delayed. Meaningful placement quality is often revealed only after downstream stages such as standard-cell placement, CTS, and routing, making exhaustive evaluation of candidate layouts prohibitively expensive. Second, EDA interaction creates a reasoning-to-execution gap. Placement intent expressed at a high level must ultimately be translated into precise EDA commands, while tool feedback arrives as heterogeneous reports, metrics, and physical maps that must be interpreted before they can inform the next placement 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 7Optimization    
+
+> Loop 1
+> Macro list, cluster, size, pin
+> sides, core size/coordinate,
+> Planner agent
+> Rendering
+> Macro placed
+> layout image and
+> coordinates
+> Checker agent
+> Rule checking
+> feedback If pass, run the pdn, stdcell placement
+> Placement stage PPA
+> metrics, like TNS; and
+> density map.
+> Stdcell placed
+> layout image
+> Checker_B agent
+> If pass
+> Optimizer agent
+> Run cts and routing
+> To get the
+> Final PPA metrics and
+> congestion map
+> 1. Meet the constraints?
+> 2. Comparing different macro
+> placement to learn and
+> continue to update.
+> 3. Adjust the halo for macros.
+> ….
+> 1.Locate the pin group
+> 2.Check the macro info
+> 3.Query the coordinate of core
+> 4.Reasoning the placement shape, to
+> make balance of constraints, avoid
+> narrow channel, align with the dataflow.
+> 5.Place the macro, generate the
+> macro coordinates.
+> Reasoning flow:
+> 1.Perphery methodology
+> 2.Stdcell area continuous, narrow
+> Channels, dead pocket
+> 3.Pin sides face inward
+> …..
+> Check:
+> Optimization
+> Loop 2
+> Check: N macro placement
+> candidates
+> Instruction : Your task is to
+> perform macro placement for
+> the given chip floorplan.
+> (a) PlaceReasoner -Beta : macro placement generation and refinement
+> Planner agent
+
++   
+
+> 1.If macro cause long path. Trace
+> the failing path's start/end cells to
+> which macros.
+> 2.Are there high density. find the
+> hotspot bin, identify the bounding
+> macros, open the channel.
+> 3.Drop the worst candidate.
+> …..
+> Check:
+> EDA Tools
+> Routed layout
+> image
+> EDA Tools
+> Planner agent
+> Optimization
+> Loop 3
+> PPA feedback
+> (b) Detailed placement: get early feedback (c) CTS & Routing: get final feedback
+
+Fig. 2. PlaceReasoner-Beta framework overview. It has four agents: Planner, Geometric Checker, Physical Checker, and Post-route Optimizer. These agents formulate three stages essential in physical design: (a) PlaceReasoner-Beta for macro placement generation and refinement, (b) detailed placement by getting early feedback, and (c) CTS & routing by getting final feedback. 
+
+decision. Third, macro placement is inherently multi-objective. Timing, congestion, wirelength, PPA, routability, and geometric feasibility are tightly coupled and often conflicting, requiring the system to reason about tradeoffs rather than optimize a single scalar reward. PlaceReasoner-Beta addresses these challenges through a multi-agent, coarse-to-fine optimization framework 
+
+that mirrors the iterative workflow of physical designers (Fig. 2). Four specialized agents collaborate across three progressively more expensive feedback loops. The Planner generates diverse placement candidates from multimodal design context; Geometric Checker performs fast geometric verification and identifies violations of hard constraints and placement principles; Physical Checker interprets early physical-design feedback after standard-cell placement and recommends targeted refinements; and the Post-route Optimizer uses final routed PPA and physical metrics to refine the most promising candidates. This staged architecture deliberately postpones expensive post-route evaluation until poor candidates have been eliminated, improving the efficiency of design-space exploration. All agents share a reusable skill pack that abstracts EDA-tool interaction and encodes placement expertise, including templated P&R scripts, layout and density extraction, verification procedures, and distilled expert heuristics. This abstraction separates reasoning from tool execution : agents reason about the desired layout and its physical consequences, while the skill pack reliably translates those decisions into executable EDA operations and returns structured feedback. Because the benchmark designs do not provide explicit dataflow annotations, PlaceReasoner-Beta additionally derives connectivity-based macro clusters and exposes them to the Planner as soft placement constraints, encouraging locality among logically related macros [19]. Importantly, PlaceReasoner-Beta is tuning-free with respect to the underlying foundation model . The placement principles, verification rules, feedback interpretation procedures, and skill pack are framework artifacts rather than learned parameters. They can therefore be inspected, corrected, extended, or replaced without retraining the backbone model. This property makes the framework particularly suitable for systematic benchmarking: improvements can be attributed to changes in the reasoning framework rather than to hidden model-specific training. To enable such evaluation, we develop PlaceReasoner-Bench , an open 
+
+Manuscript submitted to ACM 8 Qiufeng Li et al. end-to-end benchmark specifically designed to measure macro-placement quality under realistic downstream physical-design conditions. The framework and benchmark are developed together: PlaceReasoner-Beta provides the agentic methodology for generating and refining layouts, while PlaceReasoner-Bench provides a controlled environment in which different placement strategies can be compared using identical downstream flows and post-route outcomes. 
+
+3.2 Agent Design and Closed-Loop Optimization 
+
+PlaceReasoner-Beta organizes placement refinement into three feedback loops, progressing from inexpensive geometric verification to increasingly realistic physical-design evaluation. This coarse-to-fine strategy allows the system to spend computational resources in proportion to candidate quality. 
+
+Planner: multimodal placement generation. The Planner is responsible for generating diverse candidate layouts from the available design context. Its input includes the macro list and dimensions, core boundaries, I/O locations, connectivity-derived clusters, and natural-language placement objectives. The Planner prompt encodes established placement principles, spatial reasoning strategies, and a structured output format for executable macro coordinates and orientations (Fig. 2(a)). Each macro is represented using structured geometric attributes, position, orientation, and pin-facing direction, together with a rendered floorplan image. The structured representation provides precise information required for EDA execution, while the image exposes global spatial relationships that are difficult to capture through coordinates alone. The Planner jointly reasons about macro geometry, cluster locality, pin accessibility, peripheral placement, whitespace, and orientation, and produces 𝑁 candidate placements. These candidates are then translated into native EDA commands through the shared skill pack. 
+
+Geometric Checker: geometric verification and repair. Geometric Checker provides a fast verification layer before any expensive physical-design evaluation. It checks each candidate against hard geometric constraints, including core-boundary violations, macro overlap, minimum spacing, peripheral-placement requirements, and pin-side compatibility. Rather than returning only a binary valid/invalid decision, Geometric Checker generates diagnostic feedback describing the structural cause of each violation. The Planner uses this feedback to revise the candidate in Loop 1 (Fig. 2(a)). Because VLM-generated coordinates may contain small residual overlaps even after iterative correction, PlaceReasoner-Beta includes a deterministic legalization procedure as a final safeguard. Legalization resolves remaining overlaps while minimizing perturbation from the intended placement, ensuring that numerical imprecision in coordinate generation does not unnecessarily consume expensive physical-design evaluations. 
+
+Physical Checker: early physical verification. Candidates that pass geometric verification are propagated through standard-cell placement to obtain inexpensive but informative physical-design feedback. Physical Checker analyzes early indicators such as estimated PPA, cell-density distributions, congestion-related features, and timing information. Instead of treating these measurements solely as scalar rewards, the checker interprets them spatially and diagnostically; for example, identifying congested regions, problematic macro channels, or placement structures likely to create timing bottlenecks. It then provides targeted recommendations to the Planner for Loop 2 (Fig. 2(b)). This stage serves as the bridge between geometric reasoning and physical optimization: candidates that are geometrically legal but physically unfavorable can be rejected or revised before incurring the substantially higher cost of CTS and routing. 
+
+Post-route Optimizer: end-to-end refinement. The final loop evaluates only the most promising candidates through CTS and routing and uses the resulting physical-design outcomes to guide further refinement. The Post-route Optimizer considers routed PPA, timing, congestion, and DRC-related feedback and identifies the placement structures responsible for remaining deficiencies. It then requests targeted placement modifications from the Planner rather than restarting the search from scratch (Fig. 2(c)). Iteration continues until the improvement converges or the refinement budget is 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 9exhausted. The three loops therefore establish a progressively more expensive decision process, screening candidates first on geometric feasibility, then on early physical quality, and only finally on post-route PPA and DRC. This architecture enables PlaceReasoner-Beta to selectively use expensive physical-design feedback while preserving the iterative inspection and revision characteristics of expert placement. 
+
+Placement representation and spatial reasoning. A placement is represented at two complementary levels. At the structured level, each macro is described by its location, dimensions, orientation, and pin-facing direction, enabling deterministic translation into EDA commands. At the visual level, the complete floorplan is rendered as an image, allowing a VLM to reason about global spatial relationships, relative distances, whitespace, clusters, and boundary interactions. The combination avoids relying exclusively on either symbolic coordinates or visual perception: structured attributes provide execution precision, while the rendered layout provides the spatial context needed for reasoning. 
+
+Connectivity-based macro clustering. The open RTL designs used in our benchmark do not provide complete dataflow annotations. To provide the Planner with useful structural context without introducing manually curated placement labels, we derive soft macro clusters directly from netlist connectivity. Related macros are grouped according to their connectivity structure, and the resulting clusters are supplied to the Planner as placement preferences rather than hard constraints. This encourages dataflow locality while allowing the agent to override clustering when geometric or physical considerations suggest a different arrangement. 
+
+Macro overlap legalization. VLM-generated coordinates are often close to legal but may contain small numerical errors; a single overlapping macro pair is sufficient to invalidate an otherwise promising candidate. PlaceReasoner-Beta therefore applies force-directed legalization after candidate generation. Overlapping macro pairs are displaced along the axis of smaller overlap until the required 2 𝜇 m spacing is restored, while weak restoring forces pull macros toward their intended positions and all macros remain clamped within the core boundary. If overlaps remain after the iteration budget, a greedy fallback places macros in descending area order at the nearest legal positions. This deterministic safeguard preserves the Planner’s spatial intent while removing the burden of exact overlap arithmetic from the VLM. 
+
+3.3 Benchmark Development                                                   
+
+> Table 1. Composition of PlaceReasoner-Bench. #Types counts distinct macro types, Clk is the target clock period, and M/Core is macro area as a fraction of core area. “–” denotes a quantity without aggregation.
+> Design #Macros #Clusters #Types Clk (ns) M/Core (%) ariane133 133 14 14.0 34.4 ariane81 81 864.0 36.0 bp_be 10 332.6 36.7 bp_fe 11 431.8 45.6 swerv_wrapper 28 332.0 44.1 vga_lcd 62 12 32.0 40.5 ethernet 64 218.0 14.2 VeriGPU 12 111.2 30.5 Total 401 47 –––
+
+PlaceReasoner-Bench: an open, end-to-end benchmark. 
+
+A central contribution of this work is PlaceReasoner-Bench, which is designed to evaluate agentic macro placement rather than generic physical-design automation . The benchmark is constructed entirely from open-source RTL, EDA tools, and technology libraries so that every task and downstream result can be regenerated without commercial licenses (Table 1). More importantly, the benchmark fixes all factors other than macro placement, enabling controlled attribution of post-route differences to the generated macro coordinates and orientations. Each benchmark task is gener-ated through a deterministic pipeline. We first synthesize the RTL using Yosys [40] with the open Nangate45 standard-cell library [27]. SRAM macros instantiated by the designs are generated using FakeRAM 2.0, an open memory compiler that provides macro abstracts with physical dimensions and timing characterization. This eliminates dependence on proprietary memory compilers, which otherwise prevents independent reproduction of macro-placement experiments. 
+
+> Manuscript submitted to ACM
+
+10 Qiufeng Li et al. For each synthesized design, we construct a realistic floorplan targeting approximately 60% core utilization and instantiate two floorplan geometries with aspect ratios of 1:1 and 2:1. I/O pins are assigned once for each task using the automatic pin-placement engine in OpenROAD [2] and then frozen. Consequently, every method receives the same netlist, core geometry, macro library, and I/O assignment, and the only variables controlled by the placer are macro positions and orientations. Fixing the pin assignment is particularly important for macro-placement evaluation: because macro orientation should align pin-facing sides with the logic they communicate with, the boundary pin pattern represents a genuine physical constraint rather than an additional optimization degree of freedom. The benchmark contains eight open-source RTL designs, including ariane133 , ethernet , and vga_lcd . Across these designs, the benchmark contains 10–133 macros per design and 401 macros in total, organized into 47 connectivity clusters, with 1–6 macro types per design. Macro-to-core area ratios range from 14 .2% to 45 .6%, while target clock periods range from 1 .2 to 8 .0 ns. Evaluating each design at two aspect ratios yields 16 end-to-end tasks , spanning both relatively macro-sparse designs and macro-dominated designs, in which macro arrangement imposes substantially stronger constraints on downstream implementation. 
+
+Controlled end-to-end evaluation. All stages after macro placement are held fixed across competing methods, including standard-cell placement, CTS, routing, timing repair, technology libraries, and implementation settings. Thus, differences in final PPA and DRC outcomes can be attributed to the macro placement itself rather than differences in downstream optimization. Each candidate is evaluated through the same complete physical-design flow, making routed PPA and DRC violations the primary measures of placement quality. The resulting benchmark evaluates properties that are difficult to capture with conventional placement metrics. In particular, the 1:1 and 2:1 configurations test whether a placement strategy can adapt to substantially different spatial geometries; fixed I/O assignments test whether macros can be oriented and positioned according to pin accessibility; realistic utilization creates meaningful whitespace and routing constraints; and post-route evaluation reveals whether apparently good geometric placements actually translate into high-quality physical implementations. PlaceReasoner-Bench therefore transforms macro placement from a placement-level coordinate task into a reproducible end-to-end evaluation of physical-design reasoning. 
+
+Together, PlaceReasoner and PlaceReasoner-Bench establish a unified framework for developing and evaluating agentic macro placement: the framework provides a closed-loop reasoning mechanism, while the benchmark provides a controlled and reproducible testbed for measuring whether that reasoning produces better physical designs. 
+
+4 Experimental Setup 
+
+Models. We instantiate PlaceReasoner-Beta on three backbones: the open-weight Qwen3-VL-8B [4] and Qwen3-VL-30B, and the proprietary Claude-Opus-4.8 [3], and evaluate all three on PlaceReasoner-Bench. Unless otherwise specified, the generation temperature is set to 0 .1. 
+
+EDA Flow. We use Yosys [40] for logic synthesis, OpenROAD [2] for P&R, and FakeRAM 2.0 [9] to generate memory macros, all under the open-source Nangate45 technology [27]. FakeRAM 2.0 is an open-source memory compiler that emits SRAM macro abstracts with physical dimensions and timing characterization, so the generated macros can be placed and routed like foundry memories; this removes any dependence on a commercial PDK or memory compiler and keeps the entire flow reproducible. Unless stated otherwise, all methods share the same netlist, floorplan, macro library, and P&R and timing-repair settings. Thus, they differ only in the generated macro coordinates and orientations. 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 11 
+
+Benchmark Tasks. We evaluate our framework on the proposed PlaceReasoner-Bench (Table 1), which measures end-to-end quality after a complete P&R flow: its 8 open-source designs, each evaluated at aspect ratios 1:1 and 2:1, form 16 tasks scored by routed PPA, wirelength, and DRC violations rather than by a pre-route wirelength proxy alone. 
+
+Baselines. On PlaceReasoner-Bench, we compare against four representative existing approaches: DREAMPlace 4.0 [24], a GPU-accelerated analytical placer; RTL-MP [19], a hierarchy- and dataflow-aware placer; ChiPFormer [21], an offline RL method; and a conventional simulated-annealing (SA) packing baseline [9]. Each baseline is run with the hyper-parameters reported in its original paper [9, 19, 21, 24]. Unless stated otherwise, PlaceReasoner-Beta denotes the full system on Claude-Opus-4.8, while Qwen3-VL-8B and Qwen3-VL-30B denote the same agentic workflow and skill pack running on the corresponding open-weight backbones, so that the gap between them isolates the effect of the backbone. We also report two controlled ablations, both on Claude-Opus-4.8: CWI removes layout images, and CWS keeps images but disables the skill pack. For PlaceReasoner-Beta, we set the budget of Germetric Checker and Physical Checker to 3, the Optimizer budget to 4, and the number of placement candidates to 5. To account for run-to-run variance, every method is executed 5 times per design, and we report its best run. 
+
+Evaluation Metrics. On PlaceReasoner-Bench, we report routed worst negative slack (WNS), total negative slack (TNS), design-rule-check (DRC) violations, routed wirelength, total power, and chip area. A run counts only once detailed routing succeeds; timeouts and tool failures are recorded as failed runs rather than replaced with pre-route estimates. We further report the wall-clock runtime of every method and, for the agentic ones, the total token usage, so that placement quality can be weighed against its compute cost. 
+
+Evaluation Framework. We evaluate PlaceReasoner-Beta along four complementary dimensions that capture both 
+
+placement effectiveness and the mechanisms underlying agentic reasoning. (1) Placement quality : We evaluate routed PPA and DRC violations on PlaceReasoner-Bench, using post-route outcomes as the primary measure of macro-placement quality rather than pre-route proxy objectives. (2) Visual grounding : We assess whether explicit layout perception contributes to placement quality through a CWI ablation that removes the floorplan image while preserving the remaining design context, thereby quantifying the benefit of visual reasoning, particularly for macro orientation and spatial relationships. (3) Exploration robustness : We examine the quality distribution across the five candidates generated in each run, evaluating whether PlaceReasoner-Beta consistently produces strong solutions rather than relying on a single favorable sample. (4) Iterative refinement : We track the optimization trajectory across successive feedback loops to determine whether the agent can systematically improve placement quality using geometric, early physical, and post-route feedback. We additionally report runtime and token consumption to characterize the computational cost of agentic reasoning, and perform a CWS ablation that removes the shared skill pack to isolate the contribution of explicitly encoded placement expertise and EDA-tool knowledge. 
+
+5 Evaluation Results and Analysis 5.1 Post-Route Placement Quality: Different Aspect Ratios and Analysis 
+
+Tables 2 and 3 report routed WNS, TNS, DRC violations, wirelength, power, and area for four representative designs at 1:1 and 2:1 aspect ratios, respectively. Complete results for all eight designs are provided in the appendix (Tables 6 and 7). We compare PlaceReasoner-Beta with four classical baselines; the CWI and CWS ablations are discussed separately. Three findings stand out. (i) Better PPA: Among DRC-clean runs, PlaceReasoner-Beta achieves the best timing on all eight 1:1 tasks and six of eight 2:1 tasks, without sacrificing power or area. (ii) Better wirelength: It also reduces routed wirelength on most tasks, despite never explicitly optimizing wirelength, suggesting that geometric reasoning 
+
+> Manuscript submitted to ACM
+
+12 Qiufeng Li et al. 
+
+Table 2. Post-route results for four representative designs at the square ( 1:1 ) aspect ratio; the remaining four designs are reported in the appendix. “–” denotes an unavailable metric and failure states indicate that detailed routing did not complete. Winner # reports the one-based winner position 𝑘 /𝑁 with 𝑁 = 5, and is undefined for the pure-model Qwen3-VL-8B and Qwen3-VL-30B rows, which report the single selected candidate. Runtime is macro-placement time for the classical baselines and summed model-driver time for the agent variants; Token Usage is the total of model input and output tokens. For ariane133, Qwen3-VL-30B left 18,166 residual violations, so its timing numbers are extracted from a non-converged routing and are not comparable with the clean rows.        
+
+> Design Method Winner # Route WNS (ns) TNS (ns) DRC WL (
+
+𝜇 m) Power (W) Area ( 𝜇 m2) Runtime (s) Token Usage (k) ariane133 RTL-MP 2/5 Yes -0.10 -4.60 0 5233982 0.265 729834 127.0 –ariane133 DREAMPlace 3/5 Fail: timeout – – – – – – 11.00 –ariane133 ChiPFormer 1/5 Yes -0.04 -4.61 0 6211024 0.304 737387 16.96 –ariane133 SA – Yes -76.52 -579878 80223 7135797 0.286 718246 0.240 –ariane133 CWI 1/5 Yes -0.02 -0.52 0 6105080 0.266 733327 814.4 329.4 ariane133 CWS 5/5 Yes -0.02 -0.56 0 5997840 0.265 732096 820.3 314.1 ariane133 PlaceReasoner-Beta 3/5 Yes -0.02 -0.35 0 5622394 0.258 728851 828.7 348.6 ariane133 Qwen3-VL-8B – Fail: DRT-0073 – – – – – – 3123.4 689.2 ariane133 Qwen3-VL-30B 2/5 Yes -0.02 -0.13 18166 6123046 0.283 728261 255.0 572.7 ariane81 RTL-MP 2/5 Yes -0.14 -8.43 0 5577716 0.184 694809 91.8 –ariane81 DREAMPlace 1/5 Fail: timeout – – – – – – 9.53 –ariane81 ChiPFormer 5/5 Yes -1.02 -2103 0 6948313 0.177 700271 15.12 –ariane81 SA – Fail: placed-only – – – – – – 0.178 –ariane81 CWI 1/5 Yes 0.00 0.00 0 4987790 0.171 693096 829.7 349.7 ariane81 CWS 1/5 Yes 0.00 0.00 0 4987790 0.171 693096 836.1 337.2 ariane81 PlaceReasoner-Beta 5/5 Yes -0.04 -1.20 0 5203922 0.171 692142 847.6 362.6 ariane81 Qwen3-VL-8B 2/5 Yes -0.09 -6.24 0 6631628 0.198 693184 2449.0 759.3 ariane81 Qwen3-VL-30B 1/5 Yes -0.09 -13.95 0 6511947 0.203 694924 235.3 602.4 bp_be RTL-MP 4/5 Yes -0.28 -23.54 0 2354232 0.123 240519 85.9 –bp_be DREAMPlace 4/5 Yes -0.47 -29.81 63393 3814816 – 243381 5.94 –bp_be ChiPFormer 1/5 Yes -0.58 -54 0 2929620 0.131 243411 5.75 –bp_be SA – Yes -0.24 -21.26 37695 2411088 0.123 239997 0.032 –bp_be CWI 3/5 Yes -0.26 -22.75 0 2598380 0.125 241666 693.7 198.5 bp_be CWS 3/5 Yes -0.26 -22.75 0 2598379 0.125 241666 704.5 183.7 bp_be PlaceReasoner-Beta 1/5 Yes -0.13 -9.42 0 2287187 0.118 238089 722.3 208.4 bp_be Qwen3-VL-8B 3/5 Yes -0.29 -28.59 0 2435295 0.107 238967 349.7 308.9 bp_be Qwen3-VL-30B 1/5 Yes -0.16 -13.28 0 2368477 0.102 238576 63.1 253.5 vga_lcd RTL-MP 5/5 Yes -0.78 -498.02 45 2471807 0.182 650863 48.0 –vga_lcd DREAMPlace 3/5 Yes -0.85 -146.70 62598 3804114 – 650838 8.56 –vga_lcd ChiPFormer 2/5 Yes -0.82 -1180 0 2880834 0.198 655252 11.15 –vga_lcd SA – Yes -0.81 -36.16 67293 2391472 0.184 649634 0.104 –vga_lcd CWI 3/5 Yes -0.66 -48.84 0 2604281 0.184 650468 762.1 371.7 vga_lcd CWS 4/5 Yes -0.66 -48.84 0 2604281 0.184 650468 774.9 364.1 vga_lcd PlaceReasoner-Beta 2/5 Yes -0.74 -37.73 0 2342025 0.18 651477 785.1 386.4 vga_lcd Qwen3-VL-8B 4/5 Yes -0.89 -41.92 0 2449050 0.190 648133 2084.3 730.6 vga_lcd Qwen3-VL-30B 2/5 Yes -0.71 -27.86 0 2455068 0.192 647852 170.9 466.3 
+
+can improve downstream routing quality beyond the proxy objective. (iii) Better routability: PlaceReasoner-Beta is the only method that produces a routable layout with at most two DRC violations on all 16 tasks. We first examine the 1:1 tasks in detail, then highlight how performance changes under the more challenging 2:1 geometry, and finally analyze why the reasoning-driven approach produces these gains. 
+
+5.1.1 Square ( 1:1 ) Tasks. PPA are superior. Table 2 shows that PlaceReasoner-Beta achieves the best WNS and TNS among all DRC-clean baseline runs on all eight designs . The advantage is largest when macro placement strongly constrains the design. On ariane133 , it achieves −0.02/ −0.35 ns versus −0.10/ −4.60 ns for RTL-MP and 
+
+−0.04/ −4.61 ns for ChiPFormer, a 92 .4% TNS reduction over the strongest baseline. On vga_lcd , it reduces TNS from 
+
+−498 .02 ns (RTL-MP) to −37 .73 ns. We use bp_be as an exemplary case to illustrate how placement drives downstream quality (Fig. 4). Specifically, DREAMPlace and SA complete routing but produce 63 ,393 and 37 ,695 DRC violations, respectively, making their layouts physically invalid. Among DRC-clean baselines, RTL-MP and ChiPFormer achieve WNS/TNS of −0.28/ −23 .54 ns and −0.58/ −54 .00 ns, whereas PlaceReasoner-Beta improves them to −0.13 /−9.42 ns, reducing WNS/TNS deficits by 53 .6%/60 .0% over RTL-MP and 77 .6%/82 .6% over ChiPFormer. The invalid layouts are visibly congested: DREAMPlace concentrates macros in the right half of the core (Fig. 4(c)), while ChiPFormer (Fig. 4(b)) and RTL-MP (Fig. 4(d)) place them internally, fragmenting the standard-cell region. In contrast, PlaceReasoner-Beta 
+
+Manuscript submitted to ACM PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 13 
+
+Table 3. Post-route results for four representative designs at the elongated ( 2:1 ) aspect ratio; the remaining four designs are reported in the appendix. “–” denotes an unavailable metric and failure states indicate that detailed routing did not complete. Winner # reports the one-based position 𝑘 /𝑁 of the selected candidate among the 𝑁 = 5 trials of that run. Runtime and Token Usage are the summed model-driver time and the total of model input and output tokens, and are reported for the model-driven flows (CWI, CWS, PlaceReasoner, and the two Qwen baselines); the non-LLM baselines incur no model cost.                                                                                                                                                                                                                                                   
+
+> Design Method Winner # Route WNS (ns) TNS (ns) DRC WL ( 𝜇 m) Power (W) Area ( 𝜇 m2)Runtime (s) Token Usage (k) ariane133 RTL-MP 1/5 Yes -0.12 -25.29 06033112 0.276 731337 ––ariane133 DREAMPlace –Fail: timeout ––––––––ariane133 ChiPFormer 2/5 Yes -0.39 -620 07079270 0.278 738872 ––ariane133 SA –Fail: GP1 ––––––––ariane133 PlaceReasoner 4/5 Yes -0.02 -0.08 05690597 0.285 730228 834.9 357.1 ariane133 Qwen3-VL-8B –Fail: GRT-0116 ––––––2228.3 479.9 ariane133 Qwen3-VL-30B –Fail: DRT-0073 ––––––208.9 600.6 ariane81 RTL-MP 2/5 Yes -0.10 -35.10 06180469 0.179 696239 ––ariane81 DREAMPlace –Fail: timeout ––––––––ariane81 ChiPFormer 4/5 Yes -1.82 -5617 09503525 0.181 727526 ––ariane81 SA –Fail: capped ––––––––ariane81 PlaceReasoner 1/5 Yes -0.02 -0.15 05798709 0.194 698754 861.2 401.7 ariane81 Qwen3-VL-8B 1/5 Yes -0.40 -310.10 28 7017977 0.202 694691 778.8 330.1 ariane81 Qwen3-VL-30B 2/5 Yes -0.09 -43.12 15923522 0.193 692020 524.7 579.2 bp_be RTL-MP 1/5 Yes -0.37 -38.96 02652279 0.123 240762 ––bp_be DREAMPlace –Fail: timeout ––––––––bp_be ChiPFormer –Fail: segfault ––––––––bp_be SA –Yes -0.36 -36.62 34190 2749978 0.124 241710 ––bp_be PlaceReasoner 4/5 Yes -0.22 -18.06 12873409 0.109 240882 728.9 241.6 bp_be Qwen3-VL-8B 1/5 Yes -0.39 -31.03 02647452 0.107 239686 216.1 237.2 bp_be Qwen3-VL-30B 1/5 Fail: GRT-0116 ––––––256.2 480.3
+
+arranges macros along the die edges (Fig. 4(i)), preserving a contiguous standard-cell region and open routing channels; the resulting routed layout is shown in Fig. 4(j). Across all eight designs, PlaceReasoner-Beta reduces TNS by 57 .6% on average relative to the strongest baseline per design , and by 61 .2% relative to the four-baseline field when counting only runs within the 1 ,000-violation DRC budget (Fig. 3, left). The first metric measures improvement over the best available competitor, while the second captures improvement over the overall baseline field. Total power is lower than RTL-MP on six designs and equal on ethernet , with only a minor regression on swerv_wrapper (0 .243 vs. 0 .239 W, +1.7%). Post-route area is also the smallest among DRC-clean baselines on all eight designs, e.g., 238 ,089 𝜇 m2 on bp_be versus 240 ,519 𝜇 m2 for RTL-MP and 243 ,411 𝜇 m2 for ChiPFormer. Gains are smaller on VeriGPU and ethernet , where macros occupy only 30 .5% and 14 .2% of core area, leaving downstream optimization more freedom to recover from mediocre macro placement. 
+
+Wirelength improves despite never being optimized. Although PlaceReasoner-Beta never optimizes wirelength, its routed wirelength is shorter than RTL-MP on six of eight designs (up to 8 .2% on swerv_wrapper and 6 .7% on ariane81 )and shorter than ChiPFormer on seven of eight (up to 25 .1% on ariane81 ) (Fig. 3, right). The contrast with DREAMPlace is particularly striking: despite directly minimizing an analytical wirelength objective, its routed wirelength is 37–97% longer on the five completed designs, e.g., 3 .81 × 10 6 versus 2 .29 × 10 6 𝜇 m on bp_be . Its wirelength-optimal macro positions can force routing detours and via stacks that pre-route objectives do not capture. Thus, optimizing a wirelength proxy does not necessarily improve routed wirelength; respecting routability and dataflow structure can improve it as a by-product. DRC & routability. PlaceReasoner-Beta is DRC-clean on all 1:1 designs. RTL-MP leaves 14 and 45 violations on 
+
+ethernet and vga_lcd ; SA is clean only on bp_fe , leaves 27 ,609–80 ,223 violations elsewhere, and fails on ariane81 .DREAMPlace times out on three designs and leaves 30 ,699–65 ,340 violations on the five it completes. ChiPFormer matches our DRC record, but at substantial timing cost, with TNS reaching −2103 ns on ariane81 and −1384 ns on 
+
+swerv_wrapper . That is, it achieves legality through conservative placements that do not adequately preserve timing. 
+
+Manuscript submitted to ACM 14 Qiufeng Li et al. 
+
+5.1.2 Elongated ( 2:1 ) Tasks. Table 3 shows that the elongated core is substantially harder: no classical baseline routes all eight designs with fewer than 10 DRC violations. Detailed routing fails outright on five of eight designs for DREAMPlace, four for SA, and one for ChiPFormer, and several completed runs remain DRC-invalid, with up to 62 ,832 violations. 
+
+PlaceReasoner-Beta is the only method that routes all eight designs with at most two DRC violations , with five completely DRC-clean and the remaining three having only one or two violations. In contrast, the worst cases reach 1 ,421, 1 ,456, and 62 ,832 violations for RTL-MP, ChiPFormer, and DREAMPlace, respectively. Among baseline runs that complete within the 1 ,000-violation DRC budget, PlaceReasoner-Beta achieves the best TNS on six of eight designs , reducing TNS by 44 .3% relative to the strongest surviving baseline and 53 .0% relative to the four-baseline field (Fig. 6). On the two exceptions, the differences are small but come with worse routability: ChiPFormer achieves −0.21 ns on bp_fe versus −0.23 ns for PlaceReasoner-Beta but with five DRC violations, while RTL-MP reaches −29 .70 ns on 
+
+vga_lcd versus −33 .13 ns with 171 violations, compared with only one for PlaceReasoner-Beta. The key difference between the two aspect ratios is reliability rather than simply timing margin . Failed routing runs increase from 4 /32 at 1:1 to 10 /32 at 2:1, while even RTL-MP drops from six to four DRC-clean designs. PlaceReasoner-Beta, in contrast, routes all eight designs at both aspect ratios with at most two violations. Thus, under elongated geometries, the primary benefit of explicit spatial reasoning is improved legality and routability, the properties most stressed when the floorplan becomes asymmetric. We use ariane133 as an exemplary case to show this advantage (Fig. 5). DREAMPlace times out and SA fails during global placement, while RTL-MP and ChiPFormer complete routing with WNS/TNS of −0.12/ −25 .29 ns and −0.39/ −620 ns, respectively. PlaceReasoner-Beta improves these to −0.02/ −0.08 ns, a 99 .7% TNS reduction over RTL-MP, while also reducing routed wirelength by 5 .7% and 19 .6% relative to the two baselines. The layouts reveal why: SA (Fig. 5(a)) and DREAMPlace (Fig. 5(c)) leave macros clustered in the interior, creating severe congestion, while ChiPFormer (Fig. 5(b)) scatters them across the upper core and suffers extreme timing degradation. RTL-MP places most macros along the top and left edges (Fig. 5(d)), but only 
+
+PlaceReasoner-Beta organizes them into two bands along the short peripheries (Fig. 5(i)), preserving a continuous standard-cell region across the die (see the routed result shown in Fig. 5(j)). As at 1:1, gains are smaller for macro-sparse designs such as VeriGPU and ethernet , with 23 .0% and 17 .3% TNS reductions over RTL-MP. Unlike the square tasks, however, 2:1 provides no additional wirelength or power advantage: PlaceReasoner-Beta has shorter routed wirelength on three of eight designs and is essentially tied overall (geometric-mean ratio 0 .998), while power is lower on three. Since neither metric is directly optimized, the elongated geometry leaves less freedom to improve timing, routability, and other post-route objectives simultaneously. The key gain is therefore robust timing closure and routability, achieved without sacrificing overall wirelength or power. 
+
+5.1.3 Why Does PlaceReasoner-Beta Work Better? Figs. 3 and 4 suggest a common mechanism: PlaceReasoner-Beta produces macro arrangements that preserve the geometric structures favored by downstream physical design. The analytical and annealing baselines tend to place macros in the core interior, creating narrow, irregular slivers of standard-cell area between macros and along the die boundary. These regions are difficult to fill and route, leading to congestion, detours, and ultimately the DRC violations reported in Tables 2 and 3. In contrast, PlaceReasoner-Beta places macros along the periphery, keeps related clusters contiguous with consistent orientations, and preserves a large, connected standard-cell region. This geometry naturally reduces routing bottlenecks, provides more flexibility for timing-critical cell placement, and shortens routing detours, explaining the observed gains in DRC, WNS/TNS, and, as a by-product, routed wirelength and power. These behaviors reflect established expert placement principles [29], which the skill pack expresses as explicit reasoning rules rather than a scalar optimization term. The VLM enables this reasoning 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 15 ariane133 ariane81 bp be                    
+
+> bp fe
+> swerv wrapper
+> vga lcd
+> ethernet VeriGPU
+> -100 -50 0+50 +100
+> TNS improvement (%)
+> 92% 100% 83% 100% 70% 97% 4% 5%
+> 92% 86% 60% 56% 4% 92% 1% 4%
+> better worse
+> range across baselines Best case (vs. weakest baseline) Worst case (vs. strongest baseline) ariane133 ariane81 bp be
+> bp fe
+> swerv wrapper
+> vga lcd
+> ethernet VeriGPU
+> -100 -50 0+50
+> Wirelength improvement (%)
+> 9% 25% 22% 13% 25% 19% -4% 6%
+> -7% 7% 3% 3% 8% 5% -5% 3%
+> better worse
+> range across baselines Best case (vs. weakest baseline) Worst case (vs. strongest baseline)
+
+Fig. 3. Performance improvement of PlaceReasoner-Beta on post-route quality on the square ( 1:1 ) tasks: best- vs. worst-case improvement over the baselines, per design. Left: TNS; right: routed wirelength. For each design the best case (green) is the improvement over the weakest baseline and the worst case (orange) over the strongest; the shaded band spans the two. Improvement is ( | 𝑥 base | − | 𝑥 pr | )/ max ( | 𝑥 base |, |𝑥 pr | ) . That is, +100% means PlaceReasoner-Beta drives the metric to zero and positive values (green zone) mean it is better. Although PlaceReasoner-Beta never optimizes wirelength, it still shortens it over the baselines on most designs. (a)  SA     
+
+> TNS= -21.26ns
+> DRC=37695
+> (b) ChiPFormer
+> TNS= -54ns
+> DRC=0
+> (c) DREAMPlace
+> TNS= -29.81ns
+> DRC=63393
+> (d) RTL_MP
+> TNS= -23.54ns
+> DRC=0
+> (h) CWI
+> TNS= -22.75ns
+> DRC=0
+> (i)PlaceReasoner -Beta
+> TNS= -9.42ns
+> DRC=0
+> (e) Qwen3 -VL -8B
+> TNS= -28.59ns
+> DRC=0
+> (f) Qwen3 -VL -30B
+> TNS= -13.28 ns
+> DRC=0
+> (j) Routed layout
+> of PlaceReasoner -Beta
+> (g) CWS
+> TNS= -22.75ns
+> DRC=0
+
+# Bp_be  on ar1. Layout image 
+
+Fig. 4. Macro placements produced by different methods on bp_be at aspect ratio 1:1 , each annotated with the post-route TNS and DRC count it leads to; (j) is the routed layout obtained from the placement in (i). (a) SA and (c) DREAMPlace spread macros over the core interior and leave narrow, irregular gaps between them and the die boundary; the router cannot absorb the standard cells there, yielding 37 ,695 and 63 ,393 violations (in (c), red marks the congested region). (b) ChiPFormer and (d) RTL-MP route DRC-clean, but their interior macro columns cut the standard-cell area into disconnected strips, and timing stalls at −54 and 
+
+−23 .54 ns. (i) PlaceReasoner-Beta instead pushes every macro against the periphery in a single contiguous column, preserving one large standard-cell region and clear routing channels, and reaches −9.42 ns with zero violations. The same effect is visible across backbones: (f) Qwen3-VL-30B also drives the macros to the periphery and reaches −13 .28 ns, whereas (e) Qwen3-VL-8B leaves them fragmented in the interior and stalls at −28 .59 ns. Panels (g) and (h) are the CWS and CWI ablations, discussed in the ablation study. 
+
+by grounding decisions in the floorplan image. It can recognize which regions remain available, identify narrowing channels, detect fragmented clusters, and revise placements in response to checker feedback. In contrast, analytical placers must encode such structural preferences indirectly through differentiable objectives; as the DREAMPlace results illustrate, minimizing a wirelength proxy does not guarantee a geometrically or physically favorable routed design. 
+
+Manuscript submitted to ACM 16 Qiufeng Li et al. (a) SA     
+
+> failed
+> (b) ChiPFormer
+> TNS= -620ns
+> DRC=0
+> (c) DREAMPlace
+> failed
+> (d) RTL_MP
+> TNS= -25.29ns
+> DRC=0
+> (h) CWI
+> failed
+> (i)PlaceReasoner -Beta
+> TNS= -0.08ns
+> DRC=0
+> (e) Qwen3 -VL -8B
+> failed
+> (f) Qwen3 -VL -30B
+> failed
+> (j) Routed layout
+> of PlaceReasoner -Beta
+> (g) CWS
+> TNS= -2650.22ns
+> DRC=0
+
+# Ariane133 on ar2, layout image 
+
+Fig. 5. Macro placements on ariane133 at aspect ratio 2:1 , annotated with the post-route TNS and DRC count each leads to; (j) is the routed layout of (i), and “failed” marks runs whose detailed routing did not complete. The elongated core is unforgiving: five of the nine placements never route. (a), (c) and (f) leave the macros in a dense interior cluster (in (c), red marks the congested region), while (b) and (e) fragment the standard-cell area into disconnected strips; only ChiPFormer routes, at −620 ns. (d) RTL-MP is the strongest baseline, holding an L-shaped ring along the left and bottom edges and reaching −25 .29 ns DRC-clean. (i) PlaceReasoner-Beta 
+
+instead packs the macros into two bands against the short peripheries, leaving one uninterrupted standard-cell region across the die, and reaches −0.08 ns with zero violations. Panels (g) and (h) are the CWS and CWI ablations, discussed in the ablation study. 
+
+5.2 Visual Grounding: Macro Orientation and Pin-Side Alignment 
+
+Macro placement is defined by both position and orientation. A key expert principle is to orient each macro so that its pin side faces the standard-cell logic it communicates with, rather than a die boundary or the back of a neighboring macro [29]. This is where reasoning over layout geometry can outperform objective-driven optimization: flipping a macro may leave wirelength and density objectives nearly unchanged, yet determine whether its pins face usable routing resources or a physical obstruction. Fig. 8 shows this distinction by using bp_fe at 2:1 as an example, with each macro’s pin side highlighted. PlaceReasoner-Beta is the only method that correctly aligns the pin sides of all macros . It divides the macros into left and right groups and mirrors their orientations, directing all pins toward the central standard-cell corridor. In contrast, SA scatters macros through the core with inconsistent orientations and produces 20 ,479 DRC violations. ChiPFormer packs the macros into an abutting block with uniform orientations, causing pins on the outer columns to face the boundary or neighboring macros. RTL-MP orients the main column appropriately but leaves the top-right macro facing the boundary and creates a large dead region. Even the Qwen3-VL 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 17 ariane133 ariane81 bp be             
+
+> bp fe
+> swerv wrapper
+> vga lcd
+> ethernet VeriGPU
+> -100 -50 0+50 +100
+> TNS improvement (%)
+> 100% 100% 100% 100% 100% 100%
+> 100% 81% 54% -9%
+> ChiPFormer
+> DRC 5 vs. ours 0
+> 100% -10%
+> RTL-MP DRC 171 vs. ours 1
+> 16% 23%
+> better worse
+> range across baselines Best case (vs. weakest baseline) Worst case (vs. strongest baseline) baseline wins but is less DRC-clean ariane133 ariane81 bp be
+> bp fe
+> vga lcd
+> ethernet VeriGPU
+> -100 -50 0+50 +100
+> Wirelength improvement (%)
+> 20% 39% -8% 28% -2% 10%
+> 6% 6% -8% -2% -8%
+> RTL-MP DRC 171 vs. ours 1
+> -3% 6%
+> better worse
+> range across baselines Best case (vs. weakest baseline) Worst case (vs. strongest baseline) baseline wins but is less DRC-clean
+
+Fig. 6. Post-route improvement of PlaceReasoner-Beta on the elongated ( 2:1 ) tasks: best- vs. worst-case improvement over the four classical baselines, per design. Left: TNS; right: routed wirelength. For each design, the best case (green) is the improvement over the weakest baseline and the worst case (orange) over the strongest; the shaded band spans the two. Improvement is ( | 𝑥 base | − |𝑥 pr | )/ max ( | 𝑥 base |, |𝑥 pr | ) , so +100% means the metric is driven to zero and positive values (green zone) mean PlaceReasoner-Beta is better. A baseline that fails to route, or routes with more than 10 ,000 DRC violations, counts as a failed run: for TNS it scores a full 
+
++100% win, which is why the best-case curve saturates; for wirelength it is excluded instead, and swerv_wrapper therefore drops from that panel because no baseline survives. Hollow markers on bp_fe and vga_lcd mark the two designs where the strongest baseline attains marginally better TNS but with more DRC violations than our run. Timing therefore improves on six of the eight designs, with a mean worst-case gain of +44 .3% , while routed wirelength is on par with the strongest baseline. 
+
+backbones, despite producing sensible macro locations, assign a common orientation to the macros, suggesting that they capture where macros belong more readily than which way they should face. Correct orientation enables multiple physical objectives to be satisfied simultaneously. ChiPFormer achieves the best baseline timing ( −0.21 ns WNS) but leaves five DRC violations and no clear routing channel; SA is highly DRC-invalid; and RTL-MP is DRC-clean but has 27 × worse TNS ( −6.12 ns), partly due to its dead region and misoriented macro. 
+
+PlaceReasoner-Beta achieves −0.23 ns WNS with zero violations , remaining within 0 .02 ns of the best timing while preserving both routability and pin-side alignment. This example highlights the advantage of multimodal reasoning: 
+
+pin orientation, dataflow locality, and routing space can be evaluated jointly in the layout, whereas they are difficult to express through a single scalar objective . Fig. 9 shows the remaining 15 benchmark tasks, where the same pattern recurs: PlaceReasoner-Beta places macro groups near the periphery and orients their pin sides toward the standard-cell regions they serve. 
+
+5.3 Exploration Robustness: Candidate Spread and PPA Variance 
+
+PlaceReasoner-Beta deliberately explores multiple placement hypotheses rather than committing to a single solution. For each design, the planner generates 𝑁 = 5 structurally distinct candidates, which are screened by the checkers and post-route optimizer to select the best verified solution. Candidate variation therefore represents search breadth rather than method instability: exploring alternative macro organizations is how the framework discovers high-quality layouts. Tables 4 and 5 quantify this behavior across 80 candidate runs (8 designs × 2 aspect ratios × 5 candidates). Of these, 68 complete routing and 42 are DRC-clean. The variation is strongly metric-dependent. Timing varies substantially across candidates, with mean CVs of 80 .4% for TNS and 43 .7% for WNS, whereas power and area are nearly invariant, with mean CVs of only 1 .56% and 0 .27% and maxima of 5 .3% and 1 .0%, respectively. Thus, macro placement provides substantial leverage over timing but limited leverage over power and area , motivating candidate generation and screening rather than one-shot placement. 
+
+Manuscript submitted to ACM 18 Qiufeng Li et al. 
+
+Table 4. Which post-route metrics macro placement actually moves, aggregated over the 16 benchmark cells of Table 5. “range%” is the candidate spread (max − min )/| mean |. Timing varies by tens of percent between candidates of the same design, whereas power and area vary by at most a few percent.                     
+
+> Metric mean CV% median CV% max CV% mean range% TNS (ns) 80.36 72.83 190.36 170.35 WNS (ns) 43.72 19.36 152.96 89.83 Power (W) 1.56 1.16 5.28 3.18 Area ( 𝜇 m2)0.27 0.19 0.98 0.56
+
+Table 5. Run-to-run PPA variance of PlaceReasoner on PlaceReasoner-Bench. Statistics are taken over the 𝑁 = 5 placement candidates the planner generates for each design, using only those that complete detailed routing; “routed” counts them and “clean” how many of those are DRC-clean. CV% = 100 std /| mean |. Timing spreads widely across candidates while power and area stay within a few percent, which is why candidate selection is part of the workflow.                                                                                                                                                                                                                                                                                                                                 
+
+> Design AR Candidates WNS (ns) TNS (ns) Power (mW) Area ( 10 3𝜇 m2)routed clean mean ±std CV% mean ±std CV% mean ±std CV% mean ±std CV%
+> ariane133 1:1 2/5 1/2 −0.190 ±0.240 126.5 −234 .0±330 .4141.2 268 .0±14 .15.3 732 .5±5.20.71
+> ariane81 1:1 5/5 5/5 −0.066 ±0.019 29.5 −12 .7±13 .4105.5 195 .2±1.50.8 693 .5±1.20.17
+> bp_be 1:1 5/5 5/5 −0.226 ±0.077 34.1 −19 .3±6.533.7 120 .6±2.11.7 239 .2±0.80.34
+> bp_fe 1:1 3/5 3/3 −0.257 ±0.393 153.0 −15 .9±27 .2171.5 144 .0±5.23.6 215 .1±2.10.98
+> swerv_wrapper 1:1 5/5 1/5 −0.522 ±0.070 13.4 −480 .6±56 .311.7 244 .4±4.82.0 648 .5±1.70.26
+> vga_lcd 1:1 4/5 2/4 −0.800 ±0.045 5.7 −96 .0±63 .866.4 181 .8±2.11.1 649 .6±0.90.14
+> ethernet 1:1 5/5 5/5 −0.314 ±0.015 4.8 −1.5±0.14.7 14 .1±0.10.4 110 .5±0.10.05
+> VeriGPU 1:1 2/5 2/2 −0.260 ±0.014 5.4 −12 .6±0.53.7 92 .0±1.21.3 274 .3±0.30.10
+> ariane133 2:1 5/5 3/5 −0.058 ±0.050 85.7 −11 .6±20 .7179.1 288 .4±3.41.2 731 .2±1.50.20
+> ariane81 2:1 5/5 3/5 −0.172 ±0.214 124.2 −172 .2±327 .9190.4 194 .4±2.11.1 694 .3±1.80.26
+> bp_be 2:1 3/5 1/3 −0.277 ±0.067 24.1 −25 .7±8.231.8 107 .7±1.51.4 240 .9±0.60.24
+> bp_fe 2:1 4/5 2/4 −0.152 ±0.083 54.2 −2.5±3.6144.5 130 .8±1.31.0 218 .3±0.90.41
+> swerv_wrapper 2:1 5/5 0/5 −0.586 ±0.086 14.7 −534 .0±50 .49.4 244 .0±1.20.5 648 .2±0.80.13
+> vga_lcd 2:1 5/5 2/5 −0.830 ±0.074 8.9 −188 .5±149 .379.2 182 .8±1.91.1 649 .7±0.80.13
+> ethernet 2:1 5/5 5/5 −0.310 ±0.037 12.1 −1.5±0.211.6 13 .9±0.00.0 110 .3±0.00.04
+> VeriGPU 2:1 5/5 2/5 −0.274 ±0.009 3.3 −26 .6±26 .9101.4 129 .2±3.32.5 274 .7±0.30.10
+
+Fig. 7 illustrates this behavior for bp_be at 1:1, using RTL-MP as the classical reference. The five candidates span 
+
+−9.42 to −27 .27 ns TNS, a 2 .9× range, while area varies by less than 1% and power by 4 .2%; all five are DRC-clean. Individual candidates can underperform the baseline, as expected in exploratory search, but the selection mechanism identifies asym_5_3 as the strongest candidate, improving TNS, WNS, power, and area by 60 .0%, 53 .6%, 4 .1%, and 1.0%, respectively. Importantly, the benefit comes from structured exploration rather than a single favorable sample : four of five candidates already outperform RTL-MP on both timing metrics, while all five match or improve its power and area. This pattern is consistent across the benchmark, with PlaceReasoner-Beta achieving the best timing among DRC-clean baselines for all eight square designs without increasing power or area. 
+
+5.4 Iterative Refinement: The Post-Route Optimization Trajectory 
+
+The candidate search mentioned above concludes with the post-route optimizer, which receives routed feedback from the best base candidate and can perform up to four additional rounds of macro rearrangement. Fig. 10 traces these rounds across four designs and both aspect ratios, showing the incumbent layout, the solution that would be selected after each iteration, normalized to the initial plan. Only macro positions and orientations are modified; standard-cell placement, CTS, routing, and timing repair remain fixed, ensuring that improvements arise solely from macro-level refinement. The optimizer improves the incumbent in 11 of 16 cases , with gains often extending beyond the first round. For vga_lcd at 1:1, it widens inter-column routing channels from 4 to 18 , 𝜇 m over two rounds, reducing TNS by 29 .4% and WNS by 8 .1% while remaining DRC-clean. On ariane81 at 2:1, it discovers a four-corner arrangement transferred from a sibling design, improving WNS/TNS from −0.05/ −6.81 ns to −0.02/ −0.15 ns, a 97 .8% TNS reduction. Notably, 
+
+Manuscript submitted to ACM PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 19 balanced left block right block top walls asym 5-3 
+
+> 510 15 20 25 30
+> |TNS| (ns)
+
+(a) Total negative slack  
+
+> 18.81 27.27 22.21 18.98 9.42
+> balanced left block right block top walls asym 5-3
+> 0.10 0.15 0.20 0.25 0.30 0.35
+> |WNS| (ns)
+
+(b) Worst negative slack  
+
+> 0.21 0.34 0.25 0.20 0.13
+> balanced left block right block top walls asym 5-3
+> 118 120 122 124
+> Total power (mW)
+
+(c) Power  
+
+> 119 122 123 121 118
+> balanced left block right block top walls asym 5-3
+> 238 239 240 241
+> Area (10 3 μm2)
+
+(d) Area   
+
+> 239.0 239.7 240.3 239.2 238.1
+> Candidate Selected candidate RTL-MP baseline
+
+Fig. 7. PPA of the five structurally distinct macro placements PlaceReasoner-Beta explores for bp_be at aspect ratio 1:1 , against RTL-MP (dashed), the strongest classical baseline on this design; the dark bar is the candidate the workflow selects. Timing is plotted as a magnitude, so lower is better in every panel. The candidates differ by a factor of 2.9 in TNS but by under 1% in area and 4.2% in power, and all five are DRC-clean. Every candidate is at least as good as RTL-MP in area and power, and four of five are better in TNS and WNS, so the advantage does not depend on which candidate is selected. 
+
+this arrangement performed worse than the seed at 1:1, illustrating that the agent can discover non-local alternatives that a purely local search would miss. The trajectories also reveal clear limits. On bp_be and swerv_wrapper at 2:1, no refinement survives both timing and DRC checks, so the workflow retains the base plan. On vga_lcd at 2:1, WNS improves by 3 .9%, but TNS degrades by 49 .5%, reflecting the current selection rule’s WNS-first ranking rather than a failure to explore. Two factors explain the diminishing returns. First, geometric optimization is non-monotonic : varying corridor position, width, channel width, or corner gaps often produces a local optimum near the initial arrangement, while larger moves can overshoot or violate legalization. Second, macro placement has limited leverage when critical paths are macro-independent. 
+
+For example, the worst paths in both swerv_wrapper runs are register-to-register paths between standard-cell blocks; macro placement can affect them only indirectly by reshaping the standard-cell region. Thus, post-route refinement provides substantial additional quality in many cases but cannot guarantee improvement. A natural next step is critical-path-aware refinement that recognizes when macro-level changes have little remaining leverage and terminates exploration accordingly. 
+
+> Manuscript submitted to ACM
+
+20 Qiufeng Li et al. (a) SA TNS=    
+
+> -6.55ns
+> DRC=20479
+> (b) ChiPFormer
+> TNS= -0.21ns
+> DRC=5
+> (c) DREAMPlace
+> failed
+> (d) RTL_MP
+> TNS= -6.12ns
+> DRC=0
+> (h) CWI
+> TNS= -0.93ns
+> DRC=0
+> (i) PlaceReasoner
+> TNS= -0.23ns
+> DRC=0
+> (e) Qwen 3-VL -8B
+> TNS= -2.43ns
+> DRC=0
+> (f) Qwen3 -VL -30B
+> TNS =-1.19ns
+> DRC=0
+> (j) Routed layout
+> of PlaceReasoner
+> (g) CWS
+> TNS= -0.93ns
+> DRC=0
+
+Bp_fe  on ar2 with pin side highlighted 
+
+Fig. 8. Macro placements of bp_fe at aspect ratio 2:1 , with each macro’s pin side marked by the dark bar on its edge; green and red bands are the I/O pins on the die boundary, and (j) is the routed layout of (i). Only (i) PlaceReasoner-Beta turns every pin side toward the standard-cell region: it mirrors the orientation of the two macro groups so that the left group faces right and the right group faces left, both onto the central corridor. (a) SA orients macros inconsistently across a scattered interior placement ( 20 ,479 
+
+violations); (b) ChiPFormer packs one abutting block with uniformly oriented columns, so the left column faces the die boundary and the right column faces the back of the left, and it leaves 5 violations; (d) RTL-MP orients its main column inward but leaves the top-right macro facing the boundary beside a large dead region; (c) DREAMPlace does not complete routing. (e)–(f) Qwen3-VL-8B and Qwen3-VL-30B, and (g)–(h) the two ablations, apply a single orientation to every macro, so their left-hand macros face outward. 
+
+5.5 Runtime and API Cost of PlaceReasoner-Beta 
+
+The final two columns of Table 2 quantify the computational cost of PlaceReasoner-Beta. Including 𝑁 = 5 candidate generation, checker verification, and iterative refinement, it requires 601 .8–847 .6 s per design (mean 733 s, ∼12 minutes), compared with 48 .0–127 .0 s for RTL-MP (mean 96 s) and 0 .03–17 s for SA, DREAMPlace, and ChiPFormer. Token consumption ranges from 175 .6 k on bp_fe to 386 .4 k on vga_lcd (mean 290 k/design), increasing with macro count. This overhead is modest relative to the physical-design loop. First, placement is a one-time cost : a single downstream P&R and timing-closure iteration can take hours, making ∼12 minutes a small fraction of the overall flow. Moreover, PlaceReasoner-Beta does not require hundreds of optimization iterations to converge. Second, runtime alone does not capture engineering cost. SA completes in as little as 0 .03 s but leaves 27 ,609–80 ,223 DRC violations on six designs, while DREAMPlace’s 5–11 s include three timeouts. A fast placement that requires substantial manual repair or fails to route provides little practical advantage. Finally, API cost is a deployment choice rather than an inherent workflow cost: the same agent loop can run locally on an open-weight backbone with no per-token API charge. 
+
+> Manuscript submitted to ACM
+
+PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 21 (a) ariane133  (b) ariane81  (c) bp_be  (d) ethernet  (e) swerv_wrapper        
+
+> (f) vga_lcd (g) VeriGPU (i) ariane133 (j) ariane81
+> (k) bp_be (l) ethernet (m) swerv_wrapper (n) vga_lcd (o) VeriGPU
+> (h) bp_fe
+
+All results 
+
+By 
+
+Placer-beta 
+
+Fig. 9. Macro placements produced by PlaceReasoner-Beta on the remaining 15 PlaceReasoner-Bench tasks, with each macro’s pin side marked: (a)–(h) the eight designs at aspect ratio 1:1 and (i)–(o) seven of them at 2:1 ; bp_fe at 2:1 is the case of Fig. 8 and is not repeated here. Across designs and aspect ratios, the macros are grouped against the periphery and each group is oriented so that its pin side faces the standard-cell region it serves, leaving that region contiguous. 
+
+5.6 Ablation Study 
+
+Tables 2 and 3 report two controlled ablations: CWI, which removes layout images, and CWS, which disables the skill library. Both retain the full agent architecture and candidate-generation process. Their main impact is on iterative refinement : without visual feedback, the model cannot inspect spatial errors, while without the skill library, it lacks explicit placement principles to guide corrections. Consequently, both variants tend to settle on early candidates; for example, CWI selects its first candidate on four of eight designs, compared with two for the full system. On square tasks, removing either component generally degrades physical-design quality. Relative to PlaceReasoner-Beta, routed wirelength increases on six of eight designs (up to 17 .7% on bp_fe ), post-route area on seven, and power on five, with two ties. Timing remains competitive: the full system achieves better TNS on five of eight designs, while the ablations occasionally select a better-timed candidate, such as on ariane81 and swerv_wrapper . These cases highlight the role of best-of-five selection, where an ablation can occasionally benefit from a favorable sample. Nevertheless, the consistent wirelength, area, and power trends indicate that visual grounding and encoded placement expertise provide broader and more stable benefits than timing optimization alone . The distinction becomes sharper on the elongated 2:1 tasks, where limited routing space makes poor placement substantially harder to recover. CWI fails detailed routing on three designs, ariane133 , bp_be , and bp_fe , while the full system routes all eight. Without the layout image, the model cannot reliably recognize that its placement has narrowed or blocked critical routing 
+
+> Manuscript submitted to ACM
+
+22 Qiufeng Li et al. 0 1 2 3 4
+
+> optimizer iteration
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6
+> normalized |WNS|, |TNS|
+
+ariane81     
+
+> 1 : 1 WNS 1 : 1 TNS 2 : 1 WNS 2 : 1 TNS 01234
+> optimizer iteration
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6
+> normalized |WNS|, |TNS|
+
+bp_be     
+
+> 1 : 1 WNS 1 : 1 TNS 2 : 1 WNS 2 : 1 TNS 01234
+> optimizer iteration
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6
+> normalized |WNS|, |TNS|
+
+swerv_wrapper     
+
+> 1 : 1 WNS 1 : 1 TNS 2 : 1 WNS 2 : 1 TNS 01234
+> optimizer iteration
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6
+> normalized |WNS|, |TNS|
+
+vga_lcd 
+
+> 1 : 1 WNS 1 : 1 TNS 2 : 1 WNS 2 : 1 TNS
+
+Fig. 10. Optimization trajectory of the post-route optimizer on four designs at both aspect ratios. Each curve follows the incumbent 
+
+placement, i.e. the candidate the workflow would ship after 𝑘 rounds, normalized by the base plan at iteration 0; values below 1
+
+are improvements and both metrics are plotted as magnitudes. Color denotes the aspect ratio and line style the metric: solid with filled circles is WNS, dashed with open squares is TNS. A round that loses on timing or violates the DRC gate leaves the incumbent unchanged, which is why the curves are flat in places. The optimizer improves six of the eight runs, is unable to beat its base plan on 
+
+bp_be and swerv_wrapper at 2:1 , and on vga_lcd at 2:1 improves WNS while degrading TNS. 
+
+channels. CWS completes routing on all designs but suffers severe timing degradation on the hardest cases, reaching 
+
+−2650 .22 ns TNS on ariane133 versus −0.08 ns for the full system. This degradation reflects the absence of explicit peripheral-placement and cluster-locality principles needed to structure macros in constrained geometries. 
+
+Overall, the ablations show that visual grounding and the skill library play complementary roles in the refinement loop: visual context enables the agent to perceive spatial defects, while encoded expertise provides actionable principles for correcting them. Because both are explicit framework components rather than learned parameters, they can be extended independently without retraining the underlying VLM. 
+
+5.7 Discussion and Future Work 
+
+PlaceReasoner-Beta achieves these results without task-specific training, using an agentic framework built around off-the-shelf VLMs, e.g., Claude-Opus-4.8 and the open-weight Qwen3-VL-8B/30B. This training-free property is also its main limitation and motivates the beta designation: the three factors that most influence placement quality, i.e., model 
+
+Manuscript submitted to ACM PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 23 capability, exploration, and placement knowledge, remain largely external to the learning loop. Backbone. The open-weight models still occasionally generate overlapping or out-of-boundary macros, requiring Physical Checker-based repair and consuming refinement budget. A natural next step is to fine-tune a local model on a layout dataset, using supervised fine-tuning (SFT) for format and geometric validity followed by reinforcement learning (RL) with post-route rewards. This could improve placement generation while reducing reliance on proprietary APIs. Exploration. Candi-dates within a run remain highly correlated: even Claude-Opus-4.8 often produces structurally similar arrangements, limiting the effective search space of best-of-𝑁 selection. Diversity-aware sampling or explicit search over candidate layouts could broaden exploration and increase the probability of discovering substantially better configurations. 
+
+Placement knowledge. The skill pack explicitly encodes human placement principles, allowing the framework to apply established strategies but also inheriting their coverage and blind spots. Learning placement strategies directly from post-route feedback, e.g., through RL using the existing checker and physical-design rewards, could enable the system to discover strategies beyond those encoded by its designers. Closing these three gaps, i.e., a stronger locally trained backbone, more deliberate exploration, and placement knowledge learned from physical-design feedback, defines the path from the current beta framework toward a fully learning-driven agentic placer. 
+
+6 Conclusion 
+
+We introduced PlaceReasoner-Beta , a multi-agent framework that reframes VLSI macro placement as a visual reasoning problem rather than black-box optimization. A vision-language planner generates candidate layouts, geometric and physical checkers verify and refine them using placement principles and downstream feedback, and a post-route optimizer further improves promising solutions using final PPA. We also introduced PlaceReasoner-Bench, a fully open end-to-end benchmark comprising 16 tasks with fixed floorplans and I/O assignments, ensuring that methods differ only in macro positions and orientations and are evaluated using routed PPA and DRC. Across the benchmark, PlaceReasoner-Beta achieves the best timing among DRC-clean methods on every square task and is the only approach to route all elongated tasks with at most two DRC violations. It also improves routed wirelength despite never explicitly optimizing it. Because its reasoning, placement knowledge, and verification mechanisms are explicit framework components rather than learned parameters, PlaceReasoner-Beta is directly inspectable, extensible, and correctable without retraining. Together, PlaceReasoner-Beta and PlaceReasoner-Bench provide a foundation for developing and systematically evaluating reasoning-driven approaches to next-generation VLSI physical design. 
+
+References         
+
+> [1] Anthony Agnesina, Puranjay Rajvanshi, Tian Yang, Geraldo Pradipta, Austin Jiao, Ben Keller, Brucek Khailany, and Haoxing Ren. 2023. Autodmp: Automated dreamplace-based macro placement. In Proceedings of the 2023 International Symposium on Physical Design . 149–157. [2] Tutu Ajayi and David Blaauw. 2019. Openroad: Toward a self-driving, open-source digital layout implementation tool chain. In Proceedings of Government Microcircuit Applications and Critical Technology Conference .[3] Anthropic. 2026. Introducing Claude Opus 4.8. https://www.anthropic.com/news/claude-opus-4-8. Accessed: 2026-07-29. [4] Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng, Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, et al. 2025. Qwen3-vl technical report. arXiv preprint arXiv:2511.21631 (2025). [5] Yun-Chih Chang, Yao-Wen Chang, Guang-Ming Wu, and Shu-Wei Wu. 2000. B*-trees: A new representation for non-slicing floorplans. In Proceedings of the 37th annual design automation conference . 458–463. [6] Boyuan Chen, Zhuo Xu, Sean Kirmani, Brain Ichter, Dorsa Sadigh, Leonidas Guibas, and Fei Xia. 2024. Spatialvlm: Endowing vision-language models with spatial reasoning capabilities. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 14455–14465. [7] Tung-Chieh Chen, Zhe-Wei Jiang, Tien-Chang Hsu, Hsin-Chen Chen, and Yao-Wen Chang. 2008. NTUplace3: An analytical placer for large-scale mixed-size designs with preplaced blocks and density constraints. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 27, 7 (2008), 1228–1240. Manuscript submitted to ACM
+
+24 Qiufeng Li et al. 
+
+[8] Chung-Kuan Cheng, Andrew B Kahng, Ilgweon Kang, and Lutong Wang. 2018. Replace: Advancing solution quality and routability validation in global placement. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 38, 9 (2018), 1717–1730. [9] Chung-Kuan Cheng, Andrew B Kahng, Sayak Kundu, Yucheng Wang, and Zhiang Wang. 2023. Assessment of reinforcement learning for macro placement. In Proceedings of the 2023 International Symposium on Physical Design . 158–166. [10] Wonjoon Choi and Kia Bazargan. 2003. Hierarchical global floorplacement using simulated annealing and network flow area migration. In 2003 Design, Automation and Test in Europe Conference and Exhibition . IEEE, 1104–1105. [11] Yi-Lin Chuang, Gi-Joon Nam, Charles J Alpert, Yao-Wen Chang, Jarrod Roy, and Natarajan Viswanathan. 2010. Design-hierarchy aware mixed-size placement for routability optimization. In 2010 IEEE/ACM International Conference on Computer-Aided Design (ICCAD) . IEEE, 663–668. [12] Mongkol Ekpanyapong, Jacob R Minz, Thaisiri Watewai, Hsien-Hsin S Lee, and Sung Kyu Lim. 2004. Profile-guided microarchitectural floorplanning for deep submicron processor design. In Proceedings of the 41st annual Design Automation Conference . 634–639. [13] Zijie Geng, Jie Wang, Ziyan Liu, Siyuan Xu, Zhentao Tang, Mingxuan Yuan, Jianye Hao, Yongdong Zhang, and Feng Wu. 2024. Reinforcement learning within tree search for fast macro placement. In Forty-first International Conference on Machine Learning .[14] Zhuolun He, Yuzhe Ma, Lu Zhang, Peiyu Liao, Ngai Wong, Bei Yu, and Martin DF Wong. 2020. Learn to floorplan through acquisition of effective local search heuristics. In 2020 IEEE 38th International Conference on Computer Design (ICCD) . IEEE, 324–331. [15] Wenyi Hong, Weihan Wang, Qingsong Lv, Jiazheng Xu, Wenmeng Yu, Junhui Ji, Yan Wang, Zihan Wang, Yuxiao Dong, Ming Ding, et al. 2024. Cogagent: A visual language model for gui agents. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . IEEE, 14281–14290. [16] Meng-Kai Hsu, Yi-Fang Chen, Chau-Chin Huang, Sheng Chou, Tzu-Hen Lin, Tung-Chieh Chen, and Yao-Wen Chang. 2014. NTUplace4h: A novel routability-driven placement algorithm for hierarchical mixed-size circuit designs. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 33, 12 (2014), 1914–1927. [17] Andrew B Kahng, Sayak Kundu, and Bodhisatta Pramanik. 2026. MAGE: Human-Like Macro Placement via Agentic Multimodal Reasoning. arXiv preprint arXiv:2607.18536 (2026). [18] Andrew B Kahng, Jens Lienig, Igor L Markov, and Jin Hu. 2011. VLSI physical design: from graph partitioning to timing closure . Vol. 312. Springer. [19] Andrew B Kahng, Ravi Varadarajan, and Zhiang Wang. 2022. RTL-MP: toward practical, human-quality chip planning and macro placement. In 
+
+Proceedings of the 2022 International Symposium on Physical Design . 3–11. [20] Andrew B Kahng, Ravi Varadarajan, and Zhiang Wang. 2023. Hier-RTLMP: A hierarchical automatic macro placer for large-scale complex IP blocks. 
+
+IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 43, 5 (2023), 1552–1565. [21] Yao Lai, Jinxin Liu, Zhentao Tang, Bin Wang, Jianye Hao, and Ping Luo. 2023. Chipformer: Transferable chip placement via offline decision transformer. In International Conference on Machine Learning . PMLR, 18346–18364. [22] Yao Lai, Yao Mu, and Ping Luo. 2022. Maskplace: Fast chip placement via reinforced visual representation learning. Advances in Neural Information Processing Systems 35 (2022), 24019–24030. [23] Qiufeng Li, Rongqian Chen, Quan Cheng, Chengxuan Wang, Sizhe Tang, Chia-Tung Ho, David Z Pan, Tian Lan, and Weidong Cao. 2026. PDAGENT-BENCH: Characterizing, Grounding, and Architecting LLM/VLM Agents for VLSI Physical Design. arXiv preprint arXiv:2606.17253 (2026). [24] Peiyu Liao, Siting Liu, Zhitang Chen, Wenlong Lv, Yibo Lin, and Bei Yu. 2022. DREAMPlace 4.0: Timing-driven Global Placement with Momentum-based Net Weighting. In 2022 Design, Automation & Test in Europe Conference & Exhibition (DATE) . 939–944. doi:10.23919/DATE54114.2022.9774725 [25] Jingwei Lu, Hao Zhuang, Pengwen Chen, Hongliang Chang, Chin-Chih Chang, Yiu-Chung Wong, Lu Sha, Dennis Huang, Yufeng Luo, Chin-Chi Teng, et al. 2015. ePlace-MS: Electrostatics-based placement for mixed-size circuits. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 34, 5 (2015), 685–698. [26] Azalia Mirhoseini, Anna Goldie, Mustafa Yazgan, Joe Wenjie Jiang, Ebrahim Songhori, Shen Wang, Young-Joon Lee, Eric Johnson, Omkar Pathak, Azade Nova, et al. 2021. A graph placement methodology for fast chip design. Nature 594, 7862 (2021), 207–212. [27] NC State EDA. 2011. FreePDK45. https://eda.ncsu.edu/freepdk/freepdk45/. Version 1.4; accessed July 22, 2026. [28] Vidyasagar Nookala, Ying Chen, David J Lilja, and Sachin S Sapatnekar. 2005. Microarchitecture-aware floorplanning using a statistical design of experiments approach. In Proceedings of the 42nd annual Design Automation Conference . 579–584. [29] Swasti Pujari. 2020. Macro Placement Guidelines. iVLSI Technologies. Accessed: July 21, 2026. [30] Yujia Qin, Yining Ye, Junjie Fang, Haoming Wang, Shihao Liang, Shizuo Tian, Junda Zhang, Jiahao Li, Yunxin Li, Shijue Huang, et al. 2025. Ui-tars: Pioneering automated gui interaction with native agents. arXiv preprint arXiv:2501.12326 (2025). [31] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. 2021. Learning Transferable Visual Models From Natural Language Supervision. arXiv:2103.00020 [cs.CV] https://arxiv.org/abs/2103.00020 [32] Xingjian Ran, Yixuan Li, Linning Xu, Mulin Yu, and Bo Dai. 2026. Direct numerical layout generation for 3d indoor scene synthesis via spatial reasoning. Advances in Neural Information Processing Systems 38 (2026), 125055–125081. [33] Sadiq M Sait and Habib Youssef. 1999. VLSI physical design automation: theory and practice . Vol. 6. World Scientific Publishing Company. [34] Yunqi Shi, Ke Xue, Song Lei, and Chao Qian. 2023. Macro placement by wire-mask-guided black-box optimization. Advances in Neural Information Processing Systems 36 (2023), 6825–6843. [35] I-Lun Tseng. 2024. Challenges in floorplanning and macro placement for modern SoCs. In Proceedings of the 2024 International Symposium on Physical Design . 71–72. Manuscript submitted to ACM PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 25 
+
+[36] Ikechukwu Uchendu, Swati Goel, Karly Hou, Ebrahim Songhori, Kuang-Huei Lee, Joe Wenjie Jiang, Vijay Janapa Reddi, and Vincent Zhuang. 2026. See it to Place it: Evolving Macro Placements with Vision-Language Models. arXiv preprint arXiv:2603.28733 (2026). [37] Peng Wang, Shuai Bai, Sinan Tan, Shijie Wang, Zhihao Fan, Jinze Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, et al. 2024. Qwen2-vl: Enhancing vision-language model’s perception of the world at any resolution. arXiv preprint arXiv:2409.12191 (2024). [38] Weiyun Wang, Zhangwei Gao, Lixin Gu, Hengjun Pu, Long Cui, Xingguang Wei, Zhaoyang Liu, Linglin Jing, Shenglong Ye, Jie Shao, et al. 2025. Internvl3. 5: Advancing open-source multimodal models in versatility, reasoning, and efficiency. arXiv preprint arXiv:2508.18265 (2025). [39] Zhihai Wang, Zijie Geng, Zhaojie Tu, Jie Wang, Yuxi Qian, Zhexuan Xu, Ziyan Liu, Siyuan Xu, Zhentao Tang, Shixiong Kai, et al. 2026. Benchmarking end-to-end performance of ai-based chip placement algorithms. Advances in Neural Information Processing Systems 38 (2026). [40] Clifford Wolf, Johann Glaser, and Johannes Kepler. 2013. Yosys-a free verilog synthesis suite. In Proceedings of the 21st Austrian Workshop on Microelectronics (Austrochip) , Vol. 97. 1–6. [41] Junlin Xie, Zhihong Chen, Ruifei Zhang, and Guanbin Li. 2025. Large multimodal agents: A survey. Visual Intelligence 3, 1 (2025), 24. [42] Jackey Z Yan, Natarajan Viswanathan, and Chris Chu. 2014. An effective floorplan-guided placement algorithm for large-scale mixed-size designs. 
+
+ACM Transactions on Design Automation of Electronic Systems (TODAES) 19, 3 (2014), 1–25. [43] Boyuan Zheng, Boyu Gou, Jihyung Kil, Huan Sun, and Yu Su. 2024. Gpt-4v (ision) is a generalist web agent, if grounded. arXiv preprint arXiv:2401.01614 
+
+(2024). 
+
+7 Appendix 
+
+Full results on PlaceReasoner-Bench. Tables 6 and 7 give the complete post-route results for all eight designs at the two aspect ratios, of which four representative designs are reproduced in the main paper (Tables 2 and 3). Every per-design count and average reported in the experiments is computed over these full tables. 
+
+Received 20 February 2007; revised 12 March 2009; accepted 5 June 2009 
+
+Manuscript submitted to ACM 26 Qiufeng Li et al. 
+
+Table 6. Detailed post-route results for the square ( 1:1 ) tasks. “–” denotes an unavailable metric; failure states indicate that detailed routing did not complete. Winner # reports the one-based winner position 𝑘 /𝑁 ; use 𝑁 = 5; Runtime reports macro-placement time for the classical baselines, summed model-driver time for the agent variants. Token Usage is the total number of model tokens. 
+
+Design Method Winner # Route WNS (ns) TNS (ns) DRC WL ( 𝜇 m) Power (W) Area ( 𝜇 m2) Runtime (s) Token Usage (k) ariane133 RTL-MP 2/5 Yes -0.10 -4.60 0 5233982 0.265 729834 127.0 –ariane133 DREAMPlace 3/5 Fail: timeout – – – – – – 11.00 –ariane133 ChiPFormer 1/5 Yes -0.04 -4.61 0 6211024 0.304 737387 16.96 –ariane133 SA – Yes -76.52 -579878 80223 7135797 0.286 718246 0.240 –ariane133 CWI 1/5 Yes -0.02 -0.52 0 6105080 0.266 733327 814.4 329.4 ariane133 CWS 5/5 Yes -0.02 -0.56 0 5997840 0.265 732096 820.3 314.1 ariane133 PlaceReasoner-Beta 3/5 Yes -0.02 -0.35 0 5622394 0.258 728851 828.7 348.6 ariane133 Qwen3-VL-8B – Fail: DRT-0073 – – – – – – 3123.4 689.2 ariane133 Qwen3-VL-30B 2/5 Yes -0.02 -0.13 18166 6123046 0.283 728261 255.0 572.7 ariane81 RTL-MP 2/5 Yes -0.14 -8.43 0 5577716 0.184 694809 91.8 –ariane81 DREAMPlace 1/5 Fail: timeout – – – – – – 9.53 –ariane81 ChiPFormer 5/5 Yes -1.02 -2103 0 6948313 0.177 700271 15.12 –ariane81 SA – Fail: placed-only – – – – – – 0.178 –ariane81 CWI 1/5 Yes 0.00 0.00 0 4987790 0.171 693096 829.7 349.7 ariane81 CWS 1/5 Yes 0.00 0.00 0 4987790 0.171 693096 836.1 337.2 ariane81 PlaceReasoner-Beta 5/5 Yes -0.04 -1.20 0 5203922 0.171 692142 847.6 362.6 ariane81 Qwen3-VL-8B 2/5 Yes -0.09 -6.24 0 6631628 0.198 693184 2449.0 759.3 ariane81 Qwen3-VL-30B 1/5 Yes -0.09 -13.95 0 6511947 0.203 694924 235.3 602.4 bp_be RTL-MP 4/5 Yes -0.28 -23.54 0 2354232 0.123 240519 85.9 –bp_be DREAMPlace 4/5 Yes -0.47 -29.81 63393 3814816 – 243381 5.94 –bp_be ChiPFormer 1/5 Yes -0.58 -54 0 2929620 0.131 243411 5.75 –bp_be SA – Yes -0.24 -21.26 37695 2411088 0.123 239997 0.032 –bp_be CWI 3/5 Yes -0.26 -22.75 0 2598380 0.125 241666 693.7 198.5 bp_be CWS 3/5 Yes -0.26 -22.75 0 2598379 0.125 241666 704.5 183.7 bp_be PlaceReasoner-Beta 1/5 Yes -0.13 -9.42 0 2287187 0.118 238089 722.3 208.4 bp_be Qwen3-VL-8B 3/5 Yes -0.29 -28.59 0 2435295 0.107 238967 349.7 308.9 bp_be Qwen3-VL-30B 1/5 Yes -0.16 -13.28 0 2368477 0.102 238576 63.1 253.5 bp_fe RTL-MP 4/5 Yes -0.04 -0.16 0 1607291 0.143 215331 97.9 –bp_fe DREAMPlace 5/5 Yes -0.37 -41.92 65340 2743022 – 223308 5.14 –bp_fe ChiPFormer 1/5 Yes -0.46 -35 0 1795024 0.158 223786 5.74 –bp_fe SA – Yes -0.19 -1.06 0 1671812 0.145 217188 0.032 –bp_fe CWI 1/5 Yes -0.08 -0.11 0 1828997 0.150 218063 577.9 154.7 bp_fe CWS 2/5 Yes -0.08 -0.11 0 1828997 0.150 218063 586.3 158.9 bp_fe PlaceReasoner-Beta 3/5 Yes -0.03 -0.07 0 1553678 0.141 213874 601.8 175.6 bp_fe Qwen3-VL-8B 1/5 Yes -0.13 -4.75 0 1550338 0.126 215049 412.7 276.9 bp_fe Qwen3-VL-30B 4/5 Yes -0.19 -7.20 0 1710046 0.139 221628 187.9 373.5 ethernet RTL-MP 4/5 Yes -0.31 -1.46 14 730251 0.0142 110629 102.5 –ethernet DREAMPlace 1/5 Yes -0.30 -1.38 30699 1496848 – 112452 7.21 –ethernet ChiPFormer 2/5 Yes -0.30 -1.50 0 719208 0.014 110765 10.60 –ethernet SA – Yes -0.30 -1.35 27609 761707 0.0142 110754 0.096 –ethernet CWI 4/5 Yes -0.30 -1.41 0 759078 0.0142 110764 618.4 264.1 ethernet CWS 4/5 Yes -0.30 -1.41 0 759078 0.0142 110764 635.6 266.2 ethernet PlaceReasoner-Beta 1/5 Yes -0.30 -1.44 0 760262 0.0142 110597 643.7 295.9 ethernet Qwen3-VL-8B 4/5 Yes -0.30 -1.45 0 735008 0.0171 110435 2252.7 780.8 ethernet Qwen3-VL-30B 2/5 Yes -0.28 -1.31 0 784869 0.0179 110483 121.7 398.7 swerv_wrapper RTL-MP 4/5 Yes -0.52 -424.43 0 3757454 0.239 648507 122.2 –swerv_wrapper DREAMPlace 3/5 Fail: timeout – – – – – – 7.20 –swerv_wrapper ChiPFormer 4/5 Yes -1.55 -1384 0 4593545 0.246 651840 8.89 –swerv_wrapper SA – Yes -0.51 -421.84 76026 4238062 0.240 649332 0.060 –swerv_wrapper CWI 3/5 Yes -0.40 -330.99 0 3777640 0.240 648588 794.2 314.3 swerv_wrapper CWS 3/5 Yes -0.40 -330.99 0 3777845 0.240 648588 805.6 321.2 swerv_wrapper PlaceReasoner-Beta 5/5 Yes -0.42 -409.13 0 3447721 0.243 647807 811.9 335.7 swerv_wrapper Qwen3-VL-8B 1/5 Yes -0.60 -617.00 0 4067535 0.249 646917 2060.6 547.9 swerv_wrapper Qwen3-VL-30B 1/5 Yes -0.56 -558.07 0 4103206 0.245 646256 92.9 309.4 vga_lcd RTL-MP 5/5 Yes -0.78 -498.02 45 2471807 0.182 650863 48.0 –vga_lcd DREAMPlace 3/5 Yes -0.85 -146.70 62598 3804114 – 650838 8.56 –vga_lcd ChiPFormer 2/5 Yes -0.82 -1180 0 2880834 0.198 655252 11.15 –vga_lcd SA – Yes -0.81 -36.16 67293 2391472 0.184 649634 0.104 –vga_lcd CWI 3/5 Yes -0.66 -48.84 0 2604281 0.184 650468 762.1 371.7 vga_lcd CWS 4/5 Yes -0.66 -48.84 0 2604281 0.184 650468 774.9 364.1 vga_lcd PlaceReasoner-Beta 2/5 Yes -0.74 -37.73 0 2342025 0.18 651477 785.1 386.4 vga_lcd Qwen3-VL-8B 4/5 Yes -0.89 -41.92 0 2449050 0.190 648133 2084.3 730.6 vga_lcd Qwen3-VL-30B 2/5 Yes -0.71 -27.86 0 2455068 0.192 647852 170.9 466.3 VeriGPU RTL-MP 4/5 Yes -0.30 -12.76 0 1753666 0.0931 274654 96.1 –VeriGPU DREAMPlace 3/5 Yes -0.26 -13.21 51828 2322311 – 274662 6.44 –VeriGPU ChiPFormer 2/5 Yes -0.26 -13 0 1807519 0.095 275147 6.30 –VeriGPU SA – Yes -0.32 -13.55 61089 1751564 0.0943 275045 0.029 –VeriGPU CWI 1/5 Yes -0.26 -12.56 0 1721060 0.0933 274566 604.5 198.3 VeriGPU CWS 1/5 Yes -0.26 -12.56 0 1721110 0.0933 274566 614.8 192.4 VeriGPU PlaceReasoner-Beta 4/5 Yes -0.25 -12.31 0 1697586 0.0911 274109 625.7 205.6 VeriGPU Qwen3-VL-8B 1/5 Yes -0.25 -17.43 0 1705359 0.128 274236 386.4 326.3 VeriGPU Qwen3-VL-30B 3/5 Yes -0.28 -15.68 0 1810348 0.131 274467 65.0 242.8 
+
+Manuscript submitted to ACM PlaceReasoner-Beta: Reasoning-Driven Macro Placement and Benchmarking 27 
+
+Table 7. Detailed post-route results for the elongated ( 2:1 ) tasks. Use the same settings with square (1 : 1) tasks. 
+
+Design Method Winner # Route WNS (ns) TNS (ns) DRC WL ( 𝜇 m) Power (W) Area ( 𝜇 m2) Runtime (s) Token Usage (k) ariane133 RTL-MP 1/5 Yes -0.12 -25.29 0 6033112 0.276 731337 – –ariane133 DREAMPlace – Fail: timeout – – – – – – – –ariane133 ChiPFormer 2/5 Yes -0.39 -620 0 7079270 0.278 738872 – –ariane133 SA – Fail: GP1 – – – – – – – –ariane133 CWI – Fail: GRT-0116 – – – – – – 820.5 344.9 ariane133 CWS 1/5 Yes -1.99 -2650.22 0 – 0.283 746548 827.6 348.7 ariane133 PlaceReasoner-Beta 4/5 Yes -0.02 -0.08 0 5690597 0.285 730228 834.9 357.1 ariane133 Qwen3-VL-8B – Fail: GRT-0116 – – – – – – 2228.3 479.9 ariane133 Qwen3-VL-30B – Fail: DRT-0073 – – – – – – 208.9 600.6 ariane81 RTL-MP 2/5 Yes -0.10 -35.10 0 6180469 0.179 696239 – –ariane81 DREAMPlace – Fail: timeout – – – – – – – –ariane81 ChiPFormer 4/5 Yes -1.82 -5617 0 9503525 0.181 727526 – –ariane81 SA – Fail: capped – – – – – – – –ariane81 CWI 2/5 Yes -0.03 -4.19 0 5217260 0.169 692640 848.6 387.4 ariane81 CWS 2/5 Yes -0.03 -4.19 0 5217585 0.169 692640 854.7 397.3 ariane81 PlaceReasoner-Beta 1/5 Yes -0.02 -0.15 0 5798709 0.194 698754 861.2 401.7 ariane81 Qwen3-VL-8B 1/5 Yes -0.40 -310.10 28 7017977 0.202 694691 778.8 330.1 ariane81 Qwen3-VL-30B 2/5 Yes -0.09 -43.12 1 5923522 0.193 692020 524.7 579.2 bp_be RTL-MP 1/5 Yes -0.37 -38.96 0 2652279 0.123 240762 – –bp_be DREAMPlace – Fail: timeout – – – – – – – –bp_be ChiPFormer – Fail: segfault – – – – – – – –bp_be SA – Yes -0.36 -36.62 34190 2749978 0.124 241710 – –bp_be CWI – Fail: GRT-0116 – – – – – – 714.9 221.5 bp_be CWS 3/5 Yes -0.08 -1.72 0 2854209 0.124 240975 716.3 226.7 bp_be PlaceReasoner-Beta 4/5 Yes -0.22 -18.06 1 2873409 0.109 240882 728.9 241.6 bp_be Qwen3-VL-8B 1/5 Yes -0.39 -31.03 0 2647452 0.107 239686 216.1 237.2 bp_be Qwen3-VL-30B 1/5 Fail: GRT-0116 – – – – – – 256.2 480.3 bp_fe RTL-MP 1/5 Yes -0.18 -6.12 0 1609885 0.143 215198 – –bp_fe DREAMPlace – Fail: timeout – – – – – – – –bp_fe ChiPFormer 1/5 Yes -0.05 -0.21 5 2286401 0.149 216837 – –bp_fe SA – Yes -0.17 -6.55 20479 1662195 – 218725 – –bp_fe CWI – Fail: GRT-0116 – – – – – – 603.8 164.8 bp_fe CWS 1/5 Yes -0.08 -0.93 0 2227285 0.152 217744 614.1 166.2 bp_fe PlaceReasoner-Beta 2/5 Yes -0.11 -0.23 0 1638383 0.131 217638 627.4 186.7 bp_fe Qwen3-VL-8B 2/5 Yes -0.09 -2.43 0 1719403 0.135 219808 202.9 204.9 bp_fe Qwen3-VL-30B 3/5 Yes -0.11 -1.19 0 1637963 0.126 215246 62.8 272.8 ethernet RTL-MP 3/5 Yes -0.33 -1.62 14 812042 0.014 110330 – –ethernet DREAMPlace 1/5 Yes -0.30 -1.38 34020 1383506 – 112103 – –ethernet ChiPFormer 1/5 Yes -0.33 -1.60 0 797665 0.014 110403 – –ethernet SA – Yes -0.27 -1.31 10394 867444 – 110537 – –ethernet CWI 4/5 Yes -0.29 -1.35 0 849848 0.014 110644 665.8 314.2 ethernet CWS 4/5 Yes -0.29 -1.35 0 849848 0.014 110644 672.6 311.8 ethernet PlaceReasoner-Beta 2/5 Yes -0.28 -1.34 0 825144 0.0139 110333 684.2 327.5 ethernet Qwen3-VL-8B 1/5 Yes -0.29 -1.43 0 761143 0.017 110252 554.9 399.0 ethernet Qwen3-VL-30B 1/5 Yes -0.26 -1.27 0 796341 0.0172 110237 188.8 498.3 swerv_wrapper RTL-MP 1/5 Yes -0.64 -528.28 1421 3779122 0.235 647771 – –swerv_wrapper DREAMPlace – Fail: timeout – – – – – – – –swerv_wrapper ChiPFormer 1/5 Yes -1.40 -1616 1456 6958764 0.260 686355 – –swerv_wrapper SA – Fail: placed-only – – – – – – – –swerv_wrapper CWI 5/5 Yes -0.67 -507.90 0 4176586 0.238 648265 688.1 407.2 swerv_wrapper CWS 4/5 Yes -0.67 -507.90 0 4176586 0.238 648265 695.4 409.4 swerv_wrapper PlaceReasoner-Beta 1/5 Yes -0.58 -476.28 2 3925621 0.242 648145 716.8 415.6 swerv_wrapper Qwen3-VL-8B 4/5 Yes -0.67 -755.17 0 4471772 0.245 646254 335.9 214.1 swerv_wrapper Qwen3-VL-30B 2/5 Yes -0.82 -927.46 63 4918313 0.248 647625 102.9 397.6 vga_lcd RTL-MP 1/5 Yes -0.72 -29.70 171 2354087 0.180 647137 – –vga_lcd DREAMPlace 2/5 Yes -0.77 -40.80 52227 3089394 – 649017 – –vga_lcd ChiPFormer 1/5 Yes -0.88 -2317 33 3688031 0.198 654877 – –vga_lcd SA – Fail: GP1 – – – – – – – –vga_lcd CWI 3/5 Yes -0.72 -27.99 0 2545176 0.183 649913 725.9 314.9 vga_lcd CWS 2/5 Yes -0.72 -27.99 0 2545176 0.183 649913 736.9 320.4 vga_lcd PlaceReasoner-Beta 3/5 Yes -0.76 -33.13 1 2547982 0.183 649875 748.6 348.3 vga_lcd Qwen3-VL-8B 1/5 Yes -0.76 -1154.16 25 2605124 0.187 648128 816.1 424.9 vga_lcd Qwen3-VL-30B 3/5 Yes -0.91 -226.91 35 2750093 0.193 649266 125.7 468.3 VeriGPU RTL-MP 1/5 Yes -0.30 -16.98 22 2009432 0.091 274307 – –VeriGPU DREAMPlace 2/5 Yes -0.49 -19.39 62832 2727467 – 274799 – –VeriGPU ChiPFormer 1/5 Yes -0.28 -17 0 2108273 0.093 275311 – –VeriGPU SA – Yes -0.28 -17.51 45375 1996265 – 275007 – –VeriGPU CWI 5/5 Yes -0.29 -14.13 0 1977510 0.0919 274578 313.5 211.7 VeriGPU CWS 5/5 Yes -0.29 -14.13 0 1977510 0.0919 274578 339.4 208.9 VeriGPU PlaceReasoner-Beta 1/5 Yes -0.28 -13.08 0 1896523 0.101 274461 367.1 225.6 VeriGPU Qwen3-VL-8B 1/5 Yes -0.45 -54.06 0 1906068 0.129 274392 227.8 327.8 VeriGPU Qwen3-VL-30B 2/5 Yes -0.29 -15.41 0 1931436 0.128 274339 199.8 389.8 
+
+Manuscript submitted to ACM
