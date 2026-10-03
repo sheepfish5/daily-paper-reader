@@ -1,0 +1,808 @@
+Title: ILP-BO: Integer Linear Programming-Based Black-Box Optimization
+
+URL Source: https://arxiv.org/pdf/2609.33131v1
+
+Published Time: Tue, 29 Sep 2026 01:40:24 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# ILP-BO: Integer Linear Programming-Based Black-Box Op-timization 
+
+Hyakka Nakada hyakka_nakada@r.recruit.co.jp Recruit Co., Ltd. 
+
+Shu Tanaka shu.tanaka@keio.jp Graduate School of Science and Technology, Keio University Department of Applied Physics and Physico-Informatics, Keio University Keio University Sustainable Quantum Artificial Intelligence Center (KSQAIC), Keio University Human Biology-Microbiome-Quantum Research Center (WPI-Bio2Q), Keio University 
+
+Abstract 
+
+Black-box Optimization (BO) is a powerful framework for optimizing expensive objective functions or unknown functions with a limited number of evaluations. A central step of standard BO such as Bayesian optimization is the optimization of a surrogate-based ac-quisition criterion, which is commonly performed using nonlinear optimization or heuristic search. Therefore, conventional black-box optimization generally does not guarantee global optimality in candidate selection. In this study, we propose Integer Linear Programming-based Black-box Optimization (ILP-BO), a quasi-Bayesian optimization framework that transforms kernel-based surrogate optimization over discrete domains into an Integer Linear Programming (ILP) problem. The key idea is to represent nonlinear kernel functions ex-actly on finite discrete distance levels by introducing binary one-hot auxiliary variables. This transformation converts the nonlinear surrogate into a linear objective with linear constraints and binary variables. To incorporate exploration while preserving the linear structure, we further introduce a Hamming-distance margin that excludes neighborhoods around previ-ously observed points. We derive the proposed formulation for several standard kernels and obtain an analytical upper bound on the Hamming-distance threshold based on the mea-sure in the binary search space. The resulting candidate-selection problem can be solved by integer programming solvers with certificates of optimality. Thus, our methodology has the potential to serve as a highly transparent black-box optimization framework. Experiments on synthetic and discrete optimization benchmarks show that ILP-BO achieves competitive optimization performance compared with practical Bayesian optimization methods. 
+
+1 Introduction 
+
+Black-Box Optimization (BO) of unknown functions arises in a wide variety of practical problems, includ-ing hyperparameter optimization, drug discovery, protein design, and hardware optimization (Jones et al., 1998). In many such applications, evaluating the black-box objective is expensive, and therefore optimiza-tion methods are required to identify good solutions with as few function evaluations as possible. Bayesian optimization is a powerful framework for such expensive BO problems (Garnett, 2023; Shahriari et al., 2016; Frazier, 2018). A surrogate model is trained from previously observed data, and an acquisition criterion is then constructed to determine a promising next point. Here, the optimum of the acquisition function is searched. After evaluating the black-box function at the selected point, the observation data is added to the dataset and the surrogate model is updated. This cycle is repeated until the available evaluation budget is exhausted. Gaussian Processes (GPs) are widely used as surrogate models in Bayesian optimization (Rasmussen & Williams, 2005; Snoek et al., 2012). The resulting acquisition functions are generally nonlinear in the candi-date variables and are often optimized using local or heuristic search (Ament et al., 2023). Such procedures 1arXiv:2609.33131v1 [cs.LG] 27 Sep 2026 Figure 1: Concept of ILP-BO. In addition to the conventional BO process, the trained surrogate model is encoded into an ILP problem. The next point is then predicted by maximizing or minimizing this problem with an ILP solver. do not generally guarantee the global optimum of the acquisition criterion, particularly in high-dimensional or discrete search spaces. An alternative is to reformulate candidate selection for mathematical optimiza-tion solvers that can certify global optimality. Recent studies have investigated approximations of kernel functions and acquisition criteria using piecewise-linear or quadratic representations, enabling the use of mathematical optimization solvers. These methods improve the reliability of the candidate selection process but may result in quadratic or otherwise complicated optimization problems, which leads to the difficulty of optimization in the case of high-dimensional problem size. Another drawback is that the approximation of the acquisition function is inevitable. We propose Integer Linear Programming-based Black-box Optimization (ILP-BO), a framework for candi-date selection in binary black-box optimization, as illustrated in Fig 1. We utilize integer linear programming solvers to obtain the maximum point of the surrogate model. Recently, while GP is highly nonlinear in its original form, the surrogate model can be expressed in a low dimensional form by introducing appropriate additional variables. In this study, we show that modifying this theory can encode the objective function into a linear function with linear constraints. Our construction applies to kernel surrogates whose distance or similarity arguments take finitely many values and admit affine representations in the binary decision variables. In other words, the high degree of degeneracy in a kernel function is leveraged. By introducing binary one-hot variables, the surrogate optimization problem can therefore be formulated as an Integer Linear Program (ILP). A challenge in this formulation is how to define exploration. Direct optimization of the surrogate mean tends to emphasize exploitation. In conventional GP-based BO, exploration is often incorporated through predic-tive uncertainty, but explicit covariance terms generally introduce nonlinear dependencies that are difficult to keep an ILP formulation. We therefore introduce a Hamming distance margin that excludes neighborhoods around previously observed points. This mechanism provides a simple form of exploration while preserving 2the integer-linear structure, as shown later. As a result, both the exploitation and exploration can be handled by an ILP. Our main contributions are as follows: • We establish an exact linearization framework for a class of kernel-based surrogate functions on discrete domains using binary one-hot auxiliary variables. • We formulate surrogate optimization as a 0–1 integer linear program and show that the formulation can accommodate several commonly used kernels. • We introduce a Hamming-distance margin as an exploration mechanism that preserves linearity and derive an analytical upper bound for the margin based on the coverage of the discrete search space. • We experimentally evaluate ILP-BO on several discrete optimization benchmarks and compare its optimization behavior with conventional BO methods. 
+
+2 Related Work 
+
+Standard BO methods such as Bayesian optimization construct a surrogate model from observed data and optimize an acquisition criterion derived from the surrogate model, to maximize unknown true objective function G(x). A surrogate model F (x) is trained on initial data ( xk, G (xk)) for k = 0 , 1, . . . , K 0 − 1 to construct an acquisition function. Here, K0 is the number of initial data. Then, the next promising point 
+
+xnext is predicted by maximizing the acquisition function. After the new observation ( xnext , G (xnext )) is fed back to the dataset, the surrogate model is re-trained. Gradient-based methods such as L-BFGS-B (Zhu et al., 1997) and stochastic gradient ascent (Kingma & Ba, 2015) are widely used for acquisition optimization. Although effective in many settings, these methods generally identify local optima and do not provide a guarantee of global optimality (Wilson et al., 2018). Sampling-based methods such as Nelder–Mead (Nelder & Mead, 1965) provide an alternative, but exhaustive or globally optimal search becomes difficult as the dimensionality of the search space increases. Few works have focused on achieving global optimality. For a notable study on the optimality at each iteration, there is a report that kernel functions are approx-imated by piecewise lines to improve BO performance (Xie et al., 2025). In the study, the approximate acquisition function becomes quadratic polynomial with quadratic constraints. This problem can be solved by quadratic Mixed Integer Programming (MIP) (Lee & Leyffer, 2011), improving the optimality. However, such solvers have difficulty of solving problems of a larger size than linear programming solvers. Particu-larly, in the case of discrete black-box optimization problems, finding the optimal solution is fundamentally difficult because quadratically constrained quadratic programs are known to be N P –hard. In addition, this method requires the approximation of acquisition function. While their method is specialized for a continuous domain and gradient descent methods were partially utilized, we focus on a discrete domain, and we have proved that a maximization process in BO can be effectively reduced into an ILP with linear constraints. Our formulation is not only approximation-free, but also gradient descent-method free. Previous works (Xie et al., 2025; Kitai et al., 2020; Minamoto & Sakamoto, 2025; Tamura et al., 2026) have explored approximating the acquisition function using quadratic forms. ILP-BO provides the linearity task designed for BO. A wide variety of solvers has been developed for an ILP, enabling the exact solution of remarkably large-scale problems using not only commercial but also non-commercial solvers (Gass, 2003; Huangfu & Hall, 2018; Bolusani et al., 2024). Recently, several reports showed that such problems can be efficiently solved by quantum-inspired tensor networks (Hao et al., 2022; Lopez-Piqueres et al., 2023; Nakada et al., 2025). Thus, the superiority in global optimality over quadratic programming solvers will further intensify as problem scale grows. 33 Integer Linear Programming-Based Black-Box Optimization 
+
+We first derive the discrete linearization of kernel-based surrogate functions. We then introduce an explo-ration mechanism based on Hamming distance and derive a feasibility bound for its threshold. Finally, we summarize the resulting optimization procedure. 
+
+3.1 Discrete Linearization of Kernel Regressions 
+
+Consider a surrogate function of the form 
+
+F (x) = 
+
+> K−1
+
+∑
+
+> k=0
+
+ckf (qk(x)) , (1) where qk(x) : x → R1 is a scalar map function, f is a nonlinear function, and ck is a real-valued coefficient. Generally, kernel regressions can be written in Eq. (1) form by adopting f as a kernel function. Especially, a natural number K means the number of training data in the case of kernel regressions. Hereinafter, suppose that qk(x) takes one of L discrete values dk, 0, d k, 1, . . . , d k,L −1. We introduce binary auxiliary variables sk,l ∈ { 0, 1}, according to the previous study (Nakada & Tanaka, 2025). Then, the nonlinear function can be represented exactly as 
+
+f (qk(x)) = 
+
+> L−1
+
+∑
+
+> l=0
+
+f (dk,l )sk,l ,
+
+s.t.
+
+> L−1
+
+∑
+
+> l=0
+
+sk,l =1 ,
+
+> L−1
+
+∑
+
+> l=0
+
+dk,l sk,l = qk(x). (2) The first constraint in Eq. (2) imposes the one-hot condition to determine a single value out of levels, while the second ensures consistency between qk(x) and the selected level. Substituting Eq. (2) into Eq. (1), we obtain max  
+
+> x
+
+F (x) = max 
+
+> x,s
+> K−1
+
+∑
+
+> k=0
+> L−1
+
+∑
+
+> l=0
+
+ckf (dk,l )sk,l 
+
+s.t.
+
+> L−1
+
+∑
+
+> l=0
+
+dk,l sk,l = qk(x), k = 0 , . . . , K − 1,
+
+> L−1
+
+∑
+
+> l=0
+
+sk,l = 1 , k = 0 , . . . , K − 1. (3) While the above focuses on maximizing the function F , minimization can also be handled by modifying the operators. When qk(x) is linear in the original binary variables x, Eq. (3) is a 0–1 ILP problem. Therefore, the nonlinear optimization of the surrogate function can be transformed into an integer-linear optimization problem without approximating the kernel function. Eq. (3) requires KL additional binary variables s in addition to the original variables x. Here, the maxi-mization operator for s is additionally adopted for convenience to unify operators with respect to x. The constraints of Eq. (3) have trivial feasible solutions, such as x = xk and sk, 0 = 1 (i.e., corresponding to the observed data themselves). 43.2 Binary Domains and Hamming Distance 
+
+We consider a binary search space, x ∈ { 0, 1}D . Here, D is the dimension of x, in other words the problem size. For the RBF kernel f = e−qk (x)/2σ2
+
+, the squared Euclidean distance is used, 
+
+qk(x) = |x − xk|22 =
+
+> D−1
+
+∑
+
+> i=0
+
+((1 − 2xk,i )xi + xk,i ) . (4) Here, σ2 means a variance hyper parameter. For binary variables, this quantity is equal to the Hamming distance. Therefore, qk(x) ∈ { 0, 1, . . . , D }, and the number of possible levels is L = D + 1. The ILP form of the RBF kernel is given by 
+
+f (dk,l ) = exp 
+
+(
+
+− dk,l 
+
+2σ2
+
+)
+
+, dk,l = l. (5) The total number of binary auxiliary variables is K(D + 1) before the exploration margin is introduced. The same construction can be applied to other kernels whose arguments can be expressed by finite-valued functions of the discrete input. For example, for the Matérn kernel 21−ν 
+
+> Γ( ν)
+
+(√2ν|x−xk|/σ )ν Kν (√2ν|x−xk|/σ ), 
+
+f (dk,l ) = 21−ν
+
+Γ( ν)
+
+( √ 2νd k,l 
+
+σ
+
+)ν
+
+Kν
+
+( √ 2νd k,l 
+
+σ
+
+)
+
+, dk,l = l. (6) Here, ν is a hyper parameter that adjusts differentiability. Γ( ν) and Kν are the Gamma function and the modified Bessel function of the second kind, respectively. For the rational quadratic kernel (1 + |x − xk|2)−γ ,
+
+f (dk,l ) = (1 + dk,l )−γ , dk,l = l. (7) Here, γ is a positive hyperparameter. For the Ornstein–Uhlenbeck kernel e−| x−xk |/σ ,
+
+f (dk,l ) = exp 
+
+(
+
+−
+
+√dk,l 
+
+σ
+
+)
+
+, dk,l = l. (8) For the white kernel δx,xk ,
+
+f (dk,l ) = 
+
+{
+
+1, l = 0 ,
+
+0, l > 0. dk,l = l. (9) Moreover, the above encoding can be applied to other kernels based on non-Hamming distance. For the polynomial kernel ( xT xk + c)γ ,
+
+f (dk,l ) = ( dk,l + c)γ , dk,l = l. (10) Here, c is a constant. qk(x) = xT xk = 0 , 1, . . . , D , and the total number of levels is still L = D + 1. In this case, qk(x) represents an inner product rather than a Hamming distance. The same integer-linearization principle still applies because the possible values remain finite. 
+
+3.3 Combined Kernels 
+
+The formulation can be extended to a sum of multiple kernel functions, 
+
+F (x) = 
+
+> K−1
+
+∑
+
+> k=0
+
+(ckf (qk(x)) + c′
+
+> k
+
+f ′(q′
+
+> k
+
+(x))) . (11) 5𝒙 !
+
+> 𝑙 = 5 𝑙 = 4 𝑙 = 3 𝑙 = 2 𝑙 = 1 (𝑙 = 0) 𝑙 = 1 𝑙 = 2 𝑙 = 3 𝑙 = 4 𝑙 = 5
+
+Search Space 
+
+> 𝑙 = 0
+
+Figure 2: Schematic picture of the search space in ILP-BO. Topographic surface of surrogate model is shown as dashed mountains. To encode original problem into an ILP problem, additional variables sk,l are introduced. Their index l describes a Hamming distance from training data point xk. Search space for l ≥ 3is shown in green area. Thus, outside neighborhoods of xk, next points are determined by ILP-BO. For simplicity, slices at each value of l are depicted parallel to the x plane. In addition, this plane is drawn simply in a 2D map. Although kernels such as RBF tend to have training data points located on summits as depicted, this does not always coincide in general. By introducing independent one-hot variables for the two kernels, the optimization can be formulated as max 
+
+> x,s,s′
+> K−1
+
+∑
+
+> k=0
+
+
+
+> L−1
+
+∑
+
+> l=0
+
+ckf (dk,l )sk,l +
+
+> L′−1
+
+∑
+
+> l=0
+
+c′
+
+> k
+
+f ′(d′
+
+> k,l
+
+)s′
+
+> k,l
+
+
+
+s.t.
+
+> L−1
+
+∑
+
+> l=0
+
+dk,l sk,l = qk(x), k = 0 , . . . , K − 1,
+
+> L−1
+
+∑
+
+> l=0
+
+sk,l = 1 , k = 0 , . . . , K − 1,
+
+> L′−1
+
+∑
+
+> l=0
+
+d′
+
+> k,l
+
+s′ 
+
+> k,l
+
+= q′
+
+> k
+
+(x), k = 0 , . . . , K − 1,
+
+> L′−1
+
+∑
+
+> l=0
+
+s′ 
+
+> k,l
+
+= 1 , k = 0 , . . . , K − 1,sk,l , s ′ 
+
+> k,l
+
+∈ { 0, 1}. (12) Thus, composite surrogate functions can also be optimized within an integer-linear formulation. 
+
+3.4 Exploration Through Hamming-Distance Margin 
+
+Although Eq. (3) provides an exact optimization formulation for the surrogate model, directly optimizing it emphasizes exploitation and does not explicitly reflect predictive uncertainty. We instead exploit the fact that, for the distance-based kernels considered above, qk(x) can be interpreted as a dissimilarity from the observed point xk.By adjusting the value of l, new data different from the existing observed data can be explored, as shown in Fig. 2. For the binary domain, qk(x) = l is the Hamming distance. In particular, 
+
+qk(x) = 0 ⇐⇒ x = xk. (13) Thus, when sk, 0 is hot, the candidate x corresponds to the observed point xk. If sk, 1 is hot, x will shift from xk to another state with a Hamming distance of 1 away. Selecting a larger value of qk(x) = l therefore forces the candidate to be further from an observed point. We introduce a threshold lth and restrict the candidate search to states with the Hamming distance at least lth 
+
+6Search Space 
+
+# 𝒙 !
+
+## 𝑙 !" Figure 3: Projection of Fig. 2 onto x plane. For simplicity, lth -neighborhoods around training data points are depicted as disk areas with the points centered. Finite lth can eliminate candidates similar to existing training data. from every observed point, as shown in Fig. 3. The resulting optimization problem is max 
+
+> x,s
+> K−1
+
+∑
+
+> k=0
+> L−1
+
+∑
+
+> l=lth
+
+ckf (dk,l )sk,l 
+
+s.t.
+
+> L−1
+
+∑
+
+> l=lth
+
+dk,l sk,l = qk(x), k = 0 , . . . , K − 1,
+
+> L−1
+
+∑
+
+> l=lth
+
+sk,l = 1 , k = 0 , . . . , K − 1,sk,l ∈ { 0, 1}. (14) Here, 0 ≤ lth ≤ L − 1. A larger lth excludes a larger neighborhood around previously observed points and therefore places greater emphasis on exploration. When lth = 0, previously observed points remain eligible. When lth > 0, the candidates are predicted from the unexplored area. An additional consequence is that the number of auxiliary binary variables becomes K(L − lth ), which decreases as the threshold lth increases. Conventional Bayesian optimization relies on predictive variance for exploration, which makes the optimization problem higher-order and more complex (Srinivas et al., 2010). In contrast, the proposed method utilizes a margin strategy for exploration, which actually reduces the number of variables and thereby simplifies the optimization problem. 
+
+3.5 Feasibility of Hamming-Distance Margin 
+
+Note that excessive values of lth may lead to infeasibility because the entire feasible search space is eliminated. As explained in Subsection 3.1, setting lth = 0 guarantees the existence of feasible solutions. However, for example, if lth = D, the entire space of x is trivially excluded from the search space. In Fig. 3, one can imagine that the search space vanishes with a large lth . In other words, when the entire space of x is covered with the white space of l < l th , Eq. (14) becomes infeasible. If the entire space of x is not covered, solutions are searched for the complemented subspace. We therefore derive an approximate upper bound based on the coverage of the binary hypercube, as shown in Fig. 4. The upper bound of lth can be deduced based on a density function for the Hamming distances. The density of states with the Hamming distance of h follows the binomial distribution h ∼ B (D, 1/2) (Camara et al., 2020). According to the central limit theorem, this distribution is asymptotically approximated by 7Figure 4: Covarage of entire space of x with lth -neighborhoods. To avoid infeasibility, value of lth must be smaller than that of lower bound to cover entire space, leading to Eq. (14). Gaussian distribution, 
+
+h ∼ N 
+
+( D
+
+2 , D
+
+4
+
+)
+
+, (15) for sufficiently large D.We assume that there are K training data points and these points are evenly scattered throughout the space, which is the pessimistic scenario of lth estimation. In this case, as shown in Fig. 4, to ensure that the entire space should not be covered with lth -neighborhoods of the data points, 1 ≥ K
+
+∫ lth 
+
+> −∞
+
+√ 2
+
+πD exp 
+
+(
+
+− 2( t − D/ 2) 2
+
+D
+
+)
+
+dt. (16) Conceptually, Eq. (16) shares the fundamental geometric principle of the Gilbert-Varshamov (GV) bound for sphere covering, from the viewpoint of the coding theory (MacWilliams & Sloane, 1977). While tradi-tional coding-theoretic formulations rely on discrete binomial sums, our formulation adopts the Gaussian approximation (15) to yield an explicit closed-form bound. Let Φ denote the cumulative distribution function of the standard Gaussian distribution N (0 , 1). Then an approximate upper bound is 
+
+lth ≤ lup (K, D ) = max 
+
+{
+
+min 
+
+(
+
+D
+
+2 +
+
+√D
+
+2 Φ−1
+
+( 1
+
+K
+
+)
+
+, D 
+
+)
+
+, 0
+
+}
+
+. (17) From Eq. (17), for example, lup (K, D ) = D/ 2 is obtained for K = 2. This is reasonable because if we consider two poles at (0 , 0, . . . , 0) and (1 , 1, . . . , 1), the minimum Hamming distance between another point and these points is always lower than D/ 2. For K = 1000, the approximate value of the upper bound for D = 10 is 0 .11 < 1. This result implies that finite lth (i.e., ≥ 1) cannot be allocated in the case of (K, D ) = (1000 , 10), which is reasonable because the entire space 2 10 = 1024 is almost covered by the 1000 existing data points. In addition, the upper bound decreases as the number of observations increases. For 
+
+K = 10, the approximate values of the upper bound for D = 10 , 20 , 30 , 40 are 2 .97, 7 .13, 11 .49, and 15 .95, respectively. For K = 1000, the corresponding values are approximately 0 .11, 3 .09, 6 .54, and 10 .23. We used sufficiently small values of lth according to Eq. (17) in the later experiments, and no infeasible solutions were confirmed to appear. There is one drawback in our formalism. The number of additional variables is K(L − lth ), which increases linearly with the number of training data K. Thus, the calculation time on an ILP solver increases as the optimization steps progress. Although such solvers have developed remarkably with respect to computational performance, for practical use, it is desirable to use them in short-step BO. For long-step BO, to keep the number of training data K constant, one can consider removing unimportant data, such as the point x with the smallest G(x) value in the pre-update data. 8Algorithm 1 ILP-BO for discrete black-box optimization 
+
+Require: Kernel type f , initial sample size K0, initial threshold lth (1), decay ratios 
+
+Ensure: Best observed solution  
+
+> 1:
+
+Sample initial data ( K0 data)  
+
+> 2:
+
+for t = 1 , 2, · · · , T do  
+
+> 3:
+
+Train kernel regressors with existing data to form the surrogate model (Eq. (1))  
+
+> 4:
+
+Set Hamming distance threshold lth (t) by Eq. (19) or Eq. (20)  
+
+> 5:
+
+Create the linear programming problem of Eq. (14)  
+
+> 6:
+
+Solve the problem with an ILP solver to obtain next point xnext ,t  
+
+> 7:
+
+if xnext ,t is feasible then  
+
+> 8:
+
+Update data by evaluating G(xnext ,t ), and update the number of data Kt = K0 + t 
+
+> 9:
+
+else  
+
+> 10:
+
+continue  
+
+> 11:
+
+end if  
+
+> 12:
+
+end for  
+
+> 13:
+
+Choose the best point from the KT data points 
+
+3.6 Optimization Procedure 
+
+The optimization flow of ILP-BO is summarized in Algorithm 1. First, initial data is sampled. Generally, this is performed uniformly at random. Then, the following process is iterated until the preset number of trials T is completed. At the t-th step ( t = 1 , . . . , T ), a surrogate model F is trained with the existing data. The model is a kernel regression (1) with the preset kernel f . Here, the available types of kernel are the RBF, rational quadratic, Matérn, white, Ornstein–Uhlenbeck, or a combination thereof. This is because they have the characteristic that l reflects a Hamming distance. Then, an ILP problem of Eq. (14) is created based on the trained model F . Note that the margined version of Eq. (12) is created alternatively if a combination of the above kernels is adopted as f . Next, the problem is solved by ILP solvers to obtain the next point 
+
+xnext ,t . If xnext ,t is feasible, the data are updated with the new observation ( xnext ,t , G (xnext ,t )). Otherwise, the data are not updated. Finally, the best point is selected by referring to x with the highest G(x) in the data. In the above flow, the basic and natural schedule for Hamming distance threshold is exponential decay, 
+
+lth (t; r) = min {1 + ( lth (1) − 1) rt−1, l up (Kt, D )} . (18) Here, lth (t; r) denotes the Hamming distance threshold at step t, and 0 ≤ r ≤ 1 is a decay scale, that is a geometric ratio for exponential decrease. Kt is the total number of data at step t. Eq. (18) is designed so as to converge to 1 and be bounded above by the upper limit Eq. (17). The decay scale r plays a critical role in balancing exploration and exploitation over the optimization process. A larger r maintains a wider Hamming-distance margin lth for a longer duration, promoting global exploration, whereas a smaller r rapidly shrinks the margin, prioritizing local exploitation around previously observed points. With a single scale r, a monotonous balance between exploitation and exploration may lead to performance variations. Therefore, in this study, we adopt not only the single-scale schedule 
+
+lth (t) = lth (t; r), for t = 1 , 2, . . . , T, (19) but also the following multiple-scale schedule, 
+
+lth (t) = 
+
+
+
+lth (t; r1), t = 1 , 4, 7, . . . , ⌊ T
+
+> 3
+
+⌋ − 2
+
+lth (t; r2), t = 2 , 5, 8, . . . , ⌊ T
+
+> 3
+
+⌋ − 1
+
+lth (t; r3), t = 3 , 6, 9, . . . , ⌊ T
+
+> 3
+
+⌋ .
+
+(20) Here, ⌊x⌋ is a floor function. Equation (20) has a conservative scale r1, a fair scale r2, and an aggressive scale r3 (r1 > r 2 > r 3). These decay scales were determined in Subsection 4.3. 94 Numerical Experiments 
+
+We evaluate ILP-BO on five representative discrete optimization benchmarks: • Sphere function (Shi & Eberhart, 1999), • Max-cut problem (Goemans & Williamson, 1995), • Number partitioning problem (Borgs et al., 2001), • Ising model (Cipra, 1987), • Low Autocorrelation Binary Sequences (LABS) problem (Boehmer, 1967). Because the proposed method is a significantly new type of solver, the sphere function, which is one of the most basic benchmarks, is used for principle verification. The Max-Cut problem, the Number Partitioning problem, and the Ising model are well-known standard benchmarks for discrete optimization, which are equivalent to a quadratic unconstrained binary optimization problem (Papalexopoulos et al., 2022). Finally, as a practical problem, the LABS problem is considered. The LABS problem is a higher-order problem, which is classically intractable even for moderately sized instances (Packebusch & Mertens, 2016). This problem has real-world applications in communications engineering, in which low autocorrelation sequences are utilized to design radar pulses. As ILP-BO , we adopt two variations ( Single and Multi ) based on the schedule types (19) and (20). To rigorously evaluate their performance, we compare ILP-BO against a comprehensive set of baselines: • Random Search : Uniform random sampling across the binary domain. • BO-UCB : GP-based Bayesian optimization utilizing the upper confidence bound acquisition function in BayesianOptimization (Nogueira, 2014). In particular, we employ a method adapted for discrete variables (Garrido-Merchan & Hernandez-Lobato, 2020). • BOCS : Bayesian Optimization for Combinatorial Structures (Baptista & Poloczek, 2018), using semidefinite programming relaxation combined with Goemans-Williamson randomized rounding on horseshoe-regularized second-order surrogates. • Optuna GPS : GP-based Bayesian optimization sampler in Optuna (Akiba et al., 2019). • Optuna TPES : Tree-structured parzen estimator sampler (Bergstra et al., 2011) for non-GP discrete search in Optuna .
+
+4.1 Common Experimental Settings 
+
+In this study, we adopt the Matérn kernel (6) with ν = 2 .5, which is also used by default in Optuna . Its hyperparameter, the length scale σ, is optimized through maximum likelihood estimation. This optimization and model training are performed with Scikit-learn (Pedregosa et al., 2011). Here, the length scale bounds and the initial length scale are set to (1 , 2D) and D, respectively, for Matern class in Scikit-learn . Then, a GP model is constructed using GaussianProcessRegressor with n_restarts_optimizer = 20. After training the model with the fit method, using the estimated coefficients ck and hyperparameter σ, the ILP problem (14) is created. As an ILP solver, HiGHS , one of the fastest non-commercial solvers for MIP (Huangfu & Hall, 2018), is adopted. For all experiments, the number of initial data is set to K0 = 5. This data is generated randomly, and we ensure that any two points do not coincide. For each problem, the problem size is varied between 
+
+D = 20 , 30 , 40. We perform 10 independent runs with differently generated initial data, and evaluate the performance based on average scores. All algorithms share the exact same objective function instances and identical initial data ( K0 = 5) for each independent experimental trial. 10 The initial threshold is determined by lth (1) = int( D/ 4). The preset number of trials T , that is the total number of iterations, is set to 50. Here, modest values were set to avoid the computational intractability of exact mathematical optimization. Verification over longer trials is a future issue. In other words, assessing scalability on larger-scale problems using high-performance commercial solvers (IBM ILOG CPLEX, 2009; Gurobi Optimization, LLC, 2024) represents an important direction. Nevertheless, the choice of T = 50 reflects expensive real-world applications where evaluation budgets are severely constrained, making early-stage sample efficiency far more critical than long-horizon convergence. In all conducted experiments, all candidate selections produced by ILP-BO remained strictly feasible, and the ILP solver confirmed global optimality of the acquisition surrogate at every iteration within the designated solver termination tolerances. For all GP-based baselines ( BO-UCB and Optuna GPS ), ν = 2 .5 Matérn kernel is used in the same man-ner as ILP-BO . In addition, the hyperparameter optimization is commonly conducted with 20 restarts (nrestarts_optimizer = 20) and target normalization (normalize_y = True) in these methods, to guarantee a fair comparison. 
+
+4.2 Benchmark Problems 
+
+We state the mathematical formulations of the discrete benchmark problems evaluated in our experiments. 
+
+4.2.1 Sphere Function 
+
+For binary decision variables x ∈ { 0, 1}D , the discrete Sphere function is defined as 
+
+Fsphere (x) = 
+
+> D−1
+
+∑
+
+> i=0
+
+x2 
+
+> i
+
+=
+
+> D−1
+
+∑
+
+> i=0
+
+xi. (21) The global minimum objective value is Fsphere (x∗) = 0, uniquely achieved at the origin x∗ = (0 , . . . , 0). 
+
+4.2.2 Max-Cut Problem 
+
+The Max-Cut problem aims to partition the vertex set of an undirected graph G = ( V, E ) to maximize the total weight of edges straddling the two partitions. Let wij denote the edge weight between vertices i and 
+
+j, sampled uniformly wij ∼ U (1 .0, 5.0) with an edge density of 0 .5. Using spin variables σi ∈ {− 1, 1}, the objective to be minimized is expressed as 
+
+Fmaxcut (σ) = − ∑
+
+> i<j
+
+wij 
+
+1 − σiσj
+
+2 . (22) The spin variables are linearly mapped to binary space via σi = 1 − 2xi.
+
+4.2.3 Number Partitioning Problem 
+
+The Number Partitioning problem partitions a set of D positive integers a0, a 1, . . . , a D−1 (sampled uniformly 
+
+ai ∼ U (1 , 100)) into two subsets to minimize the discrepancy of their subset sums. Representing subset choices via spin variables σi ∈ {− 1, 1}, the objective to be minimized is the squared sum difference, 
+
+FNP (σ) = 
+
+(D−1∑
+
+> i=0
+
+aiσi
+
+)2
+
+. (23) Binary domain mapping follows σi = 1 − 2xi.
+
+4.2.4 Ising Model 
+
+The Ising model evaluates energy minimization over a fully connected spin system governed by the Hamil-tonian 
+
+Fising (σ) = ∑
+
+> 0≤i<j ≤D−1
+
+Jij σiσj , (24) 11 where interaction coefficients Jij are drawn independently from N (0 , 1). Binary domain mapping follows 
+
+σi = 1 − 2xi.
+
+4.2.5 LABS Problem 
+
+The LABS problem minimizes the sequence autocorrelation energy 
+
+ELABS (σ) = 
+
+D−1∑
+
+j=1 
+
+(D−j−1∑
+
+i=0 
+
+σiσi+j
+
+)2
+
+. (25) The corresponding quality measure is the Merit Factor 
+
+FLABS = D2
+
+2ELABS 
+
+, (26) which is maximized in our optimization trials. Binary domain mapping follows σi = 1 − 2xi.
+
+4.3 Decay Scale Dependency 
+
+To investigate the empirical sensitivity and quantitative trade-offs of the decay scale r, we evaluated the performance of ILP-BO under various values of r ∈ { 0.80 , 0.85 , 0.90 , 0.95 , 0.97 , 0.99 } using the Ising Model benchmark ( D = 20). Table 1 summarizes the average score improvement from iteration 0 to 50, as well as the progress rates in the early stage (0 → 10) and the late stage (30 → 50), defined as the ratio of score improvement during the respective interval relative to the total improvement. Table 1: Comparison of performance and progress rates in early and late stages for various decay scales. The D = 20 Ising Model benchmark was used. The scores were averaged over 10 initial-dataset samples. Decay Scale r Total Improvement Early Progress Rate Late Progress Rate (0 →50) (0 →10) (30 →50) 0.99 28.09 56.2% 22.5% 0.97 29.41 53.6% 15.5% 0.95 30.63 52.4% 9.6% 0.90 31.07 59.3% 12.4% 0.85 30.64 60.4% 9.3% 0.80 30.46 64.1% 11.3% 0 10 20 30 40 50           
+
+> Iteration
+> 02468
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 0246810 12 14
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi
+
+Figure 5: Optimization performance on the Sphere benchmark for dimensions D = 20 (left), 30 (middle), and 40 (right). Curves represent the mean scores over independent runs, with shaded regions depicting standard deviations. These lines shall guide the eye. Iterations are counted after initial data collection ( K0 = 5). Best observed objective values up to each iteration are shown (lower is preferred). 12 0 10 20 30 40 50           
+
+> Iteration
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi
+
+Figure 6: Zoomed-in trajectory views corresponding to Fig. 5. 0 10 20 30 40 50           
+
+> Iteration
+> 210
+> 200
+> 190
+> 180
+> 170
+> 160
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 430
+> 420
+> 410
+> 400
+> 390
+> 380
+> 370
+> 360
+> 350
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 740
+> 720
+> 700
+> 680
+> 660
+> 640
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi
+
+Figure 7: Optimization performance on the Max-Cut problem ( D = 20 , 30 , 40). Best observed objective values up to each iteration are shown (lower is preferred). As observed in Table 1, there is no significant difference in overall improvement, indicating that the proposed method is generally robust in this benchmark. However, a clear trade-off exists between early-stage accel-eration and late-stage refinement. Smaller values of r, such as r = 0 .80, achieved the highest early progress rate. However, this aggressive decay restricted broad space exploration, causing premature saturation and resulting in a lower total improvement of 30 .46. Conversely, larger values of r, such as r = 0 .99, sustained high exploration capability into the late stages, yielding the maximum late progress rate of 22 .5%. Nev-ertheless, delayed exploitation reduced overall sample efficiency within the fixed evaluation budget, leading to a smaller total improvement of 28 .09. Intermediate values of r effectively achieved the optimal balance between these two extremes. Based on these observations, for our single-scale schedule in Eq. (19), we adopt r = 0 .95 as the default parameter. Furthermore, to overcome the inherent trade-off of any single fixed decay rate, we introduce the multiple-scale schedule in Eq. (20) with r1 = 0 .97, r2 = 0 .95, and r3 = 0 .90. 
+
+4.4 Optimization Results 
+
+Figures 5–11 summarize the optimization trajectories on the five discrete benchmarks. The curves show the mean best-observed objective values, with the same initial observations shared across all methods. For 
+
+ILP-BO , both the single-scale and multi-scale Hamming-distance schedules are evaluated. Overall, the pro-posed method exhibits sample efficiency in the early stages of optimization, although the relative advantage depends on the benchmark and dimensionality. On the Sphere benchmark (Figs. 5 and 6), ILP-BO with the both proposed schedules rapidly reduced the objective toward the unique global optimum. Relatively, the multi-scale schedule generally reached the opti-mum in fewer evaluations. The advantage became particularly apparent in the higher-dimensional settings, where several baseline methods required substantially more evaluations to approach the optimum. Note that 13 0 10 20 30 40 50           
+
+> Iteration
+> 05000 10000 15000 20000 25000
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 01000 2000 3000 4000 5000 6000
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 010000 20000 30000 40000 50000
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi
+
+Figure 8: Optimization performance on the Number Partitioning problem ( D = 20 , 30 , 40). Best observed objective values up to each iteration are shown (lower is preferred). 0 10 20 30 40 50           
+
+> Iteration
+> 020 40 60 80 100 120 140
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 020 40 60 80 100 120 140
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+> Iteration
+> 020 40 60 80 100 120 140
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi
+
+Figure 9: Zoomed-in trajectory views corresponding to Fig. 8. although Optuna GPS generally exhibited good performance on other problems, it showed poorer perfor-mance on the Sphere benchmark, the rate of improvement slowed down noticeably as the problem dimension increased. Sometimes it failed to converge to the optimal solution. On the other hand, the proposed methods and BO-UCB successfully found optimal solutions in all cases. For the Max-Cut benchmark (Fig. 7), Optuna GPS exhibited the best performance. The proposed methods generally exhibited the second and third best performance. While BO-UCB yielded favorable results at the low dimension ( D = 20), its performance degraded as the dimensionality increased. For larger problem instances, the performance was almost comparable to that of Random Search. The proposed method exhibited more robust performance compared to BO-UCB .The Number Partitioning benchmark results (Figs. 8 and 9) provided one of the strongest empirical demon-strations of the proposed approach. ILP-BO reached the lowest scores. Although some baselines continued to improve over the longer evaluation horizon, the early-stage advantage of ILP-BO remained pronounced. This behavior was important for expensive black-box optimization, where the number of evaluations rather than the asymptotic performance was often the primary practical constraint. For the Ising model (Fig. 10), Optuna GPS exhibited the lowest scores while ILP-BO was competitive to 
+
+BO-UCB .Finally, the LABS benchmark (Fig. 11) demonstrated that the proposed framework was also effective for a discrete objective. ILP-BO achieved the highest Merit Factors throughout the optimization. While BO-UCB 
+
+yielded favorable results at the low dimension ( D = 20), its performance degraded as the dimensionality increased. For larger problem instances, the performance degraded below that of Random Search .Based on these results, the proposed method exhibited top-tier optimization performance compared to the baselines. On average, it discovered better scores than BO-UCB while achieving performance comparable to 14 0 10 20 30 40 50 
+
+Iteration      
+
+> 50
+> 40
+> 30
+> 20
+> 10
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+
+Iteration      
+
+> 140
+> 120
+> 100
+> 80
+> 60
+> 40
+> 20
+> 0
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+
+Iteration 
+
+> 160
+> 140
+> 120
+> 100
+> 80
+> 60
+> 40
+> 20
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi
+
+Figure 10: Optimization performance on the Ising model ( D = 20 , 30 , 40). Best observed objective values up to each iteration are shown (lower is preferred). 0 10 20 30 40 50 
+
+Iteration      
+
+> 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+
+Iteration      
+
+> 1.0 1.5 2.0 2.5 3.0 3.5
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi 010 20 30 40 50
+
+Iteration 
+
+> 1.5 2.0 2.5 3.0 3.5
+> Score
+> Random BO_UCB BOCS Optuna_GPS Optuna_TPES Proposed_Single Proposed_Multi
+
+Figure 11: Optimization performance on the LABS problem ( D = 20 , 30 , 40). Best observed objective values up to each iteration are shown (higher is preferred). Table 2: Success rate of reaching the exact optimum for Sphere and Number Partitioning problems Sphere Number Partitioning Problem Size D = 20 D = 30 D = 40 D = 20 D = 30 D = 40 Random 0.0 0.0 0.0 0.1 0.0 0.0 BO-UCB 1.0 1.0 1.0 0.5 0.4 0.3 
+
+BOCS 0.0 0.0 0.0 0.6 0.1 0.2 Optuna GPS 1.0 1.0 0.5 0.5 0.4 0.1 Optuna TPES 0.0 0.0 0.0 0.2 0.0 0.0 Proposed Single 1.0 1.0 1.0 0.4 0.6 0.0 Proposed Multi 1.0 1.0 1.0 0.5 0.3 0.3 
+
+Optuna GPS . Furthermore, among the proposed variants, the multi-scale strategy tended to outperform the single-scale strategy. 
+
+4.5 Global Optimum Attainment 
+
+Finally, success rates of reaching the exact optimum were discussed. In the Sphere benchmark, the exact optimum score was trivially 0. In our Number Partitioning settings, the exact optimum scores were 1 , 0, 0for D = 20 , 30 , 40, respectively. Thus, we evaluated the success rates by calculating the proportion of runs in which the optimized score corresponded to these values. The results were summarized in Table 2. The proposed method achieved top-tier performance comparable to BO-UCB .15 5 Discussion 
+
+The results demonstrate that discrete kernel surrogates admit an exact and computationally structured opti-mization procedure through integer linear programming. The central advantage of ILP-BO is not merely the use of an integer programming solver, but the exact reformulation of nonlinear kernel surrogate optimization into a 0–1 ILP. By exploiting the finite set of possible values of discrete distance or similarity measures and introducing binary one-hot variables, the proposed formulation optimizes the surrogate model without approximating the kernel function. Consequently, the candidate-selection problem can be solved to global optimality within the specified solver tolerances, providing a stronger optimization guarantee than heuristic or local optimization procedures commonly used for acquisition optimization. A second important property of ILP-BO is that exploration can be incorporated without sacrificing this linear structure. The Hamming-distance threshold lth excludes neighborhoods around previously observed points and therefore imposes a direct geometric form of exploration in the binary search space. At the same time, increasing lth reduces the number of auxiliary binary variables from KL to K(L−lth ). Thus, exploration and optimization complexity are coupled in a favorable way: stronger exclusion of previously explored regions simultaneously reduces the size of the resulting ILP. This property distinguishes the proposed framework from uncertainty-based exploration mechanisms whose optimization can introduce additional nonlinear structure. The decay-scale analysis further clarifies the role of this exploration mechanism. Smaller values of decay scales 
+
+r rapidly reduce the Hamming-distance margin and thereby favor exploitation at earlier iterations, whereas larger values place greater emphasis on exploration in later iterations. The observed trade-off between early and late optimization progress supports the use of an intermediate decay scale for the single-scale schedule and motivates the multiple-scale schedule, which combines different exploration rates over successive iterations. Rather than treating the decay parameter as an arbitrary fixed hyperparameter, these results provide an interpretable view of r as a control parameter governing the temporal balance between exploration and exploitation. The present experiments do not isolate the contribution of exact ILP optimization from those of the surrogate and such Hamming-distance schedule. Disentangling these individual effects is left for future work. The proposed framework has an inherent computational limitation. The number of auxiliary binary variables grows as K(L − lth ), and therefore generally increases as additional observations are collected and the exploration margin decreases. For long optimization horizons, the cost of repeatedly solving the resulting ILPs may become substantial relative to lightweight heuristic acquisition optimizers. This limitation is particularly relevant when the objective function itself is inexpensive to evaluate. In such settings, the additional optimization overhead of ILP-BO may exceed the reduction in black-box evaluations. Several extensions could mitigate this limitation. A two-sided Hamming-distance band, lmin ≤ l ≤ lmax ,would restrict the candidate to a finite shell around the current observations and reduce the number of auxiliary variables to K(∆ l + 1), where ∆ l = lmax − lmin . This formulation can substantially reduce the dependence of candidate-selection complexity on the full problem dimension. Another possibility is to switch from ILP optimization to brute-force enumeration when the search margin becomes sufficiently small. For example, when candidates are restricted to Hamming distance one, the number of distinct neighboring candidates generated from the observed points is at most O(KD ). Such hybrid strategies may provide an effective transition from globally optimized ILP-based candidate selection to lightweight local enumeration search in the late stages of optimization. Moreover, to keep the number of training data K constant, one can consider removing unimportant data. Constructing a surrogate model via support vector machines could also be effective in aggressive reduction of K.Importantly, the practical value of this computational trade-off depends on the cost of the black-box evalua-tion. In expensive applications such as molecular design, materials discovery, experimental process optimiza-tion, or hardware configuration, each objective evaluation may require substantial physical or computational resources. In such sample-limited settings, the ability to identify high-quality candidates with relatively few black-box evaluations can outweigh the computational overhead of the surrogate optimization itself. The experimental results support this perspective: while the relative performance of ILP-BO depends on the benchmark and dimensionality, the proposed method largely exhibits competitive early-stage behavior, 16 and in several discrete optimization problems it attains the best or near-best solutions within the limited evaluation budget. Overall, the results suggest that the principal contribution of ILP-BO is a general optimization principle rather than a universally dominant benchmark-specific heuristic. The combination of exact discrete kernel linearization, structured Hamming-distance exploration, and globally optimized candidate selection provides a mathematically transparent framework for discrete black-box optimization. This perspective opens the possibility of extending the same formulation to broader classes of discrete surrogate models and search spaces. 
+
+6 Conclusion 
+
+We introduced ILP-BO, an integer linear programming-based framework for discrete black-box optimization. The key idea is to exploit the finite-valued structure of discrete distance or similarity measures to transform nonlinear kernel surrogate optimization into an exact 0–1 integer linear program using binary one-hot aux-iliary variables. This formulation eliminates the need for kernel approximation during candidate selection and enables the surrogate optimization problem to be solved to global optimality within solver tolerances. ILP-BO further incorporates exploration through a Hamming-distance margin around previously observed solutions. This mechanism provides an interpretable control of the exploration–exploitation trade-off while simultaneously reducing the number of auxiliary variables in the ILP. We additionally derived an analytical upper bound on the Hamming-distance threshold from the coverage of the binary search space, providing a principled criterion for maintaining feasibility. Experiments on Sphere, Max-Cut, Number Partitioning, Ising, and LABS benchmarks demonstrated that the proposed framework is competitive with established discrete Bayesian optimization methods and can provide strong sample efficiency. The decay-scale study further revealed a systematic trade-off between early exploitation and sustained exploration, motivating the proposed multiple-scale schedule. Moreover, the benchmark experiments showed that ILP-BO can attain known global optima for several problem settings within the limited evaluation budget. The results establish a general framework for exact surrogate optimization in discrete black-box problems rather than a universally superior optimizer for every benchmark. Future work will investigate extensions to general integer and mixed discrete domains, adaptive and two-sided trust-region mechanisms, training-set compression, and hybrid candidate-selection strategies that combine integer programming with direct enumeration. These extensions may enable ILP-BO to support longer optimization horizons and larger-scale discrete search problems while retaining its central advantage of exact surrogate optimization. 
+
+Broader Impact Statement 
+
+This work presents a general algorithmic framework for discrete optimization, which positively impacts sample efficiency in expensive scientific and engineering tasks without introducing direct negative societal risks. By converting discrete kernel surrogate optimization into an integer linear program, ILP-BO enables the next candidate to be selected through a globally optimized mathematical-programming problem rather than a heuristic procedure. This allows us to more clearly identify whether the issue lies in the surrogate model itself or in the optimization component. In other words, this methodology has the potential to serve as a highly transparent black-box optimization framework. The potential societal impact is primarily positive because the method targets settings in which each objective evaluation can be expensive, including molecular and drug design, materials discovery, experimental process optimization, and automated hardware configuration. In such applications, reducing the number of required experiments or simulations may substantially lower computational, experimental, and material costs. 17 Acknowledgments 
+
+This work was partially supported by the Council for Science, Technology, and Innovation (CSTI) through the Cross-ministerial Strategic Innovation Promotion Program (SIP), “Promoting the application of ad-vanced quantum technology platforms to social issues” (Funding agency: QST), the Japan Society for the Promotion of Science (JSPS) KAKENHI (Grant Number JP23H05447), Japan Science and Technology Agency (JST) (Grant Number JPMJPF2221). S. Tanaka wishes to express their gratitude to the World Premier International Research Center Initiative (WPI), MEXT, Japan, for their support of the Human Biology-Microbiome-Quantum Research Center (Bio2Q). 
+
+References 
+
+Takuya Akiba, Shotaro Sano, Toshihiko Yanase, Takeru Ohta, and Masanori Koyama. Optuna: A next-generation hyperparameter optimization framework. In Proceedings of the 25th ACM SIGKDD Interna-tional Conference on Knowledge Discovery & Data Mining , pp. 2623–2631, 2019. Sebastian Ament, Samuel Daulton, David Eriksson, Maximilian Balandat, and Eytan Bakshy. Unexpected improvements to expected improvement for bayesian optimization. In Advances in Neural Information Processing Systems , volume 36, pp. 20577–20612, 2023. Ricardo Baptista and Matthias Poloczek. Bayesian optimization of combinatorial structures. In Proceedings of the 35th International Conference on Machine Learning , volume 80, pp. 462–471, 2018. James S. Bergstra, Rémi Bardenet, Yoshua Bengio, and Balázs Kégl. Algorithms for hyper-parameter optimization. In Advances in Neural Information Processing Systems , volume 24, pp. 2546–2554, 2011. A. Boehmer. Binary pulse compression codes. IEEE Transactions on Information Theory , 13:156–167, 1967. Suresh Bolusani, Mathieu Besançon, Ksenia Bestuzheva, Antonia Chmiela, João Dionísio, Tim Donkiewicz, Jasper van Doornmalen, Leon Eifler, Mohammed Ghannam, Ambros Gleixner, Christoph Graczyk, Katrin Halbig, Ivo Hedtke, Alexander Hoen, Christopher Hojny, Rolf van der Hulst, Dominik Kamp, Thorsten Koch, Kevin Kofler, Jurgen Lentz, Julian Manns, Gioni Mexi, Erik Mühmer, Marc E. Pfetsch, Franziska Schlösser, Felipe Serrano, Yuji Shinano, Mark Turner, Stefan Vigerske, Dieter Weninger, and Liding Xu. The scip optimization suite 9.0. arXiv preprint arXiv:2402.17702 , 2024. Christian Borgs, Jennifer Chayes, and Boris Pittel. Phase transition and finite-size scaling for the integer partitioning problem. Random Structures and Algorithms , 19(3–4):247–288, 2001. Carmen Camara, Honorio Martín, Pedro Peris-Lopez, and Luis Entrena. A true random number generator based on gait data for the internet of you. IEEE Access , 8:71642–71651, 2020. Barry A. Cipra. An introduction to the ising model. The American Mathematical Monthly , 94:937–959, 1987. Peter I. Frazier. A tutorial on bayesian optimization. arXiv preprint arXiv:1807.02811 , 2018. Roman Garnett. Bayesian Optimization . Cambridge University Press, 2023. Eduardo C. Garrido-Merchan and Daniel Hernandez-Lobato. Dealing with categorical and integer-valued variables in bayesian optimization with gaussian processes. Neurocomputing , 380:20–35, 2020. Saul I. Gass. Linear Programming: Methods and Applications . Courier Corporation, 2003. Michel X. Goemans and David P. Williamson. Improved approximation algorithms for maximum cut and satisfiability problems using semidefinite programming. Journal of the ACM , 42(6):1115–1145, 1995. Gurobi Optimization, LLC. Gurobi optimizer reference manual, 2024. URL https://www.gurobi.com .Tianyi Hao, Xuxin Huang, Chunjing Jia, and Cheng Peng. A quantum-inspired tensor network algorithm for constrained combinatorial optimization problems. Frontiers in Physics , 10:906590, 2022. 18 Qi Huangfu and Julian A. J. Hall. Parallelizing the dual revised simplex method. Mathematical Programming Computation , 10:119–142, 2018. IBM ILOG CPLEX. V12.1: User’s manual for cplex, 2009. Donald R. Jones, Matthias Schonlau, and William J. Welch. Efficient global optimization of expensive black-box functions. Journal of Global Optimization , 13:455–492, 1998. Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In Proceedings of the 3rd International Conference on Learning Representations , 2015. Koki Kitai, Jiang Guo, Shenghong Ju, Shu Tanaka, Koji Tsuda, Junichiro Shiomi, and Ryo Tamura. De-signing metamaterials with quantum annealing and factorization machines. Physical Review Research , 2: 013319, 2020. Jon Lee and Sven Leyffer. Mixed Integer Nonlinear Programming , volume 154. Springer Science & Business Media, 2011. Javier Lopez-Piqueres, Jing Chen, and Alejandro Perdomo-Ortiz. Symmetric tensor networks for generative modeling and constrained combinatorial optimization. Machine Learning: Science and Technology , 4: 035009, 2023. Florence Jessie MacWilliams and Neil J. A. Sloane. The Theory of Error-Correcting Codes . Elsevier, 1977. Yuki Minamoto and Yuya Sakamoto. A black-box optimization method with polynomial-based kernels and quadratic-optimization annealing. arXiv preprint arXiv:2501.04225 , 2025. Hyakka Nakada and Shu Tanaka. Systematic and efficient construction of quadratic unconstrained binary optimization forms for high-order and dense interactions. Journal of the Physical Society of Japan , 94: 094801, 2025. Hyakka Nakada, Kotaro Tanahashi, and Shu Tanaka. Quick design of feasible tensor networks for constrained combinatorial optimization. Quantum , 9:1799, 2025. J. A. Nelder and R. Mead. A simplex method for function minimization. The Computer Journal , 7:308–313, 1965. Fernando Nogueira. Bayesian optimization: Open source constrained global optimization tool for python, 2014. URL https://github.com/bayesian-optimization/BayesianOptimization .Tom Packebusch and Stephan Mertens. Low autocorrelation binary sequences. Journal of Physics A: Mathematical and Theoretical , 49:165001, 2016. Theodore P. Papalexopoulos, Christian Tjandraatmadja, Ross Anderson, Juan Pablo Vielma, and David Belanger. Constrained discrete black-box optimization using mixed-integer programming. In International Conference on Machine Learning , pp. 17295–17322, 2022. Fabian Pedregosa, Gael Varoquaux, Alexandre Gramfort, Vincent Michel, Bertrand Thirion, Olivier Grisel, Mathieu Blondel, Peter Prettenhofer, Ron Weiss, Vincent Dubourg, Jake Vanderplas, Alexandre Passos, David Cournapeau, Matthieu Brucher, Matthieu Perrot, and Edouard Duchesnay. Scikit-learn: Machine learning in python. Journal of Machine Learning Research , 12:2825–2830, 2011. Carl Edward Rasmussen and Christopher K. I. Williams. Gaussian Processes for Machine Learning . The MIT Press, 2005. Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P. Adams, and Nando de Freitas. Taking the human out of the loop: A review of bayesian optimization. Proceedings of the IEEE , 104(1):148–175, 2016. Y. Shi and R. C. Eberhart. Empirical study of particle swarm optimization. In Proceedings of the 1999 Congress on Evolutionary Computation (CEC99) , volume 3, pp. 1945–1950, 1999. 19 Jasper Snoek, Hugo Larochelle, and Ryan P. Adams. Practical bayesian optimization of machine learning algorithms. In Advances in Neural Information Processing Systems , volume 25, pp. 2951–2959, 2012. Niranjan Srinivas, Andreas Krause, Sham Kakade, and Matthias Seeger. Gaussian process optimization in the bandit setting: No regret and experimental design. In Proceedings of the 27th International Conference on International Conference on Machine Learning , pp. 1015–1022, 2010. Ryo Tamura, Yuya Seki, Yuki Minamoto, Koki Kitai, Yoshiki Matsuda, Shu Tanaka, and Koji Tsuda. Black-box optimization using factorization and ising machines. Applied Physics Reviews , 13(2):021307, 2026. James T. Wilson, Frank Hutter, and Marc P. Deisenroth. Maximizing acquisition functions for bayesian optimization. In Advances in Neural Information Processing Systems , volume 31, pp. 9906–9917, 2018. Yilin Xie, Shiqiang Zhang, Joel Paulson, and Calvin Tsay. Global optimization of gaussian process acqui-sition functions using a piecewise-linear kernel approximation. In Proceedings of the 28th International Conference on Artificial Intelligence and Statistics , volume 258, pp. 2296–2304, 2025. Ciyou Zhu, Richard H. Byrd, Peihuang Lu, and Jorge Nocedal. Algorithm 778: L-BFGS-B: Fortran subrou-tines for large-scale bound-constrained optimization. ACM Transactions on Mathematical Software , 23: 550–560, 1997. 20

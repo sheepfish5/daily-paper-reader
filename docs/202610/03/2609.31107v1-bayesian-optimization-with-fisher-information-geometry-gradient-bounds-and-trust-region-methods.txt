@@ -1,0 +1,1559 @@
+Title: Bayesian Optimization with Fisher Information Geometry: Gradient Bounds and Trust-Region Methods
+
+URL Source: https://arxiv.org/pdf/2609.31107v1
+
+Published Time: Mon, 28 Sep 2026 00:55:34 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Bayesian Optimization with Fisher Information Geometry: Gradient Bounds and Trust-Region Methods 
+
+Saksham Kiroriwal 1, Julius Pfrommer 1, and Jürgen Beyerer 1,21Cognitive Industrial Systems, Fraunhofer IOSB, Karlsruhe, Germany 
+
+> 2
+
+Karlsruhe Institute of Technology (KIT), Karlsruhe, Germany 
+
+{saksham.kiroriwal, julius.pfrommer, juergen.beyerer}@iosb.fraunhofer.de 
+
+## Abstract 
+
+We study Bayesian optimization (BO) through the lens of information geometry. Pulling back the Fisher information metric through the surrogate posterior map yields a local sensitivity tensor on the input space, which leads to an upper bound on the gradient of reparameterizable acquisition functions. This view explains vanishing-gradient behavior in high-dimensional BO and provides a common interpretation of heuristics such as RAASP and dimension-scaled lengthscales. Building on this analysis, we propose FITR, a trust-region-based BO method that replaces lengthscale-based scaling by local pullback-Fisher weights. FITR is not restricted to GP kernels with explicit lengthscales. On GP benchmarks with an SE kernel, experiments show competitive performance using FITR. The proposed method also easily generalizes to non-isotropic surrogates although the gains are more task-dependent in that setting. 
+
+## 1 Introduction 0.0 0.5 1.0Input x                    
+
+> 05Output  y
+> Surrogate and AF
+> 0.00.51.0Input x
+> −9
+> −405log 10  Scale AF gradient bound
+> −101Mean μ
+> −1.0
+> −0.50.0Std. dev. log 10  Σ Posterior map ϕt(x)
+> −101Mean μ
+> −1.0
+> −0.50.0AF sensitivity Cα(ϕt(x))
+> −100
+> −50 0LogEI
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> Manifold view
+> GP ftrue LogEI Dtxnext xbest Geodesic ‖∇ xα(x)‖2
+> √Cα(ϕt(x))tr( gt(x)) Cα(ϕt(x)) tr( gt(x))
+
+Figure 1: First: Conventional BO view with a GP surrogate (SE kernel) and LogEI [1] acquisition function (AF). Second: Visualization of Proposition 4.2, where the acquisition gradient is upper-bounded by the product of the trace of the pullback Fisher tensor and the sensitivity factor of the AF. Third: Induced geometry on the input space using the pullback Fisher tensor. Fourth: Sensitivity Cα
+
+(Section 4) of the AF with respect to the predictive-distribution parameters on the statistical manifold. 
+
++++ denotes x = 0 and ××× denotes x = 1 in input space (the same markers are used to denote the respective points in the manifold view). Gray boxes indicate regions with no observations where the trace of the pullback Fisher tensor collapses. Bayesian Optimization (BO) is a popular framework for optimizing black-box functions with ex-pensive evaluations [2]. It has proven to be effective in hyperparameter tuning [3], robotics policy 
+
+Preprint. arXiv:2609.31107v1 [cs.LG] 25 Sep 2026 search [4], and engineering design [5]. As explained in Section 2, BO alternates between fitting a probabilistic surrogate Mt to the observed data Dt and optimizing an acquisition function (AF) α(·)
+
+to select the next input candidate xt+1 . In practice, the inner AF optimization is often non-trivial. The AF is usually non-convex, depends on the surrogate through a predictive distribution, and becomes increasingly difficult to optimize as the input dimension Dx grows. This issue is now well documented in the high-dimensional BO (HDBO) literature. Recent work shows that both surrogate training and AF optimization can suffer from vanishing gradients in large dimensions [6–8]. Proposed fixes include dimensionally scaled lengthscale priors [6, 7], Random Axis Aligned Subspace Perturbations (RAASP) initializations [9], conformal mappings [10], and trust-region-based search [11]. A central question remains: what common mechanism makes AF optimization collapse, and how much of that mechanism is tied to the surrogate model? Inspired by the work of Herrmann et al. [12], we analyze BO from a different perspective. As shown in Figure 1, instead of looking at the AF only as a function over X , we utilize the chain rule and information geometry. The surrogate Mt is a map from input space X to the statistical manifold S
+
+of predictive distributions. These predictive distribution parameters, like mean and variance, are the parameters that the AF really depends on. Information geometry [13, 14] becomes a natural way to study how the surrogate induces geometry on the input space through the pullback Fisher tensor. This induced geometry tells us how strongly local perturbations in x change the predictive distribution. This view separates two effects that are usually entangled in AF optimization. The acquisition design determines how sensitive the utility is to changes in the predictive distribution. The surrogate-induced geometry determines whether moving in input space produces such changes at all. Section 4 formalizes this separation through an acquisition-gradient bound. This perspective then becomes a common analytical tool for understanding HDBO: • In Section 4, we analyze the pullback geometry induced by the surrogate posterior map and derive a bound for the AF gradient norm ∥∇ xα∥2 that separates acquisition-side sensitivity from surrogate-induced geometry. • We use this factorization to analyze vanishing-gradient behavior in HDBO under a common framework. This yields a unified interpretation of dimensionally scaled priors [6, 7] and RAASP [8, 9]. • In Section 5, we propose the Fisher-Information Trust Region (FITR), which replaces kernel-lengthscale scaling by local pullback-Fisher weights. FITR applies to differentiable probabilistic surrogates that satisfy the stated regularity conditions and is not restricted to GP kernels with explicit lengthscales. Section 6 shows that FITR improves on TuRBO-REI on several benchmarks and remains competitive with strong baselines on the remainder. 
+
+## 2 Preliminaries 
+
+The aim of BO is to maximize a black-box function ftrue over a feasible set X ⊂ RDx . At each BO iteration t, we assume that we have observed data Dt = {(xn, y n)}Nn=1 , where input xn ∈ X 
+
+and output yn = ftrue (xn) + εn. We allow yn ∈ RDy to be multi-dimensional and assume 
+
+εn ∼ N (0 , σ 2 
+
+> ε
+
+IDy ), which reduces to N (0 , σ 2 
+
+> ε
+
+) in the scalar-output case. BO alternates between fitting a probabilistic surrogate Mt and maximizing an AF via arg max x∈X α(x; Dt) to obtain the next input candidate xt+1 [15, 16]. We then evaluate yt+1 = ftrue (xt+1 ) and update the observed data Dt+1 = Dt ∪ { (xt+1 , y t+1 )}. We repeat until a stopping criterion is met. 
+
+Surrogate Models At each iteration t, the surrogate model Mt models the predictive distribution 
+
+p(y|x, Dt) = p(y; θt, x), where θt, x ∈ S are the parameters of the predictive distribution [17]. The hyperparameters λt of Mt specify the distribution parameters θt, x ← M t(x; Dt) and can be trained by maximizing the marginal log-likelihood [18] or another suitable objective [19, 20]. As shown in the manifold view in Figure 1, the surrogate model can also be interpreted as a smooth map from inputs to a family of probability distributions. Each input x ∈ X is mapped to a point 
+
+θt, x on the statistical manifold S, the set of all distributions the surrogate can produce [13]. Input locations that appear far apart in Euclidean space may be close in the manifold view because the surrogate induces its own local geometry, as shown by the +++ and ××× markers in Figure 1. This map is at least C1 differentiable, a mild condition satisfied by many popular surrogate models such as 2Gaussian processes (GPs) with differentiable kernels [18] or Bayesian neural networks (BNNs) with smooth activations [21]. The posterior map φt induced by Mt can be defined as 
+
+φt : X → S , x 7 → θt, x, such that θt, x ∈ S , (1) A common choice for the surrogate model is a Gaussian process (GP). For a scalar output y ∈ R at an input location x ∈ X , Mt models θt, x = ( μt, x, Σt, x) and gives p(y|x, Dt) = N (y; μt, x, Σt, x)
+
+with S = R × R+ [18]. GPs are discussed in further detail in Appendix A. 
+
+Acquisition Function (AF) The AF α is the expected utility over the predictive posterior evaluated at a candidate location x ∈ X and can be defined as α(x) = Ey [a(y; θt, x, ξ)] , where a is the associated utility function for the AF and ξ are respective acquisition parameters. The next query is 
+
+xt+1 = arg max x α(x; Dt) [16, 17, 22]. Since p(y|x, Dt) can be parameterized by θt, x, α depends on x only through θt, x. Using the reparameterization trick [23], we introduce a common notation to represent both closed-form and Monte Carlo AFs as 
+
+α(x) = Eζ [¯ α(θt, x, ζ; ξ)] , (2) where ζ is base noise drawn independently of x [17, 23]. However for closed-form AFs, ¯α is independent of ζ and (2) can be trivially written as α(x) = ¯ α(θt, x; ξ). Due to this, the closed-form AF and the ζ-dependent integrand used in the MC form can, in general, be different formulations of 
+
+θt, x. Appendix B discusses this in detail and lists both forms for different AFs. 
+
+Fisher Information Matrix For a parametric distribution family p(y; θ) with θ ∈ S , the Fisher information matrix (FIM) IS (θ) ∈ RDθ ×Dθ is the expected outer product of ∇θ log p(y; θ) as 
+
+[IS (θ)] ij = Ep(y; θ)
+
+ï ∂ log p(y; θ)
+
+∂θ i
+
+∂ log p(y; θ)
+
+∂θ j
+
+ò
+
+. (3) Amari and Nagaoka [24] showed that the FIM induces a Riemannian metric, known as Fisher–Rao metric , on the statistical manifold S. The Fisher–Rao metric explains the local geometry of the manifold [13, 25]. It quantifies the sensitivity of the predictive distribution p(y; θ) to changes in θ.
+
+Riemannian Geometry A Riemannian manifold (M, g ) is a smooth manifold M equipped with a Riemannian metric g, whose pointwise evaluation gp defines a positive definite inner product on each tangent space TpM ≃ Rdp [14]. The geodesic distance between p1, p 2 ∈ M is the minimum path length on the manifold that connects the two points and is given by 
+
+dg (p1, p 2) = inf 
+
+> γ
+
+Z 10
+
+»
+
+gγ(t)( ˙ γ(t), ˙γ(t)) d t, (4) where the infimum is over smooth curves γ : [0 , 1] → M with γ(0) = p1 and γ(1) = p2 [14]. The Fisher–Rao metric IS (θ) induces a Riemannian structure on the statistical manifold S [13]. We define the pullback Fisher tensor through the φt and discuss its properties in Section 4. 
+
+## 3 Related Work 
+
+Information geometry and applications. Natural gradient descent (NGD) is a key application of this theory [25, 26]. Work by Khan and Rue [27] shows how algorithms such as stochastic gradient descent (SGD) and Kalman filters can be derived from an algorithm called Bayesian Learning Rule ,and how natural gradients can improve the resulting updates. As another application of information geometry, Kim et al. [28] presented Fisher-Sharpness-Aware Minimization (FSAM), which replaced the Euclidean ball in sharpness-aware minimization with a Fisher ellipsoid, improving generalization and robustness. Beik-Mohammadi et al. [29] learn Riemannian manifolds for geodesic motion generation in robotics. 
+
+Geometry-aware Bayesian optimization. Jaquier et al. [4], Jaquier and Rozo [30] introduced geometry-aware kernels that used geodesic distances in Bayesian optimization when the search space is non-Euclidean, such as robot orientation. However, in our work, we explore the geometry that is induced in the search space by the posterior map of the surrogate model Mt as mentioned in (1). We do not assume that the search space has any intrinsic geometric structure. Recent work by Yu et al. 3[31] proposes GIT-BO with Tabular Foundation Model (TabPFNv2) as the surrogate model. They use the gradient of the predictive mean to identify a global active subspace for high-dimensional BO. Our use of Fisher geometry is local and trust-region based: we shape candidate regions around the current center using the predictive distribution, not only the mean. A direct comparison with GIT-BO would therefore mix surrogate choice with trust-region geometry. 
+
+Pullback metrics for probabilistic models. Tosi et al. [32] proposed the idea of pulling back a Riemannian metric for Gaussian Process Latent Variable Models (GPLVMs). They derived the expected metric tensor and used the resulting geodesics for improving data interpolation. Arvanitidis et al. [33] showed how the latent space can be characterized by a stochastic Riemannian metric, resulting in improved sampling and interpolation in latent space. Arvanitidis et al. [34] used the Fisher-Rao metric associated with the space of decoder distributions, enabling meaningful latent geometries for a broader class of decoders. Rozo et al. [35] generalized the construction to wrapped GPLVMs defined on Riemannian data manifolds, where they pull back a Riemannian structure from the data manifold to the latent space. 
+
+High-dimensional Bayesian optimization. Recent work by Hvarfner et al. [6], Xu et al. [7] has shown that BO can be effective in high dimensions (HDBO). They analyze the vanishing-gradient problem in surrogate-model and acquisition-function (AF) optimization in high dimensions. They propose a dimensionally scaled lengthscale prior to avoid the vanishing gradient problem. Papenmeier et al. [8] confirm the finding and propose √Dx/10 initialization of lengthscales for Maximum Likelihood Estimation (MLE) for GP surrogates. They also show that RAASP for AF optimization helps in preventing vanishing gradients. Local search for global optimization and trust-region methods offer complementary approaches. TuRBO is a popular trust-region-based method proposed by Eriksson et al. [11] to address high di-mensionality. They use local axis-aligned hyperrectangles to define the trust region around the current best point. Work by Papenmeier et al. [9, 36] extends trust-region-based methods to combinatorial and mixed spaces as well. However, existing trust-region constructions in this setting rely on GP surrogates with explicit lengthscale parameters like squared exponential kernel or Matern kernel. 
+
+## 4 Manifold View of Bayesian Optimization 
+
+As mentioned in Section 2, the acquisition function depends on x through the surrogate’s predictive parameters θt, x. Viewing the surrogate as a smooth map φt : X → S into the statistical manifold of predictive distributions shifts the analysis of acquisition-gradient behavior to the geometry of this map. Pulling back the Fisher–Rao metric from S to X via φt yields the pullback Fisher tensor gt(x),which quantifies how sensitively p(y; θt, x) changes under local perturbations of the input. We define the pullback Fisher tensor and establish an acquisition gradient bound (Section 4.1). Then in Section 4.2 we show how the critical λ scaling of √Dx from [6–8] and other HDBO findings like RAASP can be viewed from the geometric perspective of the pullback Fisher tensor. 
+
+Assumption 4.1 (Surrogate Differentiability and Positive Fisher Metric) . φt is C1 on X (satisfied by GPs with differentiable kernels and by BNNs with smooth activations) and IS (φt(x)) ≻ 0 for all 
+
+x ∈ X (a minimum noise σ2 
+
+> ε
+
+> 0 ensures this for GP regression). 
+
+As discussed in Appendix D.1, the first condition makes φt differentiable so that the Jacobian Jt
+
+exists. The second ensures IS is a valid inner product on S, so its inverse (required in the acquisition sensitivity (7)) is well-defined. The pullback Fisher tensor quantifies the sensitivity of the predictive distribution to perturbations in the input space at each input location. 
+
+Definition 4.1 (Pullback Fisher Tensor) . Under Assumption 4.1, the pullback Fisher tensor induced on the input space X by the predictive distribution manifold S through the posterior map φt is 
+
+gt(x) = Jt(x)⊤ IS
+
+ φt(x) Jt(x) ∈ RDx×Dx , (5) 
+
+where Jt(x) = ∂θt, x/∂ x ∈ RDθ ×Dx is the Jacobian of the posterior map. 
+
+Figure 1 shows the induced geometry on a 1D Euclidean input space by the GP surrogate with SE kernel and LogEI AF using the pullback metric tensor. Figure 2 similarly shows the trace of the 40.00.51.0                   
+
+> x2
+> ftrue (x)GP mean μ
+> 0.00.51.0
+> x1
+> 0.0 0.5 1.0
+> x2
+> √tr( gt(x))
+> 0.40.6
+> x1
+> 0.5 0.8
+> x2
+> 00.5 1
+> x1
+> 0.00.51.0
+> x2
+> GP var Σ
+> 00.5 1
+> x1
+> LogEI α(x)
+> 0.00 0.25
+> x1
+> 0.81.0
+> x2
+> 00.5 1
+> x1
+> 0.0 0.5 1.0
+> x2
+> ‖∇ xα(x)‖2
+> -4.3 -2.6 -1.0 0.7
+> -1.2 -0.6 0.0 0.7
+> 0.0 0.3 0.7 1.0
+> -21.0 -14.6 -8.1 -1.6
+> 0.8 7.4 14.0 20.6
+> 0.4 8.1 15.8 23.4 Conventional BO view Gradient analysis view
+> Dtxbest xt+1 FIM ellipse ∇xα(x)gt(x)−1∇xα(x)
+
+Figure 2: Conventional view of BO with a GP surrogate (SE kernel) and LogEI AF. The LogEI plot also shows the gradient (orange) and natural gradient (purple) vector field in the input space. The "gradient analysis" shows pullback metric trace ptr( gt(x)) and AF gradient norm ∥∇ xα(x)∥2.Trace is non-degenerate near the observed data and collapses in regions where the GP posterior has reverted to the prior (no observations). The red ellipses are calculated using the pullback metric tensor at respective input locations. pullback metric tensor for a 2D input space. Since for Dx > 1, the pullback metric is a tensor, the eigenvalues of gt(x) reflect how strongly the predictive distribution changes with respect to perturbations in input space at x in respective directions. Large eigenvalues correspond to directions (not necessarily axes-aligned with X ) along which the distribution changes rapidly, small or zero eigenvalues to directions that are locally uninformative. This effect can be seen in the "Gradient Analysis" panel of Figure 2, where we show the ∇xα(x) and the natural gradient gt(x)−1∇xα(x)
+
+vector field and also zoomed in view for two input locations denoted by the magenta and red boxes. The pullback tensor gt(x) is a Riemannian metric only when it is positive definite. Since gt has rank at most Dθ (at most 2 for a univariate GP), the induced geometry on X is degenerate when Dx > D θ .Locally, perturbations at x in null directions leave the predictive parameters θx unchanged. 
+
+4.1 Acquisition Gradient Bound via Pullback Fisher Tensor Proposition 4.2 (Acquisition Gradient Bound) . Let Assumption 4.1 hold. For any x ∈ X , let 
+
+θt, x = φt(x) and suppose the acquisition admits the representation α(x) = Eζ [¯ α(θt, x, ζ)] , where the interchange of gradient and expectation is valid, for example under the scalar Gaussian reparam-eterization conditions of Appendix D.1, and Eζ [∥∇ θt, x ¯α∥2] < ∞. Then 
+
+∇x α(x) 2 ≤
+
+»
+
+Cα
+
+ θt, x
+
+ · tr( gt(x)) , (6) 
+
+where the acquisition sensitivity is 
+
+Cα(θt, x) = Eζ
+
+î∇θt, x ¯α(θt, x, ζ)⊤ IS (θt, x)−1 ∇θt, x ¯α(θt, x, ζ) . (7) Proof is given in Appendix D.2. Equation 6 separates the roles of the surrogate and the acquisition in the inner BO optimization problem. The trace tr( gt(x)) depends only on the surrogate map and measures how strongly the predictive distribution changes under local perturbations at x. Equation 7 defines the acquisition-side sensitivity of the AF value to perturbations on the predictive manifold S.For a fixed AF and predictive distribution family, the formula for acquisition-side sensitivity depends on the current predictive state θ and the manifold metric IS (θ), but not on which surrogate produced that state. Surrogates represented through the same Gaussian predictive family, such as GP posteriors and Gaussian predictive approximations to Bayesian neural networks (BNNs), therefore use the same acquisition-side formula when evaluated at the same predictive parameters. The surrogate-specific effect enters through tr( gt(x)) . Appendix D.4 discusses Cα for common AFs under a Gaussian predictive distribution. When the surrogate maps a region of input space to a near-constant predictive distribution, or when the posterior reverts to the prior away from the data, tr( gt(·)) collapses in that region. Proposition 4.2 5then shows that bounded acquisition-side sensitivity forces the acquisition gradient to become small there. This effect is visible in Figure 1 and Figure 2: the AF gradient vanishes where the pullback trace collapses and remains active where the local predictive geometry is non-degenerate. 
+
+4.2 Unified FIM-based Framework for HDBO analysis Lengthscale Scaling and Random Axis Aligned Subspace Perturbations For GP surrogates with AFs such as EI, UCB, or PI, the sensitivity Cα(φt(x)) remains uniformly bounded as Dx
+
+grows, as shown in Appendix D.3. The experiments use LogEI, for which the same local regularity argument applies in the strictly positive-variance regime considered here. As shown in Appendix D.5, for i.i.d. inputs drawn uniformly from [0 , 1] Dx , the expected Euclidean distance E[d] = Θ( √Dx),where d = ∥x − x′∥, with exact asymptotic E[d] ∼ 1√6
+
+√Dx as Dx → ∞ . For the isotropic SE kernel, kλ(x, x′) = σ2 
+
+> f
+
+exp Ä− d2
+
+> 2λ2
+
+ä , so keeping the exponent non-degenerate requires λ = Θ( √Dx).Isotropic Matérn kernels depend on the normalized distance d/λ , which leads to the same scaling. If the lengthscale grows more slowly, the posterior map becomes nearly constant away from the data and tr( gt(x)) collapses, which forces the AF gradient to become small by Proposition 4.2. This recovers the scaling requirement identified by Hvarfner et al. [6], Xu et al. [7], Papenmeier et al. [8] from the viewpoint of induced geometry. The same trace-collapse argument also helps explain why RAASP around observed data [9] improves multi-start AF optimization. The pullback Fisher tensor therefore provides a common language for both failure modes and fixes in HDBO. 01x2       
+
+> GP-SE GP-IBNN BNN
+> 01x2
+> 01
+> x1
+> 01x2
+> 01
+> x101
+> x1
+> -1 01
+> ×10 0
+> 059
+> ×10 −1
+> -3 -1 0
+> ×10 1
+> -2 03
+> ×10 0
+> 048
+> ×10 −2
+> -4 -2 0
+> ×10 3
+> -2 01
+> ×10 0
+> 011
+> ×10 −1
+> -9 -5 0
+> ×10 2
+> Mean Variance LogEI
+> DtFIM ellipse
+
+Figure 3: Ellipses using g(x) from (5) for differ-ent surrogates: GP with squared exponential (SE) kernel, GP with Infinite Width Bayesian Neural Network (IBNN) kernel [21] and Bayesian Neu-ral Network (BNN). 
+
+TuRBO connection Figure 2 shows that the pullback trace and the AF gradient remain non-degenerate near the observed data. TuRBO devel-ops on a similar principle, where it centers a local axis-aligned TR at the incumbent and adapts its size over time using the learned lengthscales [11]. The dimensions with longer lengthscales have a longer TR length. Appendix D.6 shows that the metric tensor at a local optimum xbest is often dominated by the variance-gradient term, which is inversely proportional to the lengthscales. The ellipsoid made using the pullback metric would be longer in the dimensions with longer lengthscales. This is similar to how TuRBO uses the learned lengthscales to create TR. This motivates the use of pullback-metric-based TR for BO, which we call the Fisher-Information Trust Region (FITR). The FITR is a location-dependent TR that can be extended to any surrogate for which the derivative of the predictive distribution with respect to the input variables can be calculated. 
+
+## 5 Fisher-Information Trust Region (FITR) 
+
+As explained in Appendix B.1, TuRBO centers the trust region at the best observed location xbest and scales the dimension-wise side lengths using kernel lengthscales [11]. This construction is effective because it avoids performing the inner AF optimization in large regions where the surrogate has little information. Since the kernels are isotropic, the notion of distance underlying TuRBO remains Euclidean. TuRBO has proven effective in practice, but is also limited to SE or Matérn kernels. Section 4 suggests a different local notion of distance. The acquisition depends on x through φt(x),so the relevant local geometry is defined by the pullback Fisher tensor gt(x) in (5). This tensor can be computed for any differentiable probabilistic surrogate that satisfies Assumption 4.1. The ideal local Fisher region is the ellipsoid 
+
+x ∈ X : ( x − xt,c )⊤gt(xt,c )( x − xt,c ) ≤ κ2 
+
+> t
+
+. (8) 
+
+Limitations. Appendix D.7 shows that the FIM is the second-order Taylor expansion of Kullback-Leibler (KL) divergence [13, 24]. A purely KL-derived trust region is inherently mode-seeking 6and can become too exploitative near local optima [37]. We therefore retain TuRBO’s outer trust-region scaling rule, Algorithm 3, to preserve its exploration behavior. A second issue is scalability with Dx, since the full local ellipsoid requires inversion or whitening of the pullback tensor. For scalar predictive families, the pullback rank is at most two, so the tensor is rank-deficient when 
+
+Dx > 2. Without regularization, near-null directions would produce arbitrarily large radii. Popular BO frameworks such as BoTorch also largely support sampling from axis-aligned trust regions. One can create a hyperrectangle from the pullback tensor by using the infinity norm and whitening to make it axis-aligned. However, once such a region intersects the constraints/bounds of X , the feasible set becomes a clipped polytope rather than a simple box. Polytope sampling is substantially slower and less efficient than simple axis-aligned Sobol sampling for multi-start AF optimization. 
+
+Proposed method. The experiments in this paper use a diagonal approximation of the pullback Fisher tensor rather than the full ellipsoid in (8). At the trust-region center xt,c , we first estimate the diagonal entries of the unregularized pullback Fisher tensor by Monte Carlo (MC) samples from the predictive posterior: 
+
+bgt,j (xt,c ) = 1
+
+S
+
+> S
+
+X
+
+> s=1
+
+Ç ∂∂x j
+
+log p(˜ ys ; φt(x)) 
+
+> x=xt,c
+
+å2
+
+, ˜ys ∼ p(y; φt(xt,c )) , (9) where S is the number of MC samples and j ∈ { 1, . . . , D x}. Appendix D.8 shows that Equation 9 is an unbiased MC estimator of the corresponding diagonal entry of the pullback Fisher tensor [25]. Regularization is added only after this estimation step. 
+
+Algorithm 1: FITR weight construction 
+
+Input: Center xt,c , data Dt
+
+Output: Raw FITR weights ¯wt,j for 
+
+j = 1 , . . . , D x
+
+Fit surrogate on Dt;Draw ˜ys ∼ p(y; φt(xt,c )) for s = 1 , . . . , S ;Estimate diagonal pullback Fisher entries as mentioned in (9); Compute εt using estimated diagonal entries 
+
+bgt,j (xt,c );Form ¯wt,j ← (bgt,j (xt,c ) + εt)−1/2 for each 
+
+j = 1 , . . . , D x;
+
+return ¯wt = ( ¯ wt,j )j=1 ,...,D x ;We use diagonal Tikhonov-style regulariza-tion [25] to avoid unbounded stretching in direc-tions associated with zero or near-zero eigenvalues of the pullback tensor: 
+
+¯wt,j = ( bgt,j (xt,c ) + εt)−1/2 .
+
+The regularization parameter is chosen adap-tively from the local Fisher scale as εt =
+
+> 1
+> Dx
+
+PDx 
+
+> j=1
+
+bgt,j (xt,c ) + εjit , where εjit is a small numerical jitter to prevent division by zero. This damping adds an isotropic curvature floor and interpolates between induced geometry and Eu-clidean geometry when the pullback tensor is de-generate [25]. The ℓ2 norm gives an ellipsoid from (8). When we use the ℓ∞ norm, we obtain a box-shaped TR. We implemente axis-aligned FITR using only the diagonal of the regularized pullback tensor. This yields a location-dependent axis-aligned box that remains compatible with standard BO toolchains and avoids the clipped-polytope sampling problem at the domain boundary. The diagonal approximation also keeps the method practical in higher dimensions compared with the full whitening-based variant. TuRBO computes trust-region weights as in Algorithm 2 and then uses volume normalization and trust-region-bounded AF optimization to select the next candidate, as outlined in Algorithm 3. FITR replaces only the local weight construction in Algorithm 2 and keeps the same volume normalization and outer control logic. The resulting trust region is a box in (10). 
+
+X T R  
+
+> t
+
+=
+
+n
+
+x ∈ X : diag( ¯wt)−1(x − xt,c ) ∞ ≤ κt
+
+2
+
+o
+
+, (10) where ¯wt denotes the volume-normalized weights obtained from the raw values returned by Algo-rithm 1. The only algorithmic change relative to TuRBO is therefore the local weight construction: ARD lengthscales are replaced by regularized pullback-Fisher sensitivities, while the trust-region scal-ing rule and outer control logic remain unchanged. We refer to the full whitening-based construction as FullFITR and treat it as an ablation rather than the default method. 
+
+## 6 Experiments 
+
+Problems and baselines. We evaluate FITR with a GP using an SE kernel against strong baselines such as TuRBO [11], DSP [6], and BOUNCE [36] on nine continuous benchmark problems, as 7100 150 200 250 300                                 
+
+> −2000
+> −1500
+> −1000 Best observed value  Hopper (33D) 0100 200 300 220 230 240 HPA102-1 (32D) 100 200 300 400 500 0.29 0.30 0.31 0.32 LassoDNA (180D) 0100 200 300
+> −300
+> −250
+> −200 Best observed value  Lunarlander (12D) 250 375 500 625 750 215 220 225 230 MOPTA08 (124D) 0100 200 300
+> −7
+> −4
+> −1RobotPushing (14D) 0250 500 750 Number of evaluations
+> −404Best observed value  Rover (60D) 0200 400 600 800 1000 Number of evaluations 0.03 0.12 0.21 SVM (388D) 0100 200 300 Number of evaluations
+> −370
+> −290
+> −210
+> −130 Swimming (16D) DSP TuRBO-REI BOUNCE FITR-REI FullFITR-REI
+
+Figure 4: BO performance (lower is better) comparison for different methods with a GP using an SE kernel. Solid curves show means over 11 trials, and shaded bands show standard error. FITR-REI and TuRBO-REI use the same GP modeling pipeline and regional trust-region center selection; they differ only in whether the trust-region shape is determined by ARD lengthscales or by the pullback Fisher tensor. FullFITR-REI was evaluated only on a subset of problems and is discussed separately in the text. 0 100 200 300                       
+
+> −1000
+> −800
+> −600 Best observed value  Hopper (33D) 0100 200 300 240 260 HPA102-1 (32D) 0100 200 300
+> −300
+> −200
+> −100 Lunarlander (12D) 0100 200 300 400 500 Number of evaluations 1000 2000 Best observed value  Half Cheetah (102D) 0100 200 300 400 500 Number of evaluations 30 40 50 HPA101-2 (108D) 050 100 150 200 250 Number of evaluations
+> −6
+> −5
+> −4
+> −3Robot Pushing (14D) FITR-REI Without FITR
+
+Figure 5: BO performance comparison (lower is better) for different methods with a GP using an IBNN kernel of depth 3. Solid curves show means over 5 trials, and shaded bands show standard error. shown in Figure 4. These are control and robotics benchmarks commonly used in high-dimensional BO [11, 36]. HPA102-1 is a human-powered aircraft design task from the HPA benchmark suite [38]. MOPTA08 is an automotive design benchmark [11]; LassoDNA and SVM test sparse regression and hyperparameter tuning behavior. Implementation details are given in Appendix C. We also evaluate the same FITR construction with a non-lengthscale kernel, namely IBNN [21], as a transferability check beyond standard ARD kernels. Figures 4 and 5 report the best observed objective value in the benchmark convention, while the BO procedure itself is written in maximization form. 
+
+Results Figure 4 shows that, for a GP with an SE kernel, FITR improves on TuRBO-REI on several benchmarks and remains competitive with strong baselines such as DSP and BOUNCE on the remainder. This matches the motivation from Section 5: local Fisher information can provide a useful 8location-dependent trust-region shape beyond fitted kernel lengthscales. Figure 6 in Appendix C reports the corresponding trust-region diagnostics. With diagonal Tikhonov regularization, the anisotropy of FITR remains bounded across the benchmark suite while still adapting to local predictive geometry. The trust-region length κt for FITR and TuRBO stays qualitatively similar across problems, which suggests that the performance differences in Figure 4 come from the trust-region shape rather than from a different restart or length-adaptation schedule. Figure 6 also shows that the per-iteration candidate-generation time for FITR remains in the same order as TuRBO, with a modest overhead from computing the local Fisher weights. On the subset of problems where we evaluated FullFITR, it did not outperform diagonal FITR. A likely reason is that the pullback geometry is local. If the geometry varies rapidly near the trust-region center, the rotated region estimated at the center need not model nearby candidate locations better than the diagonal approximation. Boundary clipping and the higher numerical cost of the full tensor may also contribute. We therefore use diagonal FITR as the practical default. The IBNN experiments in Figure 5 use the same pipeline with a depth-3 IBNN kernel [21]. In this setting we compare FITR only against the non-trust-region baseline, so the figure should be read as a transferability check rather than as a full non-lengthscale benchmark comparison. FITR improves on the non-trust-region baseline on a subset of tasks and remains comparable on the remainder. These results show that the same FITR pipeline can be paired with a non-lengthscale kernel, although the gains for anisotropic kernels in trust-region methods appear task-dependent. 
+
+## 7 Limitations 
+
+Proposition 4.2 bounds the acquisition gradient during inner optimization; it does not imply a regret guarantee or a global convergence statement for the outer BO loop. One could also replace the trust region by a KL-divergence constraint and solve the resulting problem with an Augmented Lagrangian Method (ALM) [39]. During our experiments, however, this ALM-based variant became highly exploitative and less exploratory, which degraded performance. For non-isotropic kernels like IBNNs, the pullback trace need not collapse with Dx in the same way as for many lengthscale-dominated GPs [21], so the vanishing-gradient narrative from Section 4.2 applies less sharply. The improvement in performance using FITR becomes task-dependent. A precise analysis of when local Fisher geometry predicts a measurable search advantage beyond isotropic or deep-kernel setups is left for future work. 
+
+## 8 Conclusion 
+
+We propose an information-geometric perspective on Bayesian optimization (BO). The surrogate is treated as a smooth map from the input space to the manifold of predictive distributions, and reparameterizable acquisition functions depend on the input only through these predictive parameters. Proposition 4.2 separates the norm of the acquisition gradient into two factors: an acquisition-side sensitivity and the trace of the pullback Fisher tensor induced by the surrogate. For bounded acquisition-side sensitivity, the acquisition gradient is vanished when the pullback trace collapses. This provides a common explanation for several empirical observations in high-dimensional BO, including dimension-scaled lengthscales and local initialization around observed data. Using these insights, we propose the Fisher-Information Trust Region (FITR), a simple trust-region method for differentiable probabilistic surrogates that satisfy the stated regularity assumptions. FITR shapes the trust region using local pullback-Fisher weights at the current center and replaces the lengthscale-based scaling in TuRBO by a diagonal approximation to the regularized pullback Fisher tensor. In our experiments, this diagonal FITR variant improves on TuRBO-REI on several GP benchmarks and remains competitive elsewhere. FITR does not introduce task-specific tuning and the same construction can be extended to other predictive families and to batch or multi-objective settings. This perspective opens several directions for future work, including tighter boundary handling for full rotated Fisher regions and sharper theory for non-lengthscale kernels. The present work studies a theoretical aspect of BO and is intended for black-box optimization methodology; we do not foresee any broader societal impacts. 9References 
+
+[1] Sebastian Ament, Samuel Daulton, David Eriksson, Maximilian Balandat, and Eytan Bakshy. Unexpected improvements to expected improvement for bayesian optimization. Advances in Neural Information Processing Systems , 36:20577–20612, 2023. [2] Peter I Frazier. A tutorial on bayesian optimization. arXiv preprint arXiv:1807.02811 , 2018. [3] Jia Wu, Xiu-Yun Chen, Hao Zhang, Li-Dong Xiong, Hang Lei, and Si-Hao Deng. Hyperpa-rameter optimization for machine learning models based on bayesian optimization. Journal of Electronic Science and Technology , 17(1):26–40, 2019. [4] Noémie Jaquier, Leonel Rozo, Sylvain Calinon, and Mathias Bürger. Bayesian optimization meets riemannian manifolds in robot learning. In Conference on Robot Learning , pages 233–246. PMLR, 2020. [5] Rémi Lam, Matthias Poloczek, Peter Frazier, and Karen E Willcox. Advances in bayesian optimization with applications in aerospace engineering. In 2018 AIAA Non-Deterministic Approaches Conference , page 1656, 2018. [6] Carl Hvarfner, Erik Orm Hellsten, and Luigi Nardi. Vanilla bayesian optimization performs great in high dimensions. arXiv preprint arXiv:2402.02229 , 2024. [7] Zhitong Xu, Haitao Wang, Jeff M Phillips, and Shandian Zhe. Standard gaussian process is all you need for high-dimensional bayesian optimization. arXiv preprint arXiv:2402.02746 , 2024. [8] Leonard Papenmeier, Matthias Poloczek, and Luigi Nardi. Understanding high-dimensional bayesian optimization. arXiv preprint arXiv:2502.09198 , 2025. [9] Leonard Papenmeier, Luigi Nardi, and Matthias Poloczek. Increasing the scope as you learn: Adaptive bayesian optimization in nested subspaces. Advances in Neural Information Processing Systems , 35:11586–11601, 2022. [10] Colin Doumont, Donney Fan, Natalie Maus, Jacob R Gardner, Henry Moss, and Geoff Pleiss. We still don’t understand high-dimensional bayesian optimization. arXiv preprint arXiv:2512.00170 ,2025. [11] David Eriksson, Michael Pearce, Jacob Gardner, Ryan D Turner, and Matthias Poloczek. Scalable global optimization via local bayesian optimization. Advances in neural information processing systems , 32, 2019. [12] Moritz Herrmann, F Julian D Lange, Katharina Eggensperger, Giuseppe Casalicchio, Marcel Wever, Matthias Feurer, David Rügamer, Eyke Hüllermeier, Anne-Laure Boulesteix, and Bernd Bischl. Position: Why we must rethink empirical research in machine learning. arXiv preprint arXiv:2405.02200 , 2024. [13] Shun-ichi Amari. Information geometry and its applications . Springer, 2016. [14] John M Lee. Introduction to Riemannian manifolds , volume 2. Springer, 2018. [15] Maximilian Balandat, Brian Karrer, Daniel Jiang, Samuel Daulton, Ben Letham, Andrew G Wil-son, and Eytan Bakshy. Botorch: A framework for efficient monte-carlo bayesian optimization. 
+
+Advances in neural information processing systems , 33:21524–21538, 2020. [16] Roman Garnett. Bayesian Optimization . Cambridge University Press, 2023. [17] James Wilson, Frank Hutter, and Marc Deisenroth. Maximizing acquisition functions for bayesian optimization. Advances in neural information processing systems , 31, 2018. [18] Carl Edward Rasmussen. Gaussian processes in machine learning. In Summer school on machine learning . Springer, 2003. [19] David M Blei, Alp Kucukelbir, and Jon D McAuliffe. Variational inference: A review for statisticians. Journal of the American statistical Association , 112(518):859–877, 2017. 10 [20] Henry B Moss, Sebastian W Ober, and Victor Picheny. Inducing point allocation for sparse gaussian processes in high-throughput bayesian optimisation. In International Conference on Artificial Intelligence and Statistics , pages 5213–5230. PMLR, 2023. [21] Yucen Lily Li, Tim GJ Rudner, and Andrew Gordon Wilson. A study of bayesian neural network surrogates for bayesian optimization. arXiv preprint arXiv:2305.20028 , 2023. [22] Jonas Mockus. The application of bayesian methods for seeking the extremum. Towards global optimization , 2:117, 1998. [23] James T Wilson, Riccardo Moriconi, Frank Hutter, and Marc Peter Deisenroth. The reparame-terization trick for acquisition functions. arXiv preprint arXiv:1712.00424 , 2017. [24] Shun-ichi Amari and Hiroshi Nagaoka. Methods of information geometry , volume 191. Ameri-can Mathematical Soc., 2000. [25] James Martens. New insights and perspectives on the natural gradient method. Journal of Machine Learning Research , 21(146):1–76, 2020. [26] Shun-ichi Amari. Natural gradient works efficiently in learning. Neural Computation , 10(2): 251–276, 1998. [27] Mohammad Emtiyaz Khan and Håvard Rue. The bayesian learning rule. Journal of Machine Learning Research , 24(281):1–50, 2023. [28] Minyoung Kim, Da Li, Shell Xu Hu, and Timothy Hospedales. Fisher SAM: Information geometry and sharpness aware minimisation. In International Conference on Machine Learning ,pages 11148–11161. PMLR, 2022. [29] Hadi Beik-Mohammadi, Søren Hauberg, Georgios Arvanitidis, Gerhard Neumann, and Leonel Rozo. Learning riemannian manifolds for geodesic motion skills. arXiv preprint arXiv:2106.04315 , 2021. [30] Noémie Jaquier and Leonel Rozo. High-dimensional bayesian optimization via nested rie-mannian manifolds. Advances in Neural Information Processing Systems , 33:20939–20951, 2020. [31] Rosen Ting-Ying Yu, Cyril Picard, and Faez Ahmed. Git-bo: High-dimensional bayesian optimization with tabular foundation models. arXiv preprint arXiv:2505.20685 , 2025. [32] Alessandra Tosi, Søren Hauberg, Alfredo Vellido, and Neil D Lawrence. Metrics for probabilistic geometries. arXiv preprint arXiv:1411.7432 , 2014. [33] Georgios Arvanitidis, Lars Kai Hansen, and Søren Hauberg. Latent space oddity: on the curvature of deep generative models. arXiv preprint arXiv:1710.11379 , 2017. [34] Georgios Arvanitidis, Miguel González-Duque, Alison Pouplin, Dimitris Kalatzis, and Søren Hauberg. Pulling back information geometry. arXiv preprint arXiv:2106.05367 , 2021. [35] Leonel Rozo, Miguel González-Duque, Noémie Jaquier, and Søren Hauberg. Riemann 2:Learning riemannian submanifolds from riemannian data. arXiv preprint arXiv:2503.05540 ,2025. [36] Leonard Papenmeier, Luigi Nardi, and Matthias Poloczek. Bounce: Reliable high-dimensional bayesian optimization for combinatorial and mixed spaces. Advances in Neural Information Processing Systems , 36:1764–1793, 2023. [37] Jonathon Shlens. Notes on kullback-leibler divergence and likelihood. arXiv preprint arXiv:1404.2000 , 2014. [38] Nobuo Namura. Single and multi-objective optimization benchmark problems focusing on human-powered aircraft design. In International Conference on Evolutionary Multi-Criterion Optimization , pages 195–210. Springer, 2025. 11 [39] Ernesto G Birgin and José Mario Martínez. Practical augmented Lagrangian methods for constrained optimization . SIAM, 2014. [40] Jialei Wang, Scott C Clark, Eric Liu, and Peter I Frazier. Parallel bayesian global optimization of expensive functions. Operations Research , 68(6):1850–1865, 2020. [41] Nobuo Namura and Sho Takemori. Regional expected improvement for efficient trust region selection in high-dimensional bayesian optimization. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 19624–19632, 2025. [42] Stephen P Smith. Differentiation of the cholesky algorithm. Journal of Computational and Graphical Statistics , 4(2):134–147, 1995. [43] Niranjan Srinivas, Andreas Krause, Sham M Kakade, and Matthias W Seeger. Information-theoretic regret bounds for gaussian process optimization in the bandit setting. IEEE transactions on information theory , 58(5):3250–3265, 2012. [44] Donald R Jones, Matthias Schonlau, and William J Welch. Efficient global optimization of expensive black-box functions. Journal of Global optimization , 13(4):455–492, 1998. 12 A Gaussian Process 
+
+A Gaussian process (GP) is a distribution over functions, where we place a prior on the unknown objective and update our belief using the noisy observations [18]. We model the latent function as 
+
+f ∼ GP  m(·), k (·, ·′),
+
+where m(·) is the prior mean and k(·, ·′) is the covariance kernel. For observed input-output pairs 
+
+Dt = {(xn, y n)}Nn=1 , we use the Gaussian observation model 
+
+yn = f (xn) + εn, εn ∼ N (0 , σ 2 
+
+> ε
+
+).
+
+The variance σ2 
+
+> ε
+
+captures observation noise and appears as a diagonal correction to the kernel matrix. Given Dt = {(xn, y n)}Nn=1 , the predictive distribution at a query point x is Gaussian 
+
+p(y | x, Dt) = N (μt(x), Σt(x)) ,
+
+where the posterior mean and variance are given by standard Gaussian conditioning identities [18] 
+
+μt(x) = m(x) + k(x, X)  k(X, X) + σ2 
+
+> ε
+
+I−1 (y − m(X)) , (11) 
+
+Σt(x) = k(x, x) − k(x, X)  k(X, X) + σ2 
+
+> ε
+
+I−1 k(X, x). (12) and the GP hyperparameters (for example, lengthscales in Λ and the noise level σ2 
+
+> ε
+
+) are estimated by maximizing the log marginal likelihood [18] 
+
+log p(y | X, Λ) = − 12 (y − m(X)) ⊤ K−1Λ (y − m(X)) − 12 log |KΛ| − N
+
+2 log(2 π). (13) where KΛ = k(X, X) + σ2 
+
+> ε
+
+I [18]. 
+
+## B Common Acquisition Functions: Analytic and MC Forms 
+
+Section 2 introduces AF and its reparameterized form (2). When the acquisition is available in closed form, ¯α does not depend on ζ and (2) collapses to 
+
+α(x) = Eζ [¯ α(θt, x; ξ)] = ¯ α(θt, x; ξ) . (14) Table 1 shows some closed-form AF for a scalar Gaussian predictive, where z = ( μt, x − y⋆)/Σ1/2 
+
+> t, x
+
+,
+
+ΩN is the Cumulative Distribution Function (CDF) and ωN is Probability Density Function (PDF) of normal distribution. Table 1: Closed-form AF ¯α(θt, x; ξ) under (14) for a scalar Gaussian predictive θt, x = ( μt, x, Σt, x).EI and PI use incumbent y⋆; UCB uses exploration weight κUCB > 0.
+
+Acquisition Closed-form ¯α(μt, x, Σt, x; ξ)
+
+EI  μt, x − y⋆ ΩN (z) + Σ 1/2 
+
+> t, x
+
+ωN (z)
+
+PI ΩN (z)
+
+UCB μt, x + √κUCB Σ1/2
+
+> t, x
+
+Following Wilson et al. [23], the Monte Carlo form of EI can be written as 
+
+¯αEI (θt, x, ζ; ξ) = ReLU Äμt, x + Σ 1/2 
+
+> t, x
+
+ζ − y⋆ä . (15) For parallel BO [40] at batch input X = {x1, . . . , xq }, we write the reparameterized sample as 
+
+y = μt, X + Lt, X ζ, with Lt, X = chol( Σt, X ) and ζ ∼ N (0 , I). Table 2 uses this batch notation because it matches the BoTorch implementation. In the scalar sequential setting of the main text, 
+
+q = 1 and these expressions reduce to the usual one-point acquisitions. For MC-UCB in the scalar case, the reparameterized form uses the identity E|Z| = p2/π for 
+
+Z ∼ N (0 , 1) , so pκUCB π/ 2 Σ 1/2 
+
+> t, x
+
+|Z| has expectation √κUCB Σ1/2 
+
+> t, x
+
+.13 Table 2: Utility a and integrand ¯α(·, ζ; ·) inside Eζ for reparameterized acquisitions under (2) for a Gaussian predictive [23, 40]. 1+/− denote the right/left-continuous Heaviside step functions; 
+
+ReLU( u) = max( u, 0) ; sigmoid( u) = (1 + e−u)−1; H is Shannon entropy. EI (Expected Improve-ment) and PI (Probability of Improvement) use incumbent threshold y⋆; PI uses temperature τ > 0;the PI row is a sigmoid-smoothed surrogate for Monte Carlo gradients and is not the analytic PI functional ΩN (z). UCB uses exploration weight κUCB > 0. For ES (Entropy Search), subscripts a
+
+and b mark the query set and discretization points; μb|a and Lb|a are the conditional posterior mean and Cholesky factor at b given an outcome at a. SR (Simple Regret) does not use extra parameters. 
+
+Acquisition Utility a(y; θt, x, ξ) Reparameterized form ¯α(θt, x, ζ; ξ)
+
+EI max(ReLU( y − y⋆)) max(ReLU( μt, X + Lt, X ζ − y⋆)) 
+
+PI max  1−(y − y⋆) max 
+
+
+
+sigmoid 
+
+ μt, X +Lt, X ζ−y⋆
+
+> τ
+
+ 
+
+UCB max Äμt, X + pκUCB π/ 2 y − μt, X
+
+ä max Äμt, X + pκUCB π/ 2 Lt, X ζ ä
+
+SR max( y) max( μt, X + Lt, X ζ)
+
+ES −H Eyb|ya
+
+1+(yb − max( yb))  −H
+
+
+
+Eζb
+
+h
+
+softmax 
+
+ μb|a+Lb|aζb
+
+> τ
+
+i 
+
+Algorithm 2: TuRBO TR weights calculation 
+
+Input: Center xt,c , data Dt
+
+Output: TR length weights ¯wt, trained surrogate GP Mt
+
+Fit GP on Dt and extract ARD lengthscales λt,j for all j = 1 , . . . , D x;
+
+¯wt,j ← λt,j for each j = 1 , . . . , D x;
+
+return ¯wt = ( ¯ wt,j )j=1 ,...,D x and Mt;
+
+B.1 Trust-Region Bayesian Optimization (TuRBO) 
+
+TuRBO replaces a single global search step with local BO updates inside the trust region [11]. At each iteration t, a trust region (TR), X T R  
+
+> t
+
+⊆ X , is defined by its center xt,c and length κt. The TR is an axis-aligned box for which the dimension-wise length is calculated using the GP surrogate 
+
+Mt with Automatic Relevance Determination (ARD) kernel. The next candidate is selected by maximizing an AF with bounds as 
+
+xt+1 = arg max  
+
+> x∈X T R
+> t
+
+α(x; Dt).
+
+The TR length κt grows or shrinks using two counters. τsucc tracks the number of consecutive improvements over the incumbent y⋆, and τfail tracks the number of consecutive failures. If τsucc 
+
+reaches the threshold τsucc , the region expands; if τfail reaches τfail , it contracts; both counters reset on any length change as 
+
+κt+1 =
+
+
+
+min(2 κt, κ max ), if success count reaches τsucc , 
+
+> 12
+
+κt, if failure count reaches τfail ,κt, otherwise. When κt < κ min at any iteration, TR is said to have collapsed. It is then restarted around a new center location. Namura and Takemori [41] provide a Regional Expected Improvement (REI) acquisition function that can be used to select the next TR center location when the TR collapses. Eriksson et al. [11] also present a multi-region variant with multiple trust-region centers; however, we omit it here. 14 Algorithm 3: Trust-region length control and next candidate selection 
+
+Input: TR-weight routine compute_tr_weights , budget T , thresholds τ max succ , τ max fail , bounds 
+
+κmin , κ max and initial length κinit 
+
+Output: Best input x⋆ and value y⋆
+
+Initialize x0,c , κ0 ← κinit , τsucc ← 0, τfail ← 0, D0, incumbent y⋆;
+
+for t = 0 , . . . , T − 1 do 
+
+Get TR length weights ¯wj and Mt from compute_tr_weights with (xt,c , Dt);
+
+Volume normalization ;
+
+¯wj ← ¯wj
+
+ Q Dx 
+
+> k=1
+
+¯wk
+
+1/D x
+
+for each j = 1 , . . . , D x;
+
+TR construction using upper and lower limits of X ;
+
+for j = 1 , . . . , D x do 
+
+αj ← max 
+
+
+
+xcj − ¯wj κt 
+
+> 2
+
+, x min 
+
+> j
+
+
+
+;
+
+βj ← min 
+
+
+
+xcj + ¯wj κt 
+
+> 2
+
+, x max 
+
+> j
+
+
+
+;Define X T R  
+
+> t
+
+by the dimension-wise limits [αj , β j ] for all j = 1 , . . . , D x;Select next candidate xt+1 ← arg max x∈X T R  
+
+> t
+
+α(x; Dt);Evaluate yt+1 = ftrue (xt+1 ) and update Dt+1 ;
+
+if yt+1 > y ⋆ then 
+
+τsucc ← τsucc + 1 ; τfail ← 0;Update y⋆;
+
+else 
+
+τsucc ← 0; τfail ← τfail + 1 ;
+
+κt+1 ←
+
+
+
+min(2 κt, κ max ), τsucc = τ max succ 12 κt, τfail = τ max fail 
+
+κt, otherwise ;Reset τsucc , τ fail ← 0 if κ changed; 
+
+if κt+1 < κ min then 
+
+Restart around a new center; κt+1 ← κinit ;
+
+return x⋆t+1 and y⋆;
+
+## C Implementation Details 
+
+For the experiments with a GP using an SE kernel, we use the Dimensionally Scaled LogNormal Priors (DSP) with mean √2 + log( Dx) ∗ 0.5 and standard deviation √3. DSP [6] uses dimensionally scaled LogNormal priors on the lengthscales and optimizes AF over the full input domain X , which is also the default implementation for SingleTaskGP in BoTorch v0.16.1 [15]. For the experiments with the GP using an IBNN kernel, we keep the BoTorch default depth 3.TuRBO-REI combines TuRBO’s lengthscale-weighted trust region [11] with Regional Expected Improvement for choosing the trust-region center when the TR collapses [41]. Namura and Takemori [41] showed that REI improved TuRBO by selecting a new center in a region with high expected utility. BOUNCE [36] uses an adaptive subspace decomposition and can optimize mixed and combinatorial structures as well. FITR keeps the same trust-region scaling logic as TuRBO-REI (Algorithm 3) and also uses REI center selection at trust-region collapse. It replaces ARD lengthscale weights by the regularized diagonal pullback-Fisher weights from Algorithm 1. Section 5 makes clear that the main method in this paper is the diagonal axis-aligned approximation; we also test a full-tensor ablation (FullFITR). FullFITR uses whitening for Sobol sampling and a simple boundary-clipping strategy instead of polytope MCMC. Due to its additional computational cost, we evaluate FullFITR only on a subset of problems. DSP, TuRBO-REI, FITR, and FullFITR are implemented in BoTorch [15] and use LogEI [1]. Inputs are normalized to [0 , 1] Dx , and outputs are standardized before fitting the GP. For each experiment, we start from 30 randomly sampled observed points. We use sequential evaluations ( q = 1 ). The SE-kernel experiments are repeated over 11 independently seeded trials, whereas the IBNN experiments 15 are repeated over 5 independently seeded trials. AF is optimized using L-BFGS with 5 restarts and 
+
+256 raw samples. For FITR, the diagonal entries of the pullback Fisher tensor gt(xt,c ) are estimated with S = 256 MC samples using (9). These settings are fixed across tasks rather than tuned per benchmark. The damping parameter is chosen automatically as εt = D−1
+
+> x
+
+PDx 
+
+> j=1
+
+bgt,j + 10 −12 . The resulting weights are volume-normalized before constructing the trust region. Using Algorithm 3, the trust-region length κt controls the search volume while the pullback tensor controls the local anisotropy. The trust-region length follows the standard TuRBO rule: it doubles after 10 consecutive improve-ments, halves after min {⌈ max( 4 
+
+> q
+
+, Dx 
+
+> q
+
+)⌉, 20 } consecutive failures, and restarts when the length drops below 0.57. FullFITR uses the full regularized pullback Fisher tensor and optimizes LogEI in whitened coordinates. Candidate points are mapped back to the input cube and clipped at the bound-ary, which keeps the implementation compatible with standard BoTorch box optimization while exposing the additional cost of the full tensor. The experiments were run on an Nvidia GPU Tesla V100-SXM2-32GB. 
+
+C.1 Trust-region diagnostics 
+
+Figure 6 complements the objective-value plots with internal trust-region diagnostics. The trust-region length traces for FITR and TuRBO-REI remain qualitatively similar across problems, so the performance differences in Figure 4 are not explained by a different restart or length-adaptation schedule. For the diagonal FITR implementation, the logged anisotropy is the ratio between the largest and smallest volume-normalized coordinate weights used to shape the axis-aligned trust region, so values close to 1 indicate a nearly isotropic local region and larger values indicate stronger directional stretching. The diagnostics are shown using the experiment logs whose results are reported in Figure 4. 16 23456
+
+> Hopper
+
+Wall time/n (s/iter) 
+
+> 0.0 0.2 0.4 0.6 0.8
+
+TR length ( t)
+
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+
+Tikhonov reg. 
+
+> 3.5 4.0 4.5 5.0 5.5
+
+Anisotropy         
+
+> 345
+> HPA102-1
+> 0.2 0.4 0.6 0.8 10 0
+> 10 1
+> 3.5 4.0 4.5 0.5 1.0 1.5 2.0
+> Lunarlander
+> 0.0 0.2 0.4 0.6 0.8 10 1
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 2.50 2.75 3.00 3.25 345
+> MOPTA08
+> 0.0 0.2 0.4 0.6 0.8 10 1
+> 10 0
+> 10 1
+> 4682.5 5.0 7.5 10.0
+> RobotPushing
+> 0.0 0.2 0.4 0.6 0.8 10 2
+> 10 4
+> 10 6
+> 2.5 3.0 3.5 234
+> Rover
+> 0.0 0.2 0.4 0.6 0.8 10 0
+> 10 1
+> 10 2
+> 10 3
+> 4562345
+> SVM
+> 0.4 0.6 0.8 10 1
+> 10 0
+> 10 1
+> 10 15
+> TuRBO FITR
+> 123
+> Swimming 0200 iteration
+> 0.2 0.4 0.6 0.8
+> 0200 iteration
+> 10 1
+> 10 2
+> 10 3
+> 0200 iteration
+> 2.5 3.0 3.5
+> TuRBO FITR
+
+Figure 6: Per-problem diagnostics for TuRBO and FITR on the GP-SE benchmark suite. The first column reports the average time for getting the next candidate in BO iterations. The second column shows the trust-region length κt. The last two columns show the FITR-specific Tikhonov regularization and anisotropy diagnostics. Solid lines show means over the 11 seeded runs and shaded bands show standard error. 
+
+## D Proofs 
+
+D.1 Interchange Conditions for Gaussian Reparameterizations 
+
+Differentiating under the expectation in Proposition 4.2 requires a valid interchange of gradient and expectation. We use standard reparameterization conditions from Wilson et al. [17]. The lemma below provides a sufficient condition for scalar Gaussian reparameterizations, where the AF integrand depends on the sampled output through the predictive distribution parameters θ. This is the case used later for MC-EI and the smoothed MC-PI surrogate. 
+
+Lemma D.1 (Generic Gaussian Reparameterization Condition) . Let Assumption 4.1 hold and let 
+
+¯α(θt, x, ζ; ξ) = aÄμt, x + Σ 1/2
+
+t, x ζ; ξä
+
+17 be a scalar Gaussian reparameterized acquisition, with ζ ∼ N (0 , I ) independent of x [17, 40]. We assume 
+
+(a) ¯α(·, ζ; ξ) is locally Lipschitz on S and differentiable almost everywhere for almost every ζ;
+
+(b) a(y; ξ) is globally Lipschitz in y.Then Eζ
+
+î ∇θt, x ¯α(θt, x, ζ; ξ) 2ó < ∞ for all θt, x ∈ S .Proof. Assumption (a) is the pathwise differentiability condition used in reparameterized acquisition optimization: the integrand admits gradients almost everywhere, which is sufficient for piecewise-smooth utilities such as MC-EI. For square-integrability, let La be the Lipschitz constant of a from assumption (b). The chain rule gives, for almost every ζ,
+
+∇θt, x ¯α = ∇y aÄμt, x + Σ 1/2 
+
+> t, x
+
+ζ; ξä · ∇ θt, x
+
+Äμt, x + Σ 1/2 
+
+> t, x
+
+ζä . (16) Since a is La-Lipschitz in y, the first factor satisfies ∥∇ y a∥ ≤ La. The second factor is affine in ζ, so ∥∇ θt, x (μt, x + Σ 1/2 
+
+> t, x
+
+ζ)∥ ≤ A + B∥ζ∥ for finite constants A, B at a fixed θt, x. chol( ·)
+
+is smooth on the positive-definite cone, since Σt, x ≻ 0 by Assumption 4.1(ii) [42]. Therefore 
+
+∥∇ θt, x ¯α∥2 ≤ L2
+
+> a
+
+(A + B∥ζ∥)2, and since ζ ∼ N (0 , I ) has finite second moment the expectation is finite. 
+
+Remark (Necessity of Σ ≻ 0). If the predictive variance degenerates, derivatives of the square-root factor can blow up, and the bound above would not hold. In the scalar case, ∇Σ1/2 = ( ∇Σ) /(2Σ 1/2)
+
+is singular as Σ → 0. A strictly positive noise level rules out this singularity for GP regression. Similar reasoning applies to the batch BO setting; however, we limit our discussion to the scalar case for simplicity in this work. 
+
+Remark (LogEI in the experimental regime) . The experiments use the numerically stabilized LogEI implementation from BoTorch [1]. In the scalar Gaussian setting with strictly positive predictive variance, this implementation is smooth in the predictive parameters on any compact subset of 
+
+R × (0 , ∞). The local interchange argument above therefore applies in the positive-variance regime considered in the experiments. We use EI for the closed-form sensitivity calculations in Appendix D.3, while LogEI is used in the implementation for numerical stability. 
+
+D.2 Proof of Proposition 4.2 (Acquisition Gradient Bound) 
+
+Let ζ ∼ N (0 , I ) be the independent base samples in the reparameterized acquisition from Lemma D.1. 
+
+α(x) = Eζ [¯ α(θt, x, ζ; ξ)] , where θt, x = ( μt, x, Σt, x) are the GP posterior mean and variance at x.
+
+Jt(x) = ∂θt, x/∂ x ∈ RDθ ×Dx is the Jacobian of the posterior map. 
+
+Step 1 (Chain rule and interchange). By the assumed interchange of gradient and expectation in Proposition 4.2, justified for scalar Gaussian reparameterizations by Lemma D.1, the reparameterized acquisition satisfies 
+
+∇x α(x) = Jt(x)⊤ Eζ
+
+∇θt, x ¯α(φt(x), ζ; ξ) , (17) which also aligns with the discussion around Equation 5 of Section 3.2 in Wilson et al. [17]. For ease of notation, we write Eζ
+
+∇θt, x ¯α(φt(x), ζ; ξ) as Eζ [∇θ ¯α(·, ζ)] in this proof, where the argument ·
+
+denotes φt(x).
+
+Step 2 (Fisher metric insertion). Using Assumption 4.1(ii), let gS (θt, x) := IS (φt(x)) ≻ 0 . Using the identity I = gS (θt, x)1/2gS (θt, x)−1/2 from Amari and Nagaoka [24], we can decompose the gradient into a geometry-dependent factor A and an acquisition-dependent factor u:
+
+∇x α(x) = ÄgS (θt, x)1/2Jt(x)ä⊤
+
+| {z } 
+
+> =: A⊤
+
+gS (θt, x)−1/2Eζ [∇θ ¯α(·, ζ)] 
+
+| {z } 
+
+> =: u
+
+, (18) 18 Step 3 (Cauchy–Schwarz). For any matrix A ∈ Rp×q and vector u ∈ Rp, ∥A⊤u∥22 ≤ ∥ A∥2 
+
+> F
+
+∥u∥2.Applying it to the decomposition from Step 2 gives 
+
+∥∇ x α(x)∥2 ≤
+
+Õ
+
+gS (θt, x)1/2Jt(x) 2
+
+> F
+
+| {z }
+
+> = tr( gt(x))
+
+· gS (θt, x)−1/2Eζ [∇θ ¯α(·, ζ)] 2, (19) where using (5) we have tr( gt(x)) = tr  J⊤ 
+
+> t
+
+IS (φt(x)) Jt
+
+ = I1/2 
+
+> S
+
+(φt(x)) Jt
+
+> 2
+> F
+
+. And 
+
+gS (θt, x)−1/2Eζ [∇θ ¯α(·, ζ)] 2
+
+= Eζ [∇θ ¯α(·, ζ)] ⊤ gS (θt, x)−1 Eζ [∇θ ¯α(·, ζ)] . (20) 
+
+Step 4 (Jensen’s inequality). Considering v = Eζ [∇θ ¯α(·, ζ)] , (20) can be rewritten as f : v 7 →
+
+v⊤gS (θt, x)−1v, where f is convex for gS (θt, x) ≻ 0. Using Jensen’s inequality we can write 
+
+f (Eζ [∇θ ¯α(·, ζ)]) ≤ Eζ [f (∇θ ¯α(·, ζ))] . Hence, we have 
+
+gS (θt, x)−1/2Eζ [∇θ ¯α(·, ζ)] 2
+
+≤ Eζ
+
+î∇θ ¯α(·, ζ)⊤ gS (θt, x)−1 ∇θ ¯α(·, ζ)ó = Cα(φt(x)) . (21) Combining (19) and (21) gives (6). 
+
+D.3 Gaussian Predictive Distribution Corollary D.2 (Pullback FIM for a Gaussian Predictive Distribution) . Let Assumption 4.1 hold and suppose the predictive distribution is univariate Gaussian, p(y|x, Dt) = N μt, x, Σt, x
+
+, where 
+
+μt, x ∈ R is the posterior mean and Σt, x > 0 is the posterior variance, parameterized by θt, x = μt, x, Σt, x
+
+ ∈ S = R × R+. The Fisher–Rao metric at this point on the predictive distribution manifold is 
+
+IS
+
+ θt, x
+
+ = diag  Σ−1
+
+> t, x
+
+, 12 Σ−2
+
+> t, x
+
+ , (22) 
+
+and the pullback tensor (5) reduces to 
+
+gt(x) = ∇μt, x ∇μ⊤
+
+> t, x
+
+Σt, x
+
++ ∇Σt, x ∇Σ⊤
+
+> t, x
+
+2 Σ 2
+
+> t, x
+
+, (23) 
+
+where ∇ denotes the gradient with respect to x.
+
+The first term, ∇μt, x∇μ⊤
+
+> t, x
+
+/Σt, x, is large where the posterior mean changes rapidly relative to uncertainty, so it captures the local exploitation geometry. The second term, ∇Σt, x∇Σ⊤
+
+> t, x
+
+/(2Σ 2
+
+> t, x
+
+),is large where the posterior variance changes rapidly, so it captures the local exploration geometry. 
+
+Proof of Corollary D.2. The log-likelihood of N (y; μt, x, Σt, x) is log p = − 12 log(2 πΣt, x) − (y −
+
+μt, x)2/(2Σ t, x). Differentiating with respect to the distribution parameters θ = ( μt, x, Σt, x) gives the score functions 
+
+∂ log p∂μ t, x
+
+= y − μt, x
+
+Σt, x
+
+, ∂ log p∂Σt, x
+
+= (y − μt, x)2
+
+2Σ 2
+
+> t, x
+
+− 12Σ t, x
+
+.
+
+The secondary diagonal terms would be zero [13], and the FIM is a diagonal matrix 
+
+IS
+
+ θt, x
+
+ = diag  Σ−1
+
+> t, x
+
+, 12 Σ−2
+
+> t, x
+
+ .
+
+The posterior map φt has Jacobian Jt(x) = ∇μt, x, ∇Σt, x
+
+⊤ ∈ R2×Dx , where each row is the gradient of one parameter with respect to x. Substituting into (5): 
+
+gt(x) = J⊤ 
+
+> t
+
+diag  Σ−1
+
+> t, x
+
+, 12 Σ−2
+
+> t, x
+
+ Jt
+
+= Σ −1 
+
+> t, x
+
+∇μt, x ∇μ⊤ 
+
+> t, x
+
++ 12 Σ−2 
+
+> t, x
+
+∇Σt, x ∇Σ⊤
+
+> t, x
+
+.
+
+19 D.4 Acquisition Sensitivity under a Scalar Gaussian Predictive 
+
+Substituting I−1 
+
+> S
+
+= diag(Σ t, x, 2Σ 2
+
+> t, x
+
+) from (22) into the definition of Cα in (21) gives 
+
+Cα
+
+ θt
+
+ = Eζ
+
+ñ
+
+Σt, x
+
+Å ∂ ¯α∂μ t, x
+
+ã2
+
++ 2Σ 2
+
+> t, x
+
+Å ∂ ¯α∂Σt, x
+
+ã2ô
+
+. (24) For both analytic and Monte Carlo AFs, boundedness of Cα reduces to controlling partial derivatives of ¯α with respect to (μt, x, Σt, x).
+
+Analytic acquisition functions. Let zt = ( μt, x − y⋆)/pΣt, x, Ω and ω be the cumulative distribu-tion function (CDF) and probability density function (PDF) of the standard normal distribution. For UCB [16, 43], ¯α = μt, x + pκΣt, x gives 
+
+∂ ¯α/∂μ t, x = 1 and ∂ ¯α/∂ Σt, x = √κ/ (2 pΣt, x), so 
+
+CUCB  
+
+> α
+
+= Σ t, x
+
+ 1 + κ
+
+> 2
+
+ . (25) For EI [22, 44], ¯αEI = ( μt, x − y⋆)Ω( zt) + pΣt, x ω(zt) gives 
+
+∂z t/∂ Σt, x = −zt/(2Σ t, x), ∂ ¯αEI /∂μ t, x = Ω( zt) and ∂ ¯αEI /∂ Σt, x = ω(zt)/(2 pΣt, x). Using 
+
+Ω ≤ 1 and ω ≤ 1/√2π.
+
+CEI  
+
+> α
+
+= Σ t, x
+
+ Ω( zt)2 + 12 ω(zt)2 ≤ Σt, x
+
+ 1 + 14π
+
+ , (26) For PI [22], ¯αPI = Ω( zt) gives 
+
+∂ ¯αPI /∂μ t, x = ω(zt)/pΣt, x and ∂ ¯αPI /∂ Σt, x = −ztω(zt)/(2Σ t, x). Since e−z2
+
+(1 + z2/2) ≤ 1 for all z ∈ R,
+
+CPI  
+
+> α
+
+= ω(zt)2
+
+
+
+1 + z2
+
+> t
+> 2
+
+
+
+≤ 12π , (27) For bounded Σt, x, the AF sensitivities in (25), (26), and (27) are bounded. 
+
+Remark on LogEI. The experiments use LogEI rather than analytic EI. In the strictly positive-variance regime enforced by Assumption 4.1, the stabilized LogEI implementation is smooth in the predictive parameters on compact subsets of R × (0 , ∞); see Remark D.1. The same local regularity argument therefore applies in the experimental setting, even though the closed-form sensitivity calculations below are written for EI because the formulas are shorter. 
+
+Lemma D.3 (Monte Carlo sensitivity bound) . Let Assumption 4.1 hold. Suppose ¯α(θt, ζ; ξ) satisfies, for some L¯α > 0 and almost every ζ,
+
+∂ ¯α∂μ t, x
+
+≤ L¯α, ∂ ¯α∂Σt, x
+
+≤ L¯α |ζ|
+
+2pΣt, x
+
+. (28) 
+
+Then 
+
+Cα
+
+ θt
+
+ ≤ 32 L2¯α Σt, x. (29) 
+
+Proof. Substituting (28) into (24) and using E[ζ2] = 1 ,
+
+Cα ≤ Eζ
+
+L2¯αΣt, x + 12 L2¯αΣt, x ζ2 = 32 L2¯αΣt, x.
+
+For MC-EI [17, 23], ¯αEI = ReLU( μt, x + pΣt, x ζ − y⋆) from Table 2 gives 
+
+|∂ ¯αEI /∂μ t, x| = 1+ ≤ 1 and |∂ ¯αEI /∂ Σt, x| = 1+|ζ|/(2 pΣt, x) ≤ | ζ|/(2 pΣt, x), so (28) holds with 
+
+L¯α = 1 and CMC-EI  
+
+> α
+
+≤ 32 Σt, x.For MC-PI [17], ¯αPI = sigmoid(( μt, x + pΣt, x ζ − y⋆)/τ )
+
+and both partial derivatives have the term sigmoid ′(·)/τ ≤ 1/(4 τ ), so L¯α = 1 /(4 τ ). Using 
+
+E[ζ2] = 1 , we get CMC-PI  
+
+> α
+
+≤ 3Σ t, x/(32 τ 2).20 For MC-UCB [17], ¯αUCB = μt, x + pκπ/ 2 pΣt, x |ζ| from Table 2, which depends on μt, x outside the reparameterized sample, so the second condition in (28) can-not hold with the same L¯α as the first. Direct pathwise differentiation gives ∂ ¯αUCB /∂μ t, x = 1 
+
+and ∂ ¯αUCB /∂ Σt, x = pκπ/ 2 |ζ|/(2 pΣt, x); substituting into (24) and using E[ζ2] = 1 , we get 
+
+CMC-UCB  
+
+> α
+
+= Σ t, x
+
+ 1 + κπ 
+
+> 4
+
+.Table 3: Calculated bounds on Cα(θt, x) for the scalar Gaussian predictive. If Σt, x is bounded, which holds for any GP with finite prior variance, the shown AF sensitivities are also bounded. Analytic PI is bounded globally on S. Since all entries depend only on (μt, x, Σt, x), they apply to any surrogate with a Gaussian predictive. 
+
+Acquisition Analytic bound on Cα Monte Carlo bound on Cα
+
+EI Σt, x
+
+ 1 + 1 /(4 π) 32 Σt, x
+
+UCB Σt, x
+
+ 1 + κ/ 2 Σt, x
+
+ 1 + κπ/ 4
+
+PI 1/(2 π) 332 τ 2 Σt, x
+
+Remark (Extension to multivariate outputs and parallel BO) . For a multivariate Gaussian predictive distribution N (μt, Σt) with μt ∈ RDy and Σt ∈ RDy ×Dy (as in Multi-Objective Bayesian Opti-mization (MOBO) with Dy correlated outputs), the Fisher–Rao metric takes the block-diagonal form 
+
+IS = diag  Σ−1 
+
+> t
+
+, 12 Σ−1 
+
+> t
+
+⊗ Σ−1
+
+> t
+
+ [13], and (23) extends to 
+
+gt(X) = J⊤ 
+
+> μ
+
+Σ−1 
+
+> t
+
+Jμ + 12 J⊤
+
+> Σ
+
+ Σ−1 
+
+> t
+
+⊗ Σ−1
+
+> t
+
+ JΣ, (30) 
+
+where Jμ and JΣ are the Jacobians of the vectorized mean and covariance with respect to X.We limit our discussion to the scalar case for simplicity. However, following Wang et al. [40] or Balandat et al. [15], one can apply a similar analysis to obtain a bound for the acquisition sensitivity C(q) 
+
+> α
+
+(θt, X ) for Multi-Objective Bayesian Optimization or parallel BO with q > 1.
+
+D.5 Pullback FIM Trace Under the Critical Lengthscale Distance concentration. We assume that the initial training points xi for i = 1 , . . . , N are drawn i.i.d. from Uniform[0 , 1] Dx . Let d := ∥x − xn∥. Since E(xj − xn,j )2 = ( xj − 12 )2 + 112 for 
+
+xn,j ∼ Uniform[0 , 1] , we have 
+
+d
+
+√Dx
+
+> a.s.
+
+−−→ √vx, vx := 1
+
+DxDxX
+
+> j=1
+
+(xj − 12 )2 + 112 
+
+ ∈  112 , 13
+
+ .
+
+Hence d = Θ( √Dx) almost surely. Here f = Θ( g) means there exist c1, c 2 > 0 and d0 such that 
+
+c1g(d) ≤ f (d) ≤ c2g(d) for all d ≥ d0.
+
+FIM trace for the SE kernel. For a GP with SE kernel kλ(x, x′) = σ2 
+
+> f
+
+exp  −∥ x − x′∥2/(2 λ2),let Knn ′ = kλ(xn, xn′ ) and α = ( K + σ2 
+
+> ε
+
+I)−1y. Then 
+
+∇xμt(x) = 
+
+> N
+
+X
+
+> n=1
+
+αn ∇xkλ(x, xn), ∇xkλ(x, xn) = − kλ(x, xn)
+
+λ2 (x − xn).
+
+By Corollary D.2, 
+
+tr( gt) = ∥∇ μt∥2
+
+Σt
+
++ ∥∇ Σt∥2
+
+2Σ 2
+
+> t
+
+,
+
+and both terms scale with kλ/λ 2. Substituting λ = cD px and d = Θ( √Dx) gives 
+
+kλ(x, xn) a.s.
+
+−−→ σ2 
+
+> f
+
+exp 
+
+
+
+− vx
+
+2c2 D1−2px
+
+
+
+.
+
+This results in three cases: 21 Case p < 1/2. The exponent vxD1−2px /(2 c2) → ∞ , so kλ → 0 exponentially. Hence ∇xkλ → 0
+
+exponentially, and therefore ∇μt → 0 and tr( gt) → 0 exponentially. 
+
+Case p > 1/2. The exponent → 0, so kλ → σ2 
+
+> f
+
+(constant). The gradient ∇xkλ ∝ kλ · (x − xn)/λ 2.Since each coordinate difference is Θ(1) while λ2 = c2D2px , each entry scales as Θ( D−2px ) and the full gradient norm scales as Θ( D1/2−2px ) → 0. Hence ∇μt → 0 and tr( gt) → 0 at a polynomial rate. 
+
+Case p = 1 /2. The exponent converges to vx/(2 c2) ∈ (0 , ∞), so kλ → γc := σ2 
+
+> f
+
+e−vx/(2 c2) ∈
+
+(0 , σ 2 
+
+> f
+
+). The Gram matrix concentrates to K∞ = ( σ2 
+
+> f
+
++ σ2 
+
+> ε
+
+− ¯γ)I + ¯ γ 11 ⊤, where ¯γ = σ2 
+
+> f
+
+e−1/(12 c2)
+
+is the pairwise limit for i.i.d. training pairs. Since λmin (K∞) > 0, we have α = Θ(1) . Each entry of 
+
+∇xkλ scales as Θ( D−1 
+
+> x
+
+), so the full gradient norm scales as Θ( D−1/2 
+
+> x
+
+) and summing Dx squared terms gives tr( gt) = Θ( D−1 
+
+> x
+
+).In all three cases, the trace of gt is governed solely by whether kλ is able to model meaningful correlation or not. λ = Θ( √Dx) is the unique scaling for which tr( gt) stays at the critical Θ( D−1 
+
+> x
+
+)
+
+order instead of decaying faster. 
+
+FIM trace at p = 1 /2 and acquisition gradient bound. With α = Θ(1) and γc = Θ(1) ,substituting into Proposition 4.2 gives 
+
+∥∇ xα∥2 ≤ Cα · Θ( D−1 
+
+> x
+
+).
+
+Since Cα is uniformly bounded in x and Dx for standard acquisitions (Appendix D.3), the universal bound scales as Θ( D−1 
+
+> x
+
+) rather than collapsing exponentially. For p < 1/2, the trace collapses exponentially, while for p > 1/2 it decays polynomially. In both off-critical regimes, the AF gradient norm still vanishes. 
+
+Matérn kernels. The same argument applies to isotropic Matérn-ν kernel, since it depends on inputs only through d = ∥x − x′∥/λ and the same concentration gives d → √vxDx/λ . Thus the non-degenerate scaling remains λ = Θ( √Dx). The difference appears when λ ≪ √Dx: using 
+
+kν (d) ∼ dν−1/2e−√2ν d as d → ∞ , the trace decays as exp( −cν
+
+√Dx/λ ), whereas for the SE kernel it decays as exp( −c1Dx/λ 2). Since Dx/λ 2 ≫ √Dx/λ in that regime, the SE trace collapses strictly faster, matching the empirical and theoretical results documented by Xu et al. [7]. 
+
+D.6 Connection between TuRBO and FITR 
+
+Consider a GP with SE kernel with Automatic Relevance Determination (ARD) kλ(x, x′) = 
+
+σ2 
+
+> f
+
+exp  − P 
+
+> j
+
+(xj − x′ 
+
+> j
+
+)2/(2 λ2 
+
+> j
+
+) evaluated at the trust-region center xc.At a local optimum of μt, ∇μt(xc) ≈ 0, so the mean-gradient term in the pullback FIM (Corol-lary D.2) vanishes. The diagonal of gt(xc) is then dominated by the variance-gradient term: 
+
+[gt(xc)] jj ≈ 12Σ t(xc)2
+
+Å ∂Σt
+
+∂x j
+
+ã2
+
+.
+
+For the SE kernel, ∂k λ(x, x′)/∂x j = −(xj − x′ 
+
+> j
+
+)kλ(x, x′)/λ 2 
+
+> j
+
+, so ∂Σt/∂x j scales proportionally to λ−2 
+
+> j
+
+. Using the definition of the pullback tensor, the diagonal entry [gt(xc)] jj then scales like 
+
+λ−4 
+
+> j
+
+. The ellipsoid induced by the pullback tensor is therefore longer in dimensions with longer lengthscales and shorter in dimensions with shorter lengthscales: 
+
+{(x − xc)⊤diag( gt(xc))( x − xc) ≤ δ2}.
+
+The radius in dimension j is proportional to [gt]−1/2 
+
+> jj
+
+. TuRBO’s trust region {| xj − xc,j | ≤ Lλ j }
+
+is not an exact diagonal-FIM box, but it preserves the same qualitative ordering: directions with larger ARD lengthscales receive wider search lengths. This motivates extending TuRBO to a location-dependent trust region whose scaling is determined by predictive sensitivities rather than explicit kernel lengthscales. 22 D.7 Local KL Expansion for Pullback-Fisher Trust Regions 
+
+This subsection gives the local probabilistic interpretation of the trust-region ellipsoid from Section 5. The key point is that the full pullback Fisher tensor defines the second-order term of the KL divergence between nearby predictive posteriors, so a trust region based on this tensor limits local predictive change rather than raw Euclidean displacement. Fix an iteration t and center xt,c ∈ X . Let 
+
+θt,c := φt(xt,c ), δ := x − xt,c .
+
+Consider the KL divergence between the predictive posterior at the center and the predictive posterior at a nearby input: 
+
+Kt(δ) := DKL (p(y; θt,c ) ∥ p(y; φt(xt,c + δ))) . (31) 
+
+Step 1: KL expansion in parameter space. For a smooth parametric family p(y; θ), the KL divergence admits the standard second-order expansion around θt,c [13, 24]: 
+
+DKL (p(y; θt,c ) ∥ p(y; θt,c + ∆ θ)) = 12 ∆θ⊤IS (θt,c )∆ θ + o(∥∆θ∥2). (32) 
+
+Step 2: Pull back to input space. Since φt is C1 by Assumption 4.1, we have the first-order expansion 
+
+φt(xt,c + δ) = θt,c + Jt(xt,c ) δ + o(∥δ∥). (33) Substituting 
+
+∆θ = Jt(xt,c ) δ + o(∥δ∥)
+
+into (32) gives 
+
+Kt(δ) = 12 δ⊤Jt(xt,c )⊤IS (θt,c )Jt(xt,c )δ + o(∥δ∥2)= 12 δ⊤gt(xt,c )δ + o(∥δ∥2), (34) where the second line uses Definition 4.1. Equation (34) shows that the ellipsoid 
+
+δ⊤gt(xt,c )δ ≤ κ2 
+
+> t
+
+(35) is, to second order, a local KL trust region around the predictive posterior at xt,c . This interpretation applies to the full pullback Fisher tensor. The FITR implementation in Section 5 uses a diagonal, regularized approximation of (35) to obtain an axis-aligned box that is computationally compatible with TuRBO-style trust-region updates. 
+
+D.8 Pullback FIM Diagonal via Backpropagation 
+
+The estimator (9) computes the diagonal of the pullback Fisher tensor by differentiating the log predictive likelihood with respect to the input x rather than the distribution parameters θ. The connection follows from the chain rule and the definition of the FIM. By the chain rule, the partial derivative of the log predictive likelihood with respect to input coordinate 
+
+xj is 
+
+∂∂x j
+
+log p y; φt(x) =  ∇θ log p(y; θ)⊤ ∂φ t(x)
+
+∂x j
+
+. (36) Squaring both sides and taking the expectation over y ∼ p(y; φt(x)) ,
+
+E
+
+ñÅ ∂∂x j
+
+log p y; φt(x)ã2ô
+
+=
+
+Å ∂φ t
+
+∂x j
+
+ã⊤
+
+E∇θ log p ∇θ log p⊤| {z }  
+
+> =IS(φt(x))
+
+Å ∂φ t
+
+∂x j
+
+ã
+
+= gt(x) 
+
+> jj
+
+, (37) where the last equality uses the definition of the FIM (3) and the pullback tensor (5). The diagonal entry of the pullback Fisher tensor is therefore the expected squared partial derivative of the log predictive likelihood with respect to xj , computed at the predictive posterior φt(x).Replacing the expectation by an average over S draws ˜ys ∼ p(y; φt(x)) and evaluating the partial derivatives by backpropagation through the log-likelihood gives the estimator (9). This is the outer-product-of-gradients form of the FIM, similar to [25], applied to the input coordinates x instead of the distribution parameters θ.23 NeurIPS Paper Checklist 
+
+1. Claims 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the paper’s contributions and scope? Answer: [Yes] Justification: The abstract and introduction clearly state the claims made, including the contributions made in the paper. The Figure 1 and lines 41-52 in the introduction section and lines 2-3, 6-10 in the abstract specify the main claims of the paper. Guidelines: • The answer [N/A] means that the abstract and introduction do not include the claims made in the paper. • The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A [No] or [N/A] answer to this question will not be perceived well by the reviewers. • The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. • It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 2. Limitations 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? Answer: [Yes] Justification: The paper discusses the limitations of the work in the section 5 and also in the Limitations section. Guidelines: • The answer [N/A] means that the paper has no limitation while the answer [No] means that the paper has limitations, but those are not discussed in the paper. • The authors are encouraged to create a separate “Limitations” section in their paper. • The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The authors should reflect on how these assumptions might be violated in practice and what the implications would be. • The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated. • The authors should reflect on the factors that influence the performance of the approach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon. • The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size. • If applicable, the authors should discuss possible limitations of their approach to address problems of privacy and fairness. • While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren’t acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an impor-tant role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations. 3. Theory assumptions and proofs 
+
+Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof? 24 Answer: [Yes] Justification: The paper provides the full set of assumptions and a complete proof for the theoretical results. We provide a proof for the main theorem in the appendix. Guidelines: • The answer [N/A] means that the paper does not include theoretical results. • All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced. • All assumptions should be clearly stated or referenced in the statement of any theorems. • The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. • Inversely, any informal proof provided in the core of the paper should be complemented by formal proofs provided in appendix or supplemental material. • Theorems and Lemmas that the proof relies upon should be properly referenced. 4. Experimental result reproducibility 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-perimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)? Answer: [Yes] Justification: The pseudocode and the experiment setup fully discloses all the information needed to reproduce the main experimental results of the paper. The used benchmark datasets are publicly available and very often used in the BO literature. Guidelines: • The answer [N/A] means that the paper does not include experiments. • If the paper includes experiments, a [No] answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not. • If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. • Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed. • While NeurIPS does not require releasing code, the conference does require all submis-sions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example (a) If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm. (b) If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully. (c) If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to reproduce the model (e.g., with an open-source dataset or instructions for how to construct the dataset). (d) We recognize that reproducibility may be tricky in some cases, in which case authors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results. 25 5. Open access to data and code 
+
+Question: Does the paper provide open access to the data and code, with sufficient instruc-tions to faithfully reproduce the main experimental results, as described in supplemental material? Answer: [Yes] Justification: The paper provides open access to the data and code, with sufficient instructions to faithfully reproduce the main experimental results, as described in supplemental material. The code is available on GitHub and the data is publicly available. Guidelines: • The answer [N/A] means that paper does not include experiments requiring code. • Please see the NeurIPS code and data submission guidelines ( https://neurips.cc/ public/guides/CodeSubmissionPolicy ) for more details. • While we encourage the release of code and data, we understand that this might not be possible, so [No] is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark). • The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines ( https: //neurips.cc/public/guides/CodeSubmissionPolicy ) for more details. • The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc. • The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why. • At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable). • Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted. 6. Experimental setting/details 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyperpa-rameters, how they were chosen, type of optimizer) necessary to understand the results? Answer: [Yes] Justification: The paper specifies all the training and test details (e.g., data splits, hyperpa-rameters, how they were chosen, type of optimizer) necessary to understand the results. The experiment used the BoTorch package primarily. The default hyperparameters and training routines from BoTorch were used for the surrogate model training and AF optimization. The hyperparameters that were changed, have been specified in the paper. Guidelines: • The answer [N/A] means that the paper does not include experiments. • The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them. • The full details can be provided either with the code, in appendix, or as supplemental material. 7. Experiment statistical significance 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments? Answer: [Yes] Justification: The experiment plots show an average and min-max shaded region for the the different methods. The shaded region is calculated as the average of the 11 runs for each method. Guidelines: • The answer [N/A] means that the paper does not include experiments. 26 • The authors should answer [Yes] if the results are accompanied by error bars, confidence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper. • The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions). • The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.) • The assumptions made should be given (e.g., Normally distributed errors). • It should be clear whether the error bar is the standard deviation or the standard error of the mean. • It is OK to report 1-sigma error bars, but one should state it. The authors should preferably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis of Normality of errors is not verified. • For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g., negative error rates). • If error bars are reported in tables or plots, the authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text. 8. Experiments compute resources 
+
+Question: For each experiment, does the paper provide sufficient information on the com-puter resources (type of compute workers, memory, time of execution) needed to reproduce the experiments? Answer: [Yes] Justification: The experiments were run on an Nvidia GPU Tesla V100-SXM2-32GB. The experiments were run for 11 iterations for each method. The BO budget for each iteration is provided in the experiment plots. Guidelines: • The answer [N/A] means that the paper does not include experiments. • The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage. • The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. • The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn’t make it into the paper). 9. Code of ethics 
+
+Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines ?Answer: [Yes] Justification: The research conducted in the paper conforms, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines . The paper does not involve any human subjects or any sensitive data. All the experiments were run on a publicly available dataset and code was developed using open-source libraries. Guidelines: • The answer [N/A] means that the authors have not reviewed the NeurIPS Code of Ethics. • If the authors answer [No], they should explain the special circumstances that require a deviation from the Code of Ethics. • The authors should make sure to preserve anonymity (e.g., if there is a special consid-eration due to laws or regulations in their jurisdiction). 10. Broader impacts 
+
+27 Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed? Answer: [N/A] Justification: This work discusses a theoretical aspect of BO and is useful for black-box optimization in general. However, we do not see any broader societal impact of this work. Guidelines: • The answer [N/A] means that there is no societal impact of the work performed. • If the authors answer [N/A] or [No], they should explain why their work has no societal impact or why the paper does not address societal impact. • Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact specific groups), privacy considerations, and security considerations. • The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate Deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster. • The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology. • If there are negative societal impacts, the authors could also discuss possible mitigation strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML). 11. Safeguards 
+
+Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pre-trained language models, image generators, or scraped datasets)? Answer: [N/A] Justification: This work does not release any models or datasets that have a high risk for misuse. Guidelines: • The answer [N/A] means that the paper poses no such risks. • Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by requiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. • Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images. • We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort. 12. Licenses for existing assets 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected? Answer: [Yes] Justification: The paper properly credits the papers, opensource libraries and datasets used in the paper. The credit to the authors of code is explicitly mentioned in the code repository as well. 28 Guidelines: • The answer [N/A] means that the paper does not use existing assets. • The authors should cite the original paper that produced the code package or dataset. • The authors should state which version of the asset is used and, if possible, include a URL. • The name of the license (e.g., CC-BY 4.0) should be included for each asset. • For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided. • If assets are released, the license, copyright information, and terms of use in the package should be provided. For popular datasets, paperswithcode.com/datasets 
+
+has curated licenses for some datasets. Their licensing guide can help determine the license of a dataset. • For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided. • If this information is not available online, the authors are encouraged to reach out to the asset’s creators. 13. New assets 
+
+Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets? Answer: [N/A] Justification: This work does not introduce any new assets. Guidelines: • The answer [N/A] means that the paper does not release new assets. • Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. • The paper should discuss whether and how consent was obtained from people whose asset is used. • At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file. 14. Crowdsourcing and research with human subjects 
+
+Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? Answer: [N/A] Justification: This work does not involve crowdsourcing nor research with human subjects. Guidelines: • The answer [N/A] means that the paper does not involve crowdsourcing nor research with human subjects. • Including this information in the supplemental material is fine, but if the main contribu-tion of the paper involves human subjects, then as much detail as possible should be included in the main paper. • According to the NeurIPS Code of Ethics, workers involved in data collection, curation, or other labor should be paid at least the minimum wage in the country of the data collector. 15. Institutional review board (IRB) approvals or equivalent for research with human subjects 
+
+Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained? Answer: [N/A] 29 Justification: This work does not involve research with human subjects. Guidelines: • The answer [N/A] means that the paper does not involve crowdsourcing nor research with human subjects. • Depending on the country in which research is conducted, IRB approval (or equivalent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. • We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. • For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review. 16. Declaration of LLM usage 
+
+Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigor, or originality of the research, declaration is not required. Answer: [N/A] Justification: This work does not involve LLMs as any important, original, or non-standard components. Guidelines: • The answer [N/A] means that the core method development in this research does not involve LLMs as any important, original, or non-standard components. • Please refer to our LLM policy in the NeurIPS handbook for what should or should not be described. 30

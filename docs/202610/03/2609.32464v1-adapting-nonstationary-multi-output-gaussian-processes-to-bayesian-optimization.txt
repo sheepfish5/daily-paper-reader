@@ -1,0 +1,1461 @@
+Title: Adapting Nonstationary Multi-output Gaussian Processes to Bayesian Optimization
+
+URL Source: https://arxiv.org/pdf/2609.32464v1
+
+Published Time: Tue, 29 Sep 2026 00:54:30 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# ADAPTING NONSTATIONARY MULTI -OUTPUT GAUS -
+
+# SIAN PROCESSES TO BAYESIAN OPTIMIZATION 
+
+Zikai Xie ∗
+
+State Key Laboratory of Precision and Intelligent Chemistry University of Science and Technology of China Hefei, Anhui 230000, China 
+
+zikaix@ustc.edu.cn 
+
+## ABSTRACT 
+
+Multi-objective Bayesian optimization (MOBO) commonly relies on independent Gaussian processes (GPs) with stationary kernels, limiting its ability to represent nonstationary structure and share information between objectives. However, ex-pressive nonstationary GPs do not necessarily make reliable BO decisions. We study this mismatch for the multi-output low-rank nonstationary (MO-LRN) GP: strong training fit can coexist with large off-design errors and optimistic acqui-sition predictions. We introduce MOLRN-BO, which combines a regularized shared-spectral surrogate with objective-specific residuals, prequential mean cor-rection and tempered covariance scaling, and Pareto-local qLogEHVI optimiza-tion with periodic global search. Experiments on 12 deterministic bi-objective benchmarks show that MOLRN-BO substantially improves upon the original MO-LRN and achieves the best average problem ranks for final normalized hypervol-ume and normalized inverted generational distance among nine evaluated algo-rithms. It also achieves the strongest adverse-tail performance while remaining competitive with the leading baselines in anytime optimization. Ablation studies further show that the shared spectral construction improves off-design prediction, the local–global decision policy improves optimization performance, and hierar-chical calibration reduces systematic candidate bias. These results demonstrate that nonstationary multi-output surrogates can deliver strong and robust MOBO performance when their structure and use are explicitly adapted to the demands of sequential optimization. 
+
+## 1 INTRODUCTION 
+
+Expensive scientific and engineering optimization often requires identifying good trade-offs among conflicting objectives with few black-box evaluations (Terayama et al., 2021; Shahriari et al., 2015; Luo et al., 2025). Bayesian optimization (BO) (Terayama et al., 2021) and its multi-objective vari-ants (MOBO) (Laumanns & Ocenasek, 2002) address this problem by fitting a probabilistic surro-gate and selecting experiments through an acquisition function. Its success depends on predictions at the points the acquisition function prefers, which may differ substantially from the observed training distribution. Methodological advances in MOBO have largely concentrated on acquisition design, including scalarization-, hypervolume-, and information-theoretic criteria (Knowles, 2006; Daulton et al., 2020; 2021; Hern´ andez-Lobato et al., 2016; Belakaria et al., 2019; Tu et al., 2022). By contrast, standard implementations typically retain independent GPs with stationary Mat´ ern or RBF kernels, which neither explicitly share information across objectives nor represent input-dependent covari-ance structure. Recently, the multi-output low-rank nonstationary (MO-LRN) kernel offers a more expressive alternative through low-rank spectral factors (Xu et al., 2026). Yet, our preliminary exper-iments show that increasing its spectral capacity improved training fit while worsening off-design prediction. In addition, predictions at acquisition-selected candidates were biased and underdis-
+
+> ∗
+
+Corresponding author. 
+
+1arXiv:2609.32464v1 [cs.LG] 26 Sep 2026 persed. This regression–decision gap motivates our central question: how should MO-LRN be structured and deployed as a reliable surrogate for MOBO? To address these issues, we introduce MOLRN-BO, a decision-oriented nonstationary multi-output BO framework. MOLRN-BO stabilizes the surrogate through regularized shared LRN components with per-mixture coregionalization and objective-specific ARD-RBF residuals. It then constructs a decision posterior using strictly prequential bias estimates and bounded covariance rescaling, and optimizes qLogEHVI through Pareto-centered local search with periodic global rounds. Together, these components align surrogate fitting, predictive calibration, and acquisition optimization with the requirements of sequential multi-objective decision making. Our contributions are threefold. First, we identify and characterize the mismatch between training fit, off-design prediction, and acquisition decisions for MO-LRN and develop, to our knowledge, the first MOBO framework built on a harmonizable low-rank nonstationary multi-output GP. Sec-ond, evaluations on 12 bi-objective benchmarks show that MOLRN-BO achieves state-of-the-art final Pareto quality among the evaluated methods with the best average ranks in both normalized hypervolume and normalized IGD, while maintaining competitive anytime performance. Third, controlled ablations quantify the effects of spectral capacity and sharing, joint local–global search and mode-specific bias estimation, and hierarchical bias pooling on prediction and optimization. 
+
+## 2 RELATED WORK 
+
+Multi-objective surrogates and acquisitions. Research in MOBO has primarily focused on ac-quisition design. Scalarization-based methods, including ParEGO and random scalarization, reduce the vector-valued problem to a sequence of scalar subproblems (Knowles, 2006; Paria et al., 2020). Hypervolume-based methods, such as EHVI, qEHVI, qNEHVI, and their logarithmic variants, di-rectly reward improvement in dominated hypervolume (Emmerich et al., 2006; Daulton et al., 2020; 2021). Information-theoretic methods, including PESMO, MESMO, JES, and PF 2ES, instead select evaluations that reduce uncertainty about the Pareto set or Pareto front (Hern´ andez-Lobato et al., 2016; Belakaria et al., 2019; Tu et al., 2022). Surrogate design has received comparatively less at-tention: beyond the independent stationary GPs used by standard methods, a smaller line of work considers correlated multi-task or multi-output GPs and deep GP surrogates (Shah & Ghahramani, 2016; Chowdhury & Gopalan, 2021; Hebbal et al., 2023). However, nonstationary spectral multi-output surrogates remain largely unexplored in acquisition-driven MOBO. 
+
+Nonstationary spectral models. Multi-output GPs place a joint prior over vector-valued functions through a matrix-valued kernel whose diagonal entries describe within-output covariance and whose off-diagonal entries describe cross-output dependence. Classical constructions such as the intrinsic coregionalization model and the linear model of coregionalization obtain valid cross-covariances by mixing latent scalar GPs (Alvarez et al., 2012). Spectral alternatives instead model these dependen-cies in the frequency domain: MOSM represents output-specific magnitudes, delays, and phases but remains stationary (Parra & Tobar, 2017), whereas MOHSM uses a harmonizable double-frequency representation to permit input-dependent auto- and cross-covariances (Altamirano & Tobar, 2022). MO-LRN further combines a generalized spectral–kernel duality with a low-rank factorization of flexible matrix-valued nonstationary spectral densities, reducing parameter growth in the number of outputs from quadratic to linear (Xu et al., 2026). Previous evaluations of MO-LRN have focused on passive prediction; we examine the additional demands that arise when it is deployed inside an acquisition-driven MOBO loop. 
+
+Calibration and localized search. Acquisition functions depend on both posterior means and posterior uncertainties, making predictive calibration especially important under model misspecifi-cation and adaptive sampling. Previous work has used conformal prediction, posterior recalibration, and online residual correction to improve predictive coverage or quantile estimates in BO (Stanton et al., 2023; Deshpande et al., 2024). Most of these methods are developed for single-output BO or focus primarily on marginal predictive coverage, and calibration for correlated nonstationary surro-gates under hypervolume-based acquisition remains comparatively unexplored. On the other hand, localized BO provides a complementary approach to stabilizing optimization in large or difficult search spaces. TuRBO maintains adaptive trust regions for single-objective BO, whereas MORBO coordinates multiple local regions to cover different parts of a multi-objective Pareto front (Eriks-2son et al., 2019; Daulton et al., 2022). Both approaches couple localization with local surrogate modeling and search. 
+
+## 3 METHOD 0 200 
+
+> Candidate index
+> 10 −1
+> 10 0
+> 10 1
+> 10 2
+> Absolute error / predicted SD
+> |y − μ|/ σpred
+> 90% coverage 5.7%
+> inside outside
+
+Objective 1  
+
+> 0200
+> Candidate index
+> 90% coverage 1.7%
+> inside outside
+
+Objective 2 
+
+(b)    
+
+> Training RMSE Global RMSE Pareto-region RMSE Top-HVI optimism 0.001 0.01 0.1 1
+> Normalized error (log scale)  lower is better
+> Original MO-LRN ( Q= 4 )Reduced MO-LRN ( Q= 2 )
+
+(c)              
+
+> −1.2 −1.0 −0.8 −0.6 −0.4
+> Objective 1 (maximization scale)
+> Original MO-LRN ( Q= 4 )
+> −1.2 −1.0 −0.8 −0.6 −0.4
+> Stationary GP reference
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Varied coordinate, x9
+> −4.5 −4.0 −3.5 −3.0
+> Objective 2 (maximization scale)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Varied coordinate, x9
+> −4.5 −4.0 −3.5 −3.0
+
+(a)      
+
+> MO-LRN posterior mean stationary-GP posterior mean posterior mean ±2 SD WFG4 truth on slice
+
+Figure 1: Development diagnostics for the original MO-LRN surrogate on WFG4. (a) One-dimensional posterior slice at n = 20 , obtained by varying x9 while fixing the remaining coor-dinates at their training-data medians. Solid curves show posterior means, shaded regions show ±2
+
+posterior standard deviations, and dashed curves show the true objectives. (b) Strictly prequential standardized prediction errors, |y − μ|/σ pred , at acquisition-selected candidates over three trials. Predictions are evaluated before each candidate is added to the training set; the dashed line at 1.645 denotes the nominal two-sided 90% predictive limit. (c) Training, global, and Pareto-region RMSE together with top-HVI optimism for Q = 2 and Q = 4 MO-LRN models fitted to identical observa-tions at n = 110 . Bars denote means and points denote 15 fits from three data trajectories and five restarts. We maximize f : X ⊂ RD → RM on a bounded box. After n evaluations, let Dn = {(xt, yt)}nt=1 
+
+and let Pn be its nondominated objective vectors. Experiments use deterministic objectives and one candidate per round. Objective-wise standardization is recomputed on Dn, with standard deviations 
+
+sn. Raw posterior moments μn(x) and Σn(x) below are on the original objective scale. 
+
+From surrogate fit to decision reliability. Sequential model-based optimization generally re-lies on the premise that a more accurate surrogate provides a better basis for subsequent optimiza-tion decisions. However, when applying the original MO-LRN surrogate to WFG4, we observed that improved regression fit did not consistently translate into a more reliable posterior at the loca-tions relevant to BO. Figure 1a provides a representative example: along a one-dimensional slice, 3MO-LRN with higher spectral capacity produces strongly distorted posterior means together with relatively narrow uncertainty bands, despite being fitted to the same observations. Compared to a stationary RBF kernel GP reference, this imbalance between posterior mean and uncertainty is particularly problematic for acquisition-based optimization, where confident extrapolation can di-rectly affect candidate selection. Consistent with this observation, strictly prequential predictions at acquisition-selected candidates are severely underdispersed (Fig. 1b). Moreover, increasing the number of spectral mixtures from Q = 2 to Q = 4 reduces training RMSE while worsening both off-design prediction and HVI estimation (Fig. 1c). Additional pilot diagnostics revealed related symptoms, including spectral frequencies approaching their imposed bounds, weak overlap between output-specific spectra, and a tendency for unrestricted acquisition optimization to select distant or boundary-adjacent candidates (Appendix A). These ob-servations suggest that the difficulty is not captured by regression accuracy alone. Instead, reliable use of MO-LRN in sequential optimization requires controlling spectral capacity, calibrating the posterior specifically at decision-relevant locations, and preventing acquisition optimization from overexploiting poorly supported regions. These considerations motivate the three corresponding components of MOLRN-BO developed below. 
+
+Shared-spectral covariance. To share nonstationary structure across objectives without relying on the overlap of independently fitted output spectra, we use the LMC-style covariance 
+
+Kij (x, x′) = 
+
+> Q
+
+X
+
+> q=1
+
+[Bq ]ij ksLRN  
+
+> q
+
+(x, x′) + δij kRBF  
+
+> i
+
+(x, x′), Bq ⪰ 0. (1) Each scalar component ksLRN  
+
+> q
+
+retains the MO-LRN nonstationary construction with spectral param-eters shared across objectives. The matrix Bq represents component-specific cross-objective depen-dence, while an ARD-RBF residual kRBF  
+
+> i
+
+captures smooth variation specific to objective i. We use 
+
+Q = 2 and bi-objective coregionalization matrices with unit diagonals. The coregionalization and residual parameterizations and the positive-semidefiniteness argument are given in Appendix B.1. 
+
+Regularized fitting. To control spectral complexity during sequential refitting, we fit the exact GP to the standardized objectives eYn by minimizing 
+
+bθn ∈ arg min 
+
+> θ∈Θ
+
+h
+
+− log p( eYn | Xn, θ ) + Rspectral (θ) + Rother (θ)
+
+i
+
+. (2) The parameter domain Θ bounds frequency locations and spectral scales. The spectral penalty dis-courages rough functions, boundary-saturating frequencies, and mixture imbalance; the remaining penalties regularize coregionalization, residual, noise, and outputscale parameters. Each fit is warm-started from the preceding iteration, with objective standardization recomputed on Dn. The full objective, parameter transformations, and hyperparameter settings are specified in Appendix B.1. 
+
+Prequential mean correction. We correct systematic prediction errors using residuals recorded at previously selected candidates. Before evaluating xt, we store its raw GP moments, the current output scale st−1, and the search mode St ∈ { local , global }. After observing yt, we compute 
+
+ert = [ yt − μt−1(xt)] ⊘ st−1, where ⊘ denotes element-wise division. For the next search mode s,the correction is 
+
+bbs,n =
+
+P 
+
+> t∈W n:St=s
+
+wn,t er clip  
+
+> t
+
++ λs bb0,n 
+
+P 
+
+> t∈W n:St=s
+
+wn,t + λs
+
+. (3) Here Wn is a recent residual window, wn,t discounts older observations, and clipping limits outlier influence. The shared estimate bb0,n pools both modes and is shrunk toward zero; λs > 0 partially pools each mode toward this estimate when its own history is limited. Every residual used for the next decision comes from a prediction stored before the corresponding evaluation. Clipping, weighting, and pooling are detailed in Appendix B.2. 
+
+Covariance rescaling and decision posterior. To address underdispersion without passing the full estimated scale correction to acquisition optimization, we distinguish predictive and acquisi-tion scales. We estimate cpred ,n using fixed-hyperparameter leave-one-scalar-out and spatial cross-validation, combined with Mahalanobis errors of past candidates’ stored raw predictions. For search 4Algorithm 1 MOLRN-BO 
+
+Require: Initial data Dn0 , additional evaluation budget T , and acquisition reference point rHV  
+
+> 1:
+
+Initialize empty calibration history, common local radius, and counters  
+
+> 2:
+
+for n = n0, . . . , n 0 + T − 1 do  
+
+> 3:
+
+Standardize objectives and fit the shared-spectral GP using Eqs. equation 1 and equation 2  
+
+> 4:
+
+Set u = n − n0 + 1 ; choose Sn+1 and construct An using the local–global policy (Ap-pendix B.3)  
+
+> 5:
+
+Estimate bbSn+1 ,n from past prequential residuals using Eq. equation 3  
+
+> 6:
+
+Estimate cpred ,n from cross-validation on Dn and stored raw candidate errors (Ap-pendix B.2)  
+
+> 7:
+
+Construct pacq using Eq. equation 4  
+
+> 8:
+
+Obtain xn+1 by optimizing Eq. equation 5  
+
+> 9:
+
+Store μn(xn+1 ), Σn(xn+1 ), sn, and Sn+1  
+
+> 10:
+
+Evaluate yn+1 = f (xn+1 ) 
+
+> 11:
+
+Append the standardized residual and raw Mahalanobis error to the calibration history  
+
+> 12:
+
+Dn+1 ← D n ∪ { (xn+1 , yn+1 )} 
+
+> 13:
+
+if Sn+1 = local then  
+
+> 14:
+
+Update the common radius and local counters using realized HVI (Appendix B.3)  
+
+> 15:
+
+end if  
+
+> 16:
+
+end for  
+
+> 17:
+
+return Nondominated observations in Dn0+T
+
+mode s, the decision posterior is 
+
+pacq (f (x) | D n, S n+1 = s) = N
+
+
+
+μn(x) + sn ⊙ bbs,n , c acq ,n Σn(x)
+
+
+
+,cacq ,n = min {ccap , c γ
+
+> pred ,n
+
+}.
+
+(4) Here ⊙ denotes element-wise multiplication. Tempering and capping limit the covariance infla-tion exposed to qLogEHVI. For predictive diagnostics, we instead retain the raw mean and use 
+
+cpred ,n Σn. These posterior transformations leave the fitted GP unchanged, and scalar rescaling preserves its correlation structure. Cross-validation uses full-data hyperparameters; only the stored candidate errors are strictly prequential. The scale estimators and their settings are given in Ap-pendix B.2. 
+
+Pareto-local and periodic-global selection. We concentrate most acquisition searches around di-verse observed Pareto points, while scheduling periodic global rounds to retain full-domain explo-ration. Let Rn,k (rn) denote a box around the k-th selected Pareto center, with a common relative half-width rn. The next candidate is obtained by 
+
+An =
+
+
+
+> Kn
+
+[
+
+> k=1
+
+Rn,k (rn), Sn+1 = local ,
+
+X , Sn+1 = global ,
+
+xn+1 ≈ arg max 
+
+> x∈A n
+
+qLogEHVI( x; pacq , Pn, rHV ),
+
+(5) where rHV is the acquisition reference point. On local rounds, farthest-point selection in normal-ized decision and objective coordinates determines the centers, and the restart budget is distributed approximately equally across their boxes. We select the best numerically optimized candidate. The common radius adapts to realized HVI on local rounds; global rounds leave the radius and local counters unchanged and occur more frequently early in optimization. The GP is always fitted to all observations: only acquisition optimization is localized. Center selection, restart allocation, scheduling, and radius updates are specified in Appendix B.3. 54 EXPERIMENTS 
+
+4.1 EXPERIMENTAL SETTINGS 
+
+Problems. We evaluate 12 deterministic bi-objective problems: Branin–Currin ( D = 2 ) (Daulton et al., 2020); WFG1, WFG2, and WFG4–WFG9 ( D = 10 , k = 4 ) from the Walking Fish Group (WFG) suite (Huband et al., 2006); and DTLZ2, DTLZ4, and DTLZ7 ( D = 10 ) from the DTLZ suite (Deb et al., 2002b). Branin–Currin tests sample-efficient modeling of differently shaped ob-jective surfaces in a low-dimensional domain; the selected WFG problems introduce combinations of multimodality, deceptiveness, nonseparability, biased transformations, and varied Pareto-front ge-ometries in higher-dimensional decision spaces; and the DTLZ problems assess front approximation under a regular concave geometry (DTLZ2), a biased decision-to-objective mapping (DTLZ4), and a disconnected front (DTLZ7). 
+
+Comparators and budget. The eight baselines are independent BoTorch SingleTaskGP models (Balandat et al., 2020) with qLogEHVI or qLogNParEGO; lower-bound JES (Tu et al., 2022); MESMO (Belakaria et al., 2019); mobopt (Galuzio et al., 2020); original MO-LRN with Q = 2 
+
+and qLogEHVI; NSGA-II (Deb et al., 2002a); and scrambled Sobol search. To ensure statistical reliability, each algorithm–task pair was evaluated over 20 trials using random seeds 100–119. Each problem–seed pair shares a 10-point scrambled Sobol initial design, followed by 100 sequential evaluations (batch size one). Runs were distributed across heterogeneous CPU/GPU systems, so no controlled runtime comparison is reported. 
+
+Metrics and statistical analysis. All methods are rescored against fixed reference fronts under a common maximization convention, with the hypervolume reference point placed 10% beyond the nadir in the worse direction along each objective. Normalized hypervolume (nHV; higher is better) is the hypervolume of the observed nondominated set divided by that of the fixed reference front; normalized inverted generational distance (nIGD; lower is better) uses ideal–nadir-normalized ob-jectives. The four primary metrics are final nHV and nIGD and two anytime measures: normalized trapezoidal areas under the HV-regret and nIGD curves over sequential evaluation steps (both AUCs are lower-is-better). Secondary analyses assess run-to-run robustness using across-seed standard de-viations and adverse-tail performance: the 10th percentile of nHV and the 90th percentiles of nIGD and both AUC measures. Additional IGD +, additive-ϵ, and convergence-curve results are reported in Appendix C. For each primary metric, we rank algorithms by their across-seed means within each problem and average ranks over the 12 problems. Friedman tests assess overall algorithm differences. Compar-isons between MOLRN-BO and each baseline use Wilcoxon signed-rank tests: one-sided tests on the 12 paired problem-level means across problems, and two-sided tests on paired common-seed observations within each problem. Holm correction is applied separately for each metric, across baselines for cross-problem tests and across all problem–baseline comparisons for within-problem tests. 4.2 EXPERIMENTAL RESULTS 
+
+Overall performance. As shown in Table 1, MOLRN-BO obtains the best average rank for both final Pareto-quality metrics: 2.25 for nHV and 2.17 for nIGD. qLogNParEGO ranks second at the final budget but is slightly better on both anytime AUC measures, placing the two methods in the leading group with different strengths. Algorithm effects are significant for all four metrics (Fried-man p < 1.7 × 10 −6). Figure 2 shows the per-problem HV-regret and nIGD trajectories. qLogNParEGO often progresses faster initially, whereas MOLRN-BO is competitive or leading at the final budget on many problems. This pattern may reflect the data requirements of the spectral surrogate and the limited early residual history. With only ten initial observations, identifying input-dependent spectral structure, mixture contributions, and cross-objective dependence may be less reliable than fitting a simpler stationary surrogate. Prequential corrections also have little residual history at this stage and are absent or strongly shrunk. As observations accumulate, both spectral fitting and mode-specific corrections can draw on more evidence. 600.2 0.5 0.8 
+
+> Normalized HV regret
+
+Branin–Currin 
+
+00.3 0.6 0.9 
+
+DTLZ2 
+
+00.3 0.6 0.9 
+
+DTLZ4 
+
+00.4 0.8 1.2 DTLZ7 
+
+00.3 0.6 0.9 
+
+> Normalized HV regret
+
+WFG1 
+
+00.2 0.4 0.6 
+
+WFG2 
+
+00.2 0.4 0.6 
+
+WFG4 
+
+00.2 0.5 0.8 
+
+WFG5 
+
+10 60 110 
+
+Evaluations 
+
+00.2 0.5 0.8 
+
+> Normalized HV regret
+
+WFG6 
+
+10 60 110 
+
+Evaluations 
+
+00.2 0.5 0.8 
+
+WFG7 
+
+10 60 110 
+
+Evaluations 
+
+00.2 0.5 0.8 
+
+WFG8 
+
+10 60 110 
+
+Evaluations 
+
+00.2 0.5 0.8 
+
+WFG9 
+
+MOLRN-BO qLogNParEGO qLogEHVI mobopt JES Original MO-LRN NSGA-II MESMO Sobol (a) Normalized hypervolume regret. 00.2 0.5 0.8 
+
+> Normalized IGD
+
+Branin–Currin 
+
+00.2 0.4 0.6 
+
+DTLZ2 
+
+00.3 0.6 0.9 
+
+DTLZ4 
+
+01.5 3
+
+DTLZ7 
+
+00.3 0.6 0.9 
+
+> Normalized IGD
+
+WFG1 
+
+00.1 0.2 0.3 
+
+WFG2 
+
+00.1 0.2 0.3 
+
+WFG4 
+
+00.2 0.3 
+
+WFG5 
+
+10 60 110 
+
+Evaluations 
+
+00.2 0.3 0.5 
+
+> Normalized IGD
+
+WFG6 
+
+10 60 110 
+
+Evaluations 
+
+00.1 0.2 0.3 
+
+WFG7 
+
+10 60 110 
+
+Evaluations 
+
+00.2 0.3 
+
+WFG8 
+
+10 60 110 
+
+Evaluations 
+
+00.2 0.3 0.5 
+
+WFG9 
+
+MOLRN-BO qLogNParEGO qLogEHVI mobopt JES Original MO-LRN NSGA-II MESMO Sobol 
+
+(b) Normalized IGD. 
+
+Figure 2: Per-problem optimization trajectories on the 12 benchmarks. Solid curves show across-trial means, and shaded regions indicate one sample standard deviation. Both metrics are lower-is-better. 7Table 1: Mean problem ranks over 12 benchmarks using all valid completed trials. Lower rank is better. Bold and underlined entries denote the best and second-best method for each metric, respectively.                                         
+
+> Method Final nHV Final nIGD HV-regret AUC nIGD AUC MOLRN-BO 2.25 2.17 2.42 2.83 qLogNParEGO 2.42 3.00 2.17 2.75
+> qLogEHVI 3.42 4.33 3.33 3.83 mobopt 4.67 4.25 4.92 4.00 JES 5.50 4.83 5.50 4.75 Original MO-LRN 6.42 5.33 6.33 5.58 NSGA-II 5.54 6.50 6.04 7.00 MESMO 7.42 7.25 6.92 6.67 Sobol 7.38 7.33 7.38 7.58
+
+Comparison with the original MO-LRN. The direct comparison with the original MO-LRN evaluates the benefit of the complete MOLRN-BO framework. MOLRN-BO achieves better problem-level means on 11 /12 problems for final nHV and HV-regret AUC, and on all 12 /12 prob-lems for final nIGD and nIGD AUC. The corresponding cross-problem tests remain significant after Holm correction ( p ≤ 0.00244 ). The contribution of each individual module is examined separately in Sec. 4.3. 
+
+Comparison with standard MOBO baselines. Compared with qLogEHVI, MOLRN-BO achieves better mean final nIGD on 10 /12 problems (cross-problem p = 0 .0637 ), including six statistically significant improvements; all significant differences favor MOLRN-BO. It also obtains better mean final nHV on 7/12 problems. The comparison with qLogNParEGO is closer: MOLRN-BO performs better on 6/12 problems in final nHV and 7/12 in final nIGD, whereas qLogNParEGO has slightly better anytime ranks. Although the aggregate differences between these two methods are not statistically significant, MOLRN-BO achieves slightly stronger final Pareto quality overall while remaining competitive throughout optimization. 
+
+Robustness and limitations. MOLRN-BO has the smallest average trial-to-trial nIGD standard deviation ( 0.0358 ) among the nine algorithms. It also obtains the best adverse-tail mean rank for all four primary outcomes: 2.08 for nHV-q10, 2.08 for nIGD-q90, 2.00 for HV-regret-AUC-q90, and 2.83 for nIGD-AUC-q90. These results are consistent with the design objective of reducing exposure to poor trials; module-level attribution is examined by the ablations in Sec. 4.3. However, the gains are not universal: MOLRN-BO is comparatively weak on WFG5, converges more slowly than the strongest baselines on WFG1, and exhibits slow early-to-middle nIGD improvement on DTLZ7. Detailed robustness statistics and per-problem curves are provided in Appendix C. 4.3 ABLATION STUDY 
+
+We evaluate the principal surrogate and decision components under the experimental protocol de-scribed in Sec. 4.1, using matched initial designs and the same reference fronts and normalization. The surrogate diagnostic evaluates three models on a fixed set of 110 observations collected by MOLRN-BO: the original output-specific parameterization with Q = 4 , the same parameterization with Q = 2 , and the shared-spectrum Q = 2 construction in Eq. equation 1. The RBF residual is disabled in all three variants. Consequently, the first transition isolates spectral capacity, while the second isolates spectral sharing and per-mixture coregionalization, conditional on a common observed design. The decision-policy ablation holds the shared-Q = 2 and RBF surrogate, covari-ance calibration, and qLogEHVI fixed. Its control optimizes all restarts over the full domain and uses one bias estimate pooled across acquisition modes. The treatment instead applies the Pareto-local/periodic-global search policy and estimates independent biases for the local and global modes. This comparison measures the joint effect of search localization and mode-specific bias estimation. Finally, the bias-pooling ablation holds this local–global policy fixed and replaces the independent mode-specific estimates with the hierarchical estimator in Eq. equation 3. 8Table 2: Controlled diagnostics and ablations over 12 benchmarks. Values are means over available paired problem–seed observations, except candidate bias, reported as the median problem-level ab-solute bias. Panel (a) disables all RBF residuals.                                    
+
+> (a) Fixed-design surrogate
+> Training RMSE Global RMSE Pareto-region RMSE Top-HVI optimism Output-specific, Q= 4 0.018 1.154 1.101 1.213 Output-specific, Q= 2 0.062 0.816 0.792 0.498 Shared-spectrum, Q= 2 0.063 0.746 0.729 0.087 (b) Search / bias
+> Final nHV
+> ↑
+> Final nIGD
+> ↓
+> HV-regret AUC ↓
+> nIGD AUC ↓
+> Full-domain / pooled 0.459 0.255 0.633 0.349 Local–global / independent 0.590 0.201 0.570 0.323 (c) Bias pooling
+> Final nHV
+> ↑
+> Final nIGD
+> ↓
+> Median absolute candidate bias ↓
+> Independent 0.590 0.201 0.197 Hierarchical (MOLRN-BO) 0.582 0.207 0.079
+
+Spectral structure. Reducing output-specific capacity from Q = 4 to Q = 2 increases training RMSE but lowers global and Pareto-region RMSE on 10 /12 problems and top-HVI optimism on 
+
+11 /12 . At Q = 2 , the shared construction further reduces mean global and Pareto-region RMSE and lowers mean top-HVI optimism from 0.498 to 0.087 , despite nearly unchanged training RMSE (Table 2a). These fixed-design diagnostics favor a lower-capacity shared surrogate for off-design prediction and acquisition estimation. 
+
+Decision policy. The local–global/independent-bias bundle improves both final and anytime per-formance (Table 2b). Final nHV, final nIGD, HV-regret AUC, and nIGD AUC improve on 11 , 11 ,
+
+11 , and 10 of the 12 problems, respectively. WFG1 is the principal exception for the final and hypervolume-based measures, and DTLZ4 for nIGD AUC. 
+
+Bias pooling. Hierarchical pooling reduces candidate absolute bias on 11 /12 problems, with its problem-level median decreasing from 0.197 to 0.079 . This reduction does not translate into con-sistent BO gains: mean final nHV decreases from 0.590 to 0.582 , while nIGD increases from 0.201 
+
+to 0.207 , and neither AUC improves consistently (Table 2c). The demonstrated benefit is therefore a substantial reduction in prediction bias at the cost of a slight decline in optimization performance. 
+
+## 5 CONCLUSION 
+
+We introduced MOLRN-BO to address the mismatch between regression fit and acquisition-driven decisions when MO-LRN is used for multi-objective optimization. For the original surrogate, lower training error can coexist with larger off-design errors and overly optimistic acquisition predictions. The framework combines a regularized shared-spectral surrogate with objective-specific residuals, prequential mean correction, tempered covariance scaling, and Pareto-local search with periodic global rounds. Across 12 deterministic bi-objective benchmarks, it significantly outperforms the original MO-LRN on all four primary metrics in Holm-adjusted cross-problem tests and achieves the best average ranks for final nHV and nIGD, with second-best anytime ranks. Fixed-design di-agnostics support using a lower-capacity spectral structure shared across objectives for off-design prediction, while sequential ablations show clear gains from combining local–global search with independent bias correction. Hierarchical pooling reduces systematic candidate bias while incurring only a small loss in BO performance. Together, these findings show that adapting both surrogate structure and its use in acquisition decisions can substantially improve sequential optimization per-formance compared with relying on training fit alone to select a surrogate. Despite these encouraging results, several limitations of this work should be acknowledged. The evaluation concerns small-budget, deterministic bi-objective optimization with one candidate per round. Larger budgets and additional outputs motivate sparse or variational inference, while noisy and batch settings require corresponding treatment of observation uncertainty and evaluation histo-9ries. Sensitivity to the fixed regularization settings, and the trade-off between optimization quality and computational overhead, remain to be quantified. AI USE STATEMENT 
+
+In this work, we used generative AI tools for assisting with translation, cleaning and reformatting datasets, supporting qualitative and thematic data analysis or interpreting results. We have not used generative AI tools for generating synthetic data sets or conceptual frameworks, designing or provid-ing feedback on research methodology or experiments, and the rest of the required disclosure tasks are not applicable to this work. Additionally, we used generative AI tools for creating and editing software code, and editing the paper to improve readability. We have reviewed all AI-assisted work. We checked that the datasets reformatted by the LLM were consistent with the original datasets and that the statistical analysis tools provided by the LLM were correct. We take responsibility for the final content of this work, including text, claims or artifacts produced with the aid of generative AI. ETHICS STATEMENT 
+
+The authors have identified no ethical concerns associated with this work. REPRODUCIBILITY STATEMENT 
+
+The supplementary repository contains implementations of MOLRN-BO and all evaluated baselines, code for reproducing the ablation studies, and implementations of the 12 benchmark problems. De-tailed formulations and hyperparameter settings for the shared-spectral surrogate, decision-posterior calibration, and local–global acquisition optimization are provided in Appendix sections B.1, B.2, and B.3, respectively. Section 4.1 specifies the common initial designs, random seeds, evaluation budgets, performance metrics, and statistical tests. The ablation configurations are described in Section 4.3, and additional performance and robustness analyses are reported in Appendix C. 
+
+## REFERENCES 
+
+Mat´ ıas Altamirano and Felipe Tobar. Nonstationary multi-output gaussian processes via harmoniz-able spectral mixtures. In International Conference on Artificial Intelligence and Statistics , pp. 3204–3218. PMLR, 2022. Mauricio A Alvarez, Lorenzo Rosasco, and Neil D Lawrence. Kernels for vector-valued functions: A review. Foundations and Trends® in Machine Learning , 4(3):195–266, 2012. Maximilian Balandat, Brian Karrer, Daniel Jiang, Samuel Daulton, Ben Letham, Andrew G Wil-son, and Eytan Bakshy. Botorch: A framework for efficient monte-carlo bayesian optimization. 
+
+Advances in neural information processing systems , 33:21524–21538, 2020. Syrine Belakaria, Aryan Deshwal, and Janardhan Rao Doppa. Max-value entropy search for multi-objective bayesian optimization. Advances in neural information processing systems , 32, 2019. Sayak Ray Chowdhury and Aditya Gopalan. No-regret algorithms for multi-task bayesian optimiza-tion. In International Conference on Artificial Intelligence and Statistics , pp. 1873–1881. PMLR, 2021. Samuel Daulton, Maximilian Balandat, and Eytan Bakshy. Differentiable expected hypervolume improvement for parallel multi-objective bayesian optimization. Advances in neural information processing systems , 33:9851–9864, 2020. Samuel Daulton, Maximilian Balandat, and Eytan Bakshy. Parallel bayesian optimization of mul-tiple noisy objectives with expected hypervolume improvement. Advances in neural information processing systems , 34:2187–2200, 2021. Samuel Daulton, David Eriksson, Maximilian Balandat, and Eytan Bakshy. Multi-objective bayesian optimization over high-dimensional search spaces. In Uncertainty in Artificial Intelligence , pp. 507–517. PMLR, 2022. 10 Kalyanmoy Deb, Amrit Pratap, Sameer Agarwal, and TAMT Meyarivan. A fast and elitist mul-tiobjective genetic algorithm: Nsga-ii. IEEE transactions on evolutionary computation , 6(2): 182–197, 2002a. Kalyanmoy Deb, Lothar Thiele, Marco Laumanns, and Eckart Zitzler. Scalable multi-objective optimization test problems. In Proceedings of the 2002 congress on evolutionary computation. CEC’02 (Cat. No. 02TH8600) , volume 1, pp. 825–830. IEEE, 2002b. Shachi Deshpande, Charles Marx, and Volodymyr Kuleshov. Online calibrated and conformal pre-diction improves bayesian optimization. In International conference on artificial intelligence and statistics , pp. 1450–1458. PMLR, 2024. Michael TM Emmerich, Kyriakos C Giannakoglou, and Boris Naujoks. Single-and multiobjective evolutionary optimization assisted by gaussian random field metamodels. IEEE Transactions on Evolutionary Computation , 10(4):421–439, 2006. David Eriksson, Michael Pearce, Jacob Gardner, Ryan D Turner, and Matthias Poloczek. Scalable global optimization via local bayesian optimization. Advances in neural information processing systems , 32, 2019. Paulo Paneque Galuzio, Emerson Hochsteiner de Vasconcelos Segundo, Leandro dos Santos Coelho, and Viviana Cocco Mariani. Mobopt—multi-objective bayesian optimization. SoftwareX , 12: 100520, 2020. Ali Hebbal, Mathieu Balesdent, Lo¨ ıc Brevault, Nouredine Melab, and El-Ghazali Talbi. Deep gaus-sian process for multi-objective bayesian optimization: A. hebbal et al. Optimization and Engi-neering , 24(3):1809–1848, 2023. Daniel Hern´ andez-Lobato, Jose Hernandez-Lobato, Amar Shah, and Ryan Adams. Predictive en-tropy search for multi-objective bayesian optimization. In International conference on machine learning , pp. 1492–1501. PMLR, 2016. Simon Huband, Philip Hingston, Luigi Barone, and Lyndon While. A review of multiobjective test problems and a scalable test problem toolkit. IEEE Transactions on Evolutionary Computation ,10(5):477–506, 2006. Joshua Knowles. Parego: A hybrid algorithm with on-line landscape approximation for expensive multiobjective optimization problems. IEEE transactions on evolutionary computation , 10(1): 50–66, 2006. Marco Laumanns and Jiri Ocenasek. Bayesian optimization algorithms for multi-objective opti-mization. In International Conference on Parallel Problem Solving from Nature , pp. 298–307. Springer, 2002. Man Luo, Zikai Xie, Huirong Li, Baicheng Zhang, Jiaqi Cao, Yan Huang, Hang Qu, Qing Zhu, Linjiang Chen, Jun Jiang, et al. Physics-informed, dual-objective optimization of high-entropy-alloy nanozymes by a robotic ai chemist. Matter , 8(4), 2025. Biswajit Paria, Kirthevasan Kandasamy, and Barnab´ as P´ oczos. A flexible framework for multi-objective bayesian optimization using random scalarizations. In Uncertainty in Artificial Intelli-gence , pp. 766–776. PMLR, 2020. Gabriel Parra and Felipe Tobar. Spectral mixture kernels for multi-output gaussian processes. Ad-vances in neural information processing systems , 30, 2017. Amar Shah and Zoubin Ghahramani. Pareto frontier learning with expensive correlated objectives. In International conference on machine learning , pp. 1919–1927. PMLR, 2016. Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P Adams, and Nando De Freitas. Taking the human out of the loop: A review of bayesian optimization. Proceedings of the IEEE , 104(1): 148–175, 2015. 11 Samuel Stanton, Wesley Maddox, and Andrew Gordon Wilson. Bayesian optimization with con-formal prediction sets. In International conference on artificial intelligence and statistics , pp. 959–986. PMLR, 2023. Kei Terayama, Masato Sumita, Ryo Tamura, and Koji Tsuda. Black-box optimization for automated discovery. Accounts of Chemical Research , 54(6):1334–1346, 2021. Ben Tu, Axel Gandy, Nikolas Kantas, and Behrang Shafei. Joint entropy search for multi-objective bayesian optimization. Advances in Neural Information Processing Systems , 35:9922–9938, 2022. Qiaochu Xu, Zi Yang, Ying Li, Michael Minyi Zhang, and Pablo Olmos. Revisiting nonstation-ary kernel design for multi-output gaussian processes. In International Conference on Learning Representations , volume 2026, pp. 97426–97458, 2026. 
+
+## A PRELIMINARY DIAGNOSES 
+
+The original parameterization of MO-LRN assigns separate spectral factors to each output, with cross-output covariance induced by their spectral overlap. However, pilot sequential experiments revealed five BO-oriented problems when MO-LRN was used directly in MOBO. Three arose at the surrogate level: in-sample fit was poorly aligned with candidate-region accuracy, learned frequen-cies frequently approached their imposed bounds, and cross-output spectral overlap could become numerically negligible. A fourth concerned the decision posterior, which exhibited biased and under-dispersed predictions at acquisition-selected points. The fifth arose during acquisition optimization, where unrestricted full-domain search favored distant and boundary-adjacent candidates. Table 3 summarizes these diagnostics on the ten-dimensional WFG4 development problem. These failure modes together motivate three corresponding changes in Section 3: a more structured and regularized surrogate, an error-calibrated posterior used only for decisions, and an acquisition search strategy that distributes local refinement across the Pareto set while retaining global explo-ration. 
+
+## B CALCULATION DETAIL OF MOLRN-BO 
+
+We consider the maximization of an expensive vector-valued black-box function f : X ⊂ RD →
+
+RM . After n evaluations, the available data are Dn = {(xt, yt)}nt=1 , where yt = f (xt) + ϵt.B.1 REGULARIZED SHARED -SPECTRAL SURROGATE 
+
+The first three diagnostics in Appendix A suggest that using MO-LRN reliably in sequential op-timization requires controlling its spectral capacity while preventing cross-objective transfer from depending on the overlap of independently fitted output spectra. We therefore separate nonstationary input-space structure, cross-objective dependence, and objective-specific smooth variation within a single composite surrogate. At BO iteration n, each objective is standardized using the observations available before selecting the next candidate: 
+
+¯yn,i = 1
+
+n
+
+> n
+
+X
+
+> j=1
+
+yj,i , sn,i = max 
+
+ 1
+
+n
+
+> n
+
+X
+
+> j=1
+
+(yj,i − ¯yn,i )2
+
+
+
+> 1/2
+
+, ε Y
+
+ , eyj,i = yj,i − ¯yn,i 
+
+sn,i 
+
+,
+
+(6) where εY > 0 prevents division by zero. The GP is fitted to eYn, while its posterior moments are transformed back to the original objective scale before acquisition construction. The spectral locations, scales, mixture weights, coregionalization, and residual parameters are learned by regularized marginal-likelihood optimization. Parameter bounds, penalty strengths, and the calibration and search settings specified below are fixed hypoerparameter configurations. 12 Table 3: Preliminary BO-oriented diagnostics on the ten-dimensional WFG4 development problem. These descriptive pilot results motivate the design of MOLRN-BO; broader controlled evaluations are presented in Section 4.3. 
+
+Failure mode Pilot experiment and sample Key result Capacity–decision mismatch WFG4 at n = 110 ; three data trajectories and five model fits per trajectory; Q = 4 and 
+
+Q = 2 fitted to identical data 
+
+Q = 4 vs. Q = 2 : train RMSE 0.0022 vs. 
+
+0.0082 ; global RMSE 0.9518 vs. 0.7730 ;Pareto-region RMSE 0.9372 vs. 0.8530 .Boundary-saturating spectra Original Q = 4 MO-LRN on WFG4; 300 sequential fits with 
+
+fmax = 8 
+
+At least one learned frequency was within 5% of the imposed bound in 296 /300 fits ( 98 .7% ); the mean per-fit maximum frequency was 7.96 , and normalized roughness averaged 59 .6.Vanishing spectral overlap Original Q = 4 MO-LRN on ten-dimensional WFG4; spectral snapshots at 
+
+n = 20 , 50 , 80 , and 110 
+
+Fractions of mixtures with Rq, 12 < 10 −12 were 
+
+47% , 95% , 100% , and 100% , respectively. Biased and overconfident predictions Original Q = 4 MO-LRN on WFG4; 300 strictly prequential predictions at acquisition-selected points Normalized RMSE was 3.90 , while the empirical coverage of nominal 90% posterior intervals was only 3.7% .Extrapolative acquisition search WFG4; three paired pilot trials and 300 acquisition decisions per policy Full-domain vs. local–global search: nearest-data distance 0.741 vs. 0.497 ;boundary-coordinate fraction 24 .5% vs. 16 .7% .
+
+Notes. The normalized spectral overlap Rq, 12 ∈ [0 , 1] measures the overlap between the two output-specific spectral factors of mixture q. Model fits in the first row share the same data. 
+
+Composite covariance. Equation equation 1 combines shared nonstationary input covariance, a common cross-objective correlation matrix for all mixtures, and independent smooth residuals. The shared scalar components follow the real four-term MO-LRN construction (Xu et al., 2026), with spectral-factor parameters shared across outputs. For each mixture q and coordinate d, let μ(a) 
+
+> q,d
+
+and 
+
+σ(a) 
+
+> q,d
+
+> 0, a ∈ { 1, 2}, denote the Gaussian spectral-factor means and standard deviations. The index 
+
+a distinguishes the two frequency arguments, not the outputs: the parameters are shared across objectives, but those for a = 1 and a = 2 need not coincide. Frequency pairs are independent across coordinates, with a within-pair correlation ζq shared across coordinates within each mixture. Define 
+
+Cq,d =
+
+"
+
+(σ(1) 
+
+> q,d
+
+)2 ζq σ(1) 
+
+> q,d
+
+σ(2) 
+
+> q,d
+
+ζq σ(1) 
+
+> q,d
+
+σ(2)  
+
+> q,d
+
+(σ(2) 
+
+> q,d
+
+)2
+
+#
+
+, V (0)  
+
+> q,d
+
+= 12 Cq,d . (7) The spectral correlation is parameterized as 
+
+ζq = (1 − ϵζ )
+
+h
+
+2 sigmoid( eζq ) − 1
+
+i
+
+, ϵζ = 10 −6,
+
+which ensures |ζq | < 1 and Cq,d ≻ 0. It is distinct from the coregionalization parameter r and the relative residual scale ρi defined below. Let μq,d = ( μ(1) 
+
+> q,d
+
+, μ (2) 
+
+> q,d
+
+)T. The normalized product of the two identical Gaussian spectral factors has mean μq,d and covariance V (0)  
+
+> q,d
+
+= Cq,d /2. For numerical stability, determinants in the inverse calculations are bounded below by τ = 10 −8. Writing adj for the 2 × 2 adjugate, we define the effective spectral moments by 
+
+Pq,d = adj( Cq,d )max {det Cq,d , τ } ,Tq,d = 2 Pq,d , Vq,d = adj( Tq,d )max {det Tq,d , τ } ,
+
+νq,d = Vq,d (2 Pq,d )μq,d . (8) 13 The determinant floor is applied separately to each factor covariance and to the summed precision. Under spectral sharing, the two stabilized factor precisions are identical, yielding Tq,d = 2 Pq,d . If neither floor is active, these expressions reduce to Vq,d = Cq,d /2 and νq,d = μq,d . The parameters 
+
+σ(a) 
+
+> q,d
+
+describe the factors before multiplication; the fourth-moment regularization in Eq. equation 18 acts on these pre-product parameters. Write 
+
+V ab q = diag d=1 ,...,D ([ Vq,d ]ab ) , ν(a) 
+
+> q
+
+=
+
+
+
+ν(a)
+
+> q,d
+
+Dd=1 
+
+, δ = x − x′.
+
+Let A > 0 be the shared-kernel outputscale and let πq > 0 be the normalized mixture weights in Eq. equation 16, with P 
+
+> q
+
+πq = 1 . The shared scalar component is 
+
+Fq (x, x′) = exp 
+
+
+
+− 12
+
+ xTV 11  
+
+> q
+
+x − 2xTV 12  
+
+> q
+
+x′ + x′TV 22  
+
+> q
+
+x′
+
+× cos 
+
+
+
+(ν(1)  
+
+> q
+
+)Tx − (ν(2)  
+
+> q
+
+)Tx′
+
+,G(a) 
+
+> q
+
+(δ) = exp 
+
+
+
+− 12 δTV aa q δ
+
+
+
+cos 
+
+
+
+(ν(a) 
+
+> q
+
+)Tδ
+
+
+
+, a ∈ { 1, 2},ksLRN  
+
+> q
+
+(x, x′) = Aπ q gq
+
+4
+
+h
+
+Fq (x, x′) + Fq (x′, x) + G(1)  
+
+> q
+
+(δ) + G(2)  
+
+> q
+
+(δ)
+
+i
+
+, (9) where gq > 0 is the amplitude coefficient defined below. The frequency parameters are angular frequencies, so no additional 2π factor appears in the phase terms. With determinant floors inactive and in the zero-overlap-jitter limit, the amplitude coefficient is 
+
+g(0)  
+
+> q
+
+= (2 π)−D/ 2
+
+> D
+
+Y
+
+> d=1
+
+det(2 Cq,d )−1/2.
+
+This coefficient is (2 π)D/ 2 times the overlap integral of two identical, unit-normalized 2D-variate Gaussian spectral factors. For the stabilized amplitude, we use ϵo = 10 −6 and the same determinant floor τ = 10 −8:
+
+Sq,d = 2 Cq,d + ϵoI2,Mq,d = adj( Sq,d )max {det Sq,d , τ } ,gq = (2 π)−D/ 2
+
+> D
+
+Y
+
+> d=1
+
+[max {det( Mq,d + ϵoI2), τ }]1/2 . (10) The overlap jitter regularizes both the covariance sum and its stabilized inverse, with determinant floors applied at both stages. These operations affect only gq ; the effective moments Vq,d and νq,d 
+
+remain those defined in Eq. equation 8, without overlap jitter. The determinant floors in the effective-moment calculation can, however, alter the covariance and mean entering the exponential and phase terms in Eq. equation 9. When the amplitude determinant floors are inactive, Eq. equation 10 be-comes 
+
+gq = (2 π)−D/ 2
+
+> D
+
+Y
+
+> d=1
+
+det (2 Cq,d + ϵoI2)−1 + ϵoI2
+
+1/2 ,
+
+which converges to g(0)  
+
+> q
+
+as ϵo → 0, provided the floors remain inactive. For the bi-objective problems considered here, all mixtures use the same unit-diagonal coregional-ization matrix 
+
+B =
+
+1 rr 1
+
+
+
+, r = 0 .995 tanh( er). (11) Since |r| < 1, B is positive definite. With αq = pAπ q , the spectral-factor product contributes Aπ q
+
+once through Eq. equation 9. The unit-diagonal matrix B controls cross-objective correlation. Each mixture’s variance contribution also depends on gq ; at the origin, ksLRN  
+
+> q
+
+(0, 0) = Aπ q gq .14 The positive semidefiniteness of the scalar component follows from a feature representation. The sta-bilized covariance Vq,d is positive definite: Cq,d ≻ 0, and both adjugate divisions in Eq. equation 8 have positive denominators. Let the frequency pairs be distributed independently across coordinates as 
+
+ω(1) 
+
+> q,d
+
+ω(2) 
+
+> q,d
+
+!
+
+∼ N 2(νq,d , V q,d ) ,
+
+and write ω(a) 
+
+> q
+
+= ( ω(a) 
+
+> q,d
+
+)Dd=1 . Define 
+
+ϕq (x) = 12
+
+cos(( ω(1)  
+
+> q
+
+)Tx) + cos(( ω(2)  
+
+> q
+
+)Tx)sin(( ω(1)  
+
+> q
+
+)Tx) + sin(( ω(2)  
+
+> q
+
+)Tx)
+
+!
+
+.
+
+Expanding the expected inner product gives 
+
+ksLRN  
+
+> q
+
+(x, x′) = Aπ q gq Eϕq (x)Tϕq (x′) . (12) Hence, ksLRN  
+
+> q
+
+is positive semidefinite for every admissible set of spectral parameters and every positive scalar amplitude gq .The residual kernel for objective i is an ARD-RBF covariance, 
+
+kRBF  
+
+> i
+
+(x, x′) = ai exp 
+
+"
+
+− 12
+
+> D
+
+X
+
+> d=1
+
+(xd − x′
+
+> d
+
+)2
+
+ℓ2
+
+> i,d
+
+#
+
+, ai > 0, ℓi,d > 0. (13) In the implementation, ai = ρivshared  
+
+> i
+
+, where vshared  
+
+> i
+
+is a reference marginal variance of the shared kernel and ρi is a learned relative residual scale. This prevents the RBF component from becoming numerically negligible merely because the marginal scale of the LRN kernel changes with the input dimension. For any finite input set, the contribution of component q has Gram matrix Bq ⊗ KsLRN  
+
+> q
+
+, which is positive semidefinite because both factors are positive semidefinite. The residual kernels form a block-diagonal positive-semidefinite matrix. Equation equation 1, being a sum of these terms, therefore defines a valid matrix-valued covariance kernel. 
+
+Spectral constraints and regularization. To prevent unstable high-frequency fits, the frequency locations and spectral scales are represented by bounded transformations: 
+
+μ(a) 
+
+> q,d
+
+= μmax tanh 
+
+eμ(a)
+
+> q,d
+
+
+
+, a ∈ { 1, 2}, (14) 
+
+σ(a) 
+
+> q,d
+
+= σmin + ( σmax − σmin ) sigmoid 
+
+eσ(a)
+
+> q,d
+
+
+
+. (15) The normalized mixture weights are 
+
+πq = πmin + (1 − Qπ min ) exp( eπq )
+
+PQq′=1 exp( eπq′ ) ,
+
+> Q
+
+X
+
+> q=1
+
+πq = 1 . (16) The lower bound πmin prevents a component from disappearing completely during optimization. For a Gaussian spectral coordinate, define its fourth moment as 
+
+m4(μ, σ ) = μ4 + 6 μ2σ2 + 3 σ4. (17) We penalize the aggregate normalized fourth moment, 
+
+Rrough = λrough 
+
+L4spec 
+
+> Q
+
+X
+
+> q=1
+> D
+
+X
+
+> d=1 2
+
+X
+
+> a=1
+
+m4
+
+
+
+μ(a)
+
+> q,d
+
+, σ (a)
+
+> q,d
+
+
+
+, Lspec = max {μmax , σ max }. (18) This discourages spectral solutions that imply unnecessarily rough input-space functions. In addition to the bounded transformation in Eq. equation 14, we penalize frequencies near the limits of their allowed range: 
+
+Rbdry = λbdry 
+
+2
+
+> 2
+
+X
+
+> a=1
+
+mean q,d 
+
+− log max 
+
+εbdry , 1 − μ(a)
+
+> q,d
+
+μmax 
+
+!2 . (19) 15 Mixture collapse is additionally discouraged by 
+
+Rmix = −λmix 
+
+> Q
+
+X
+
+> q=1
+
+log( Qπ q ), (20) which is minimized at uniform mixture weights. The unconstrained coregionalization parameters receive a zero-centered Gaussian penalty, 
+
+RB = 12σ2
+
+> BQ
+
+X
+
+> q=1
+
+er2 
+
+> q
+
+. (21) For positive parameters, we use the generic log-scale penalty 
+
+P(z; z0, σ z ) = 12
+
+log z − log z0
+
+σz
+
+> 22
+
+. (22) The residual, observation-noise, and shared-outputscale penalties are then 
+
+RRBF = P(ρ; ρ01, σ ρ) + P(ℓ; ℓ01, σ ℓ), (23) 
+
+Rnoise = P(η; η01, σ η ), Rout = P(A; A0, σ A), (24) where η denotes the objective-wise noise levels and A is the shared-kernel output scale. The composite exact GP is fitted by minimizing 
+
+Jn(θ) = − log p( eYn | Xn, θ ) + Rrough + Rbdry + Rmix + RB + RRBF + Rnoise + Rout . (25) The solution from the preceding BO iteration is used to initialize the next fit, while the objective standardization in Eq. equation 6 is recomputed from the currently available observations. In all experiments, Q = 2 , μmax = 4 , (σmin , σ max ) = (0 .02 , 8) , πmin = 0 .05 , λrough = 1 ,
+
+λmix = 1 , λbdry = 0 .5, εbdry = 10 −6, and σB = 1 .5. The RBF relative scale is initialized at ρ0 = 0 .05 , with bounds [10 −5, 10] and log-prior width σρ = 0 .75 . Its ARD lengthscales are initialized at ℓ0 = 0 .5, with bounds [0 .02 , 10] and log-prior width σℓ = 1 .5.B.2 MEAN CORRECTION AND COVARIANCE -SCALE ADJUSTMENT 
+
+The surrogate modifications above regularize the fitted covariance structure, but they do not ensure accurate uncertainty at the points preferred by the acquisition function. The fourth diagnostic in Ap-pendix A shows systematic mean error and posterior underdispersion at acquisition-selected points. We address these errors through mean correction and covariance rescaling of the fitted GP posterior for acquisition decisions. Suppose the candidate selected at BO iteration t is xt. Before evaluating it, we record the raw GP predictive moments 
+
+μt = μGP ,t −1(xt), Σt = ΣGP ,t −1(xt), (26) together with the current output scale st−1 and search mode St. Only after observing yt do we append the resulting error to the calibration history. Thus, every correction used to select xt depends only on errors observed before iteration t.
+
+Hierarchical mean-bias correction. The standardized prequential residual is 
+
+ert = ( yt − μt) ⊘ st−1, (27) where ⊘ denotes element-wise division. Let Wn contain the most recent Wb residuals available before iteration n + 1 . For each objective, we compute the component-wise median and MAD, 
+
+mn = median t∈W n ert, dn = median t∈W n |ert − mn| , τn = max {1.4826 dn, τ min 1}.
+
+(28) The residuals are clipped component-wise according to 
+
+er clip  
+
+> t
+
+= clip( ert, mn − κbτn, mn + κbτn) . (29) 16 Recent observations receive exponentially decaying weights 
+
+wn,t = 2 −an,t /H b , (30) where an,t = 0 for the newest residual in Wn, 1 for the second newest, and so forth, and Hb is the half-life. A shared bias estimate is first computed from all search modes: 
+
+bb0,n =
+
+P 
+
+> t∈W n
+
+wn,t er clip 
+
+> t
+
+λ0 + P 
+
+> t∈W n
+
+wn,t 
+
+. (31) For the mode s ∈ { local , global } planned for the next iteration, the mode-specific estimate is par-tially pooled toward the shared estimate: 
+
+bbs,n =
+
+X
+
+> t∈W n
+> St=s
+
+wn,t er clip  
+
+> t
+
++ λs bb0,n 
+
+X
+
+> t∈W n
+> St=s
+
+wn,t + λs
+
+. (32) When few global evaluations are available, this estimate remains close to the shared residual trend. As mode-specific evidence accumulates, the corresponding local or global correction receives greater weight. 
+
+Fixed-hyperparameter spatial cross-validation. We next estimate covariance-scale error under spatial extrapolation. Let Kn be the predictive training covariance, including observation noise, evaluated at the fitted hyperparameters, and let 
+
+Pn = K−1 
+
+> n
+
+, αn = Pn vec( eYn). (33) The leave-one-scalar-out Mahalanobis sum can be obtained directly from the precision matrix: 
+
+HLOO =
+
+> nM
+
+X
+
+> a=1
+
+α2
+
+> n,a
+
+Pn,aa 
+
+. (34) To form spatial folds, we center the observed inputs and compute their first principal direction, 
+
+v1 ∈ arg max  
+
+> ∥v∥2=1
+
+vTXT
+
+> n,c
+
+Xn,c v. (35) The observations are sorted by their projection Xn,c v1 and divided into G contiguous folds. Let Gg
+
+contain the stacked scalar-output indices associated with fold g. With the GP hyperparameters fixed at their full-data values, the conditional residual and covariance for this fold are 
+
+eg = P−1  
+
+> n, GgGg
+
+αn, Gg , Vg = P−1  
+
+> n, GgGg
+
+. (36) Consequently, 
+
+Hsp =
+
+> G
+
+X
+
+> g=1
+
+eT 
+
+> g
+
+V−1 
+
+> g
+
+eg =
+
+> G
+
+X
+
+> g=1
+
+αT 
+
+> n, Gg
+
+P−1  
+
+> n, GgGg
+
+αn, Gg . (37) No hyperparameters are refitted for individual folds. Because the fitted hyperparameters depend on the held-out observations, these residuals provide internal scale diagnostics rather than an indepen-dent assessment of predictive coverage. For a Mahalanobis sum H containing NH scalar residuals, define the shrunk covariance-scale esti-mate 
+
+c(H, N H ) = clip [cmin ,c CV max ]
+
+ λCV c0 + HλCV + NH
+
+
+
+. (38) The LOO and spatial estimates are combined geometrically: 
+
+cLOO = c(HLOO , nM ), csp = c(Hsp , nM ), cCV = c 1−ω
+
+> LOO
+
+c ω
+
+> sp
+
+. (39) 17 Acquisition-selected uncertainty error. For each previously evaluated acquisition-selected point, we calculate the raw normalized Mahalanobis error 
+
+ht = 1
+
+M (yt − μt)TΣ−1 
+
+> t
+
+(yt − μt). (40) Under a correctly scaled M -variate predictive distribution, E[ht] is approximately one. Let Un contain the most recent Wc valid values. We first define 
+
+ut = log clip [1 ,c sel max ](ht), ucap = min log csel max , median t∈U n ut + 1 .4826 κc MAD t∈U n (ut) ,
+
+(41) and winsorize only the upper tail, 
+
+uclip  
+
+> t
+
+= min {ut, u cap }. (42) Using weights vn,t = 2 −an,t /H c , the selected-point scale is 
+
+csel = clip [1 ,c sel max ]
+
+"
+
+exp 
+
+P 
+
+> t∈U n
+
+vn,t uclip 
+
+> t
+
+λc + P 
+
+> t∈U n
+
+vn,t 
+
+!# 
+
+. (43) The full predictive covariance scale is 
+
+cpred = min csel max , max {1, c CV , c sel } . (44) Using cpred directly in qLogEHVI can overemphasize uncertain regions. The covariance scale ex-posed to the acquisition function is therefore tempered and capped: 
+
+cacq = min 
+
+n
+
+ccap , c γ
+
+> pred
+
+o
+
+. (45) This gives two posterior views: 
+
+ppred (f (x) | D n) = N (μGP (x), c pred ΣGP (x)) , (46) 
+
+pacq (f (x) | D n, S n+1 = s) = N
+
+
+
+μGP (x) + sn ⊙ bbs,n , c acq ΣGP (x)
+
+
+
+. (47) The first is used for predictive diagnostics, whereas the second is the decision posterior supplied to qLogEHVI. We use Wb = 30 , Hb = 8 , λ0 = 5 , λs = 3 , κb = 2 .5, and τmin = 0 .10 for mean correction. Spatial calibration uses G = 5 , c0 = 1 , λCV = 20 , ω = 0 .75 , cmin = 0 .25 , and cCV max = 1000 .Selected-point calibration uses Wc = 12 , Hc = 4 , λc = 2 , κc = 2 .5, and csel max = 64 . Finally, 
+
+γ = 1 /4 and ccap = 3 .B.3 PARETO -LOCAL AND PERIODIC -GLOBAL Q LOG EHVI The fifth diagnostic in Appendix A concerns the numerical optimization of the acquisition function. Full-domain multistart optimization can send several restarts toward similar distant or boundary-adjacent regions, where the nonstationary surrogate is weakly supported. We retain standard qLo-gEHVI but organize most of its restarts around diverse observed Pareto points. Periodic global rounds preserve exploration of the complete domain. Importantly, the GP itself remains global and is fitted to all observations; localization is applied only to acquisition optimization. Let 
+
+In = {i ∈ { 1, . . . , n } : ∄j such that yj dominates yi} (48) index the currently observed nondominated points. For each decision coordinate and objective, we apply min–max normalization over this set: 
+
+exi,d = xi,d − min j∈I n xj,d 
+
+max {max j∈I n xj,d − min j∈I n xj,d , ε z } , (49) 
+
+eyi,m = yi,m − min j∈I n yj,m 
+
+max {max j∈I n yj,m − min j∈I n yj,m , ε z } . (50) 18 The center-selection feature is 
+
+zi =
+
+exi
+
+eyi
+
+
+
+, i ∈ I n. (51) Let B denote the total acquisition-restart budget and Kmax the maximum number of regions. The number of centers is 
+
+Kn = min {Kmax , B, |I n|} . (52) If |I n| ≤ Kn, all observed nondominated points are retained. Otherwise, the first center is the observed extreme maximizing the first objective, 
+
+i1 ∈ arg max 
+
+> i∈I n
+
+yi, 1, (53) and subsequent centers are selected by farthest-point traversal: 
+
+ik ∈ arg max  
+
+> i∈I n\{ i1,...,i k−1}
+
+min 
+
+> ℓ<k
+
+1
+
+D + M ∥zi − ziℓ ∥22 , k = 2 , . . . , K n. (54) Around center xik , we define the axis-aligned region 
+
+Rn,k (rn) = [max {x, xik − rn(x − x)}, min {x, xik + rn(x − x)}] . (55) Thus, rn is a half-width expressed as a fraction of the full range of each decision coordinate. The B restarts are allocated as evenly as possible: 
+
+Bn,k =
+
+ BKn
+
+
+
++ I {k ≤ B mod Kn} ,
+
+> Kn
+
+X
+
+> k=1
+
+Bn,k = B. (56) For region k, the raw local initialization pool has size 
+
+N raw  
+
+> n,k
+
+= max 
+
+
+
+16 Bn,k ,
+
+
+
+Nraw 
+
+Bn,k 
+
+B
+
+ 
+
+. (57) Its points are sampled around the center and clipped to the region: 
+
+un,k,j = Π Rn,k (rn) [xik + σn(x − x) ⊙ ξj ] , ξj ∼ N (0, I), σn = min {σ0, r n/2}. (58) The Bn,k pool points with the largest acquisition values initialize bounded gradient optimization inside Rn,k (rn).Let u = 1 , . . . , T index the BO evaluations after an initial design of size n0. Before iteration u,
+
+n = n0 + u − 1 evaluations have been completed. The search mode for the next candidate xn+1 is 
+
+Sn+1 =
+
+
+
+global , u ≤ 40 and u mod 5 = 0 ,
+
+global , u > 40 and u mod 10 = 0 ,
+
+local , otherwise .
+
+(59) Hence, global rounds constitute 20% of the first 40 post-initial-design iterations and 10% thereafter. For each mode s ∈ { local , global }, define the acquisition function using the corresponding decision posterior in Eq. equation 4: 
+
+αn(x; s) = qLogEHVI ( x; pacq (f (x) | D n, S n+1 = s)) . (60) On a local round, let x⋆n,k,b denote the result of restart b optimized within region k. We select the best region–restart pair and return its candidate: 
+
+(k⋆, b ⋆) ∈ arg max 
+
+> 1≤k≤Kn
+> 1≤b≤Bn,k
+
+αn(x⋆n,k,b ; local) ,
+
+xn+1 = x⋆n,k ⋆,b ⋆ .
+
+(61) On a global round, a scrambled Sobol pool of size 
+
+N raw global = max {Nraw , 16 B} (62) is generated over X . Its B highest-valued points initialize full-domain optimization. Let x⋆n,b ∈ X 
+
+denote the result of restart b. We select the best restart and return its candidate: 
+
+b⋆ ∈ arg max  
+
+> 1≤b≤B
+
+αn(x⋆n,b ; global) ,
+
+xn+1 = x⋆n,b ⋆ . (63) 19 Adaptive local radius. After evaluating a local candidate xn+1 , define the realized hypervolume improvement 
+
+∆HV n+1 = HV( Dn+1 ) − HV( Dn). (64) A local round is considered successful if ∆HV n+1 > ϵ HV . On local rounds, the common radius is updated as 
+
+rn+1 =
+
+
+
+min {rmax , η inc rn}, after three consecutive local successes ,
+
+max {rmin , η dec rn}, after five consecutive local failures ,rn, otherwise .
+
+(65) The corresponding counter is reset whenever the other outcome occurs and after a radius expansion or contraction. Global rounds satisfy rn+1 = rn and leave both local counters unchanged. We use B = 8 , Nraw = 128 , Kmax = 6 , rn0 = 0 .20 , rmin = 0 .10 , rmax = 0 .25 , σ0 = 0 .10 ,
+
+ϵHV = 10 −4, ηinc = 1 .2, and ηdec = 0 .8.
+
+Computational cost. With n complete observations of M objectives, dense exact inference uses an nM ×nM covariance matrix. A Cholesky factorization requires O(( nM )3) time and O(( nM )2)
+
+storage, with repeated factorizations during hyperparameter optimization. Fixed-hyperparameter calibration uses the fitted covariance and precision submatrices without refitting the GP for each fold. Sequential fits are warm-started, and local regions share a fixed acquisition-restart budget. Localization changes the acquisition domain but not the GP training set. The reported benchmarks contain at most 110 observations of two objectives, corresponding to 220 scalar observations. 
+
+## C ADDITIONAL PERFORMANCE AND ROBUSTNESS ANALYSES 
+
+Run-to-run robustness and alternative Pareto-quality metrics. We first complement the mean-performance results with adverse-tail statistics computed across seeds within each problem. For nHV, the adverse tail is its 10th percentile, whereas for nIGD and the two AUC measures it is the 90th percentile. Table 4 reports the corresponding mean problem ranks. MOLRN-BO ranks first on all four tail measures and also has the smallest mean across-seed standard deviation of final nIGD among the nine algorithms ( 0.0358 ). These results indicate that its main robustness benefit is a reduced incidence of poorly performing trials, rather than a uniform reduction in variance on every problem and metric. We additionally evaluate two distance-based indicators in the ideal–nadir normalized objective space. For an approximation set A and reference front R, normalized IGD + is defined as 
+
+nIGD +(A, R ) = 1
+
+|R|
+
+X
+
+> r∈R
+
+min  
+
+> a∈A
+
+∥max( r − a, 0)∥2 , (66) and the normalized additive ϵ-indicator is 
+
+Iϵ+(A, R ) = max  
+
+> r∈R
+
+min  
+
+> a∈A
+
+max  
+
+> j
+
+(rj − aj ). (67) Both indicators are lower-is-better. MOLRN-BO obtains the best mean problem rank for nIGD +
+
+(2.25 ) and lies in the top three on 11 /12 problems. It outperforms the original MO-LRN on all 12 problems under this metric. For the additive ϵ-indicator, qLogNParEGO ranks first ( 2.83 ) and MOLRN-BO ranks second ( 3.17 ). MOLRN-BO is better than qLogNParEGO on only 5/12 prob-lems, although it remains better than the original MO-LRN on 10 /12 . This difference is consis-tent with the indicators’ emphases: nIGD + averages directional shortfalls over the reference front, whereas Iϵ+ is controlled by the most poorly covered reference point. Thus, MOLRN-BO provides strong average front coverage, while qLogNParEGO is slightly stronger in worst-location coverage. 
+
+Convergence behavior. Figure 2 reports the nHV and nIGD trajectories over the complete evalu-ation budget. MOLRN-BO’s advantage is generally more pronounced late in optimization. Across the nine algorithms, its mean nIGD problem rank improves from 3.33 after 25 post-initial evalua-tions to 2.67 , 2.42 , and 2.17 after 50, 75, and 100 evaluations, respectively. Its nHV rank improves 20 Table 4: Mean problem ranks for adverse-tail and additional Pareto-quality metrics over 12 bench-marks using all valid trials. Lower is better. Tail quantiles are computed across seeds within each problem. Bold and underlined entries denote the best and second-best ranks, respectively.                                                              
+
+> Method nHV-q10 nIGD-q90 HV-regret-AUC-q90 nIGD-AUC-q90 Final nIGD +Final Iϵ+
+> MOLRN-BO 2.08 2.08 2.00 2.83 2.25 3.17 qLogNParEGO 2.83 3.50 3.00 3.33 2.50 2.83
+> qLogEHVI 4.08 4.83 3.58 3.92 4.00 4.67 mobopt 5.12 4.33 5.54 4.67 4.58 3.67 JES 5.21 4.58 5.21 4.25 4.75 4.42 Original MO-LRN 6.12 5.08 6.29 5.75 5.83 5.33 NSGA-II 5.62 6.50 6.29 7.17 6.33 7.50 MESMO 7.21 7.00 7.12 6.50 7.00 5.75 Sobol 6.71 7.08 5.96 6.58 7.75 7.67
+
+more gradually from 2.58 at 25 evaluations to 2.25 at the final budget. This late improvement ex-plains why MOLRN-BO achieves the best final nHV and nIGD ranks while qLogNParEGO remains slightly better on the two anytime AUC measures. The trajectories also reveal meaningful problem dependence. MOLRN-BO is comparatively slow on WFG1, performs weakly in both final nHV and anytime performance on WFG5, and exhibits an extended nIGD plateau on the disconnected DTLZ7 front. In contrast, its final coverage improves substantially on many of the remaining ten-dimensional problems and is consistently better than that of the original MO-LRN. The curves therefore support a conclusion of strong final quality and reduced poor-trial risk, but not uniformly faster convergence over the entire benchmark suite. 21
