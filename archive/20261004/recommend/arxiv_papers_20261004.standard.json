@@ -1,0 +1,810 @@
+{
+  "mode": "standard",
+  "generated_at": "2026-10-04T21:59:45.469999+00:00",
+  "stats": {
+    "mode": "standard",
+    "tag_count": 2,
+    "deep_divecandidates": 29,
+    "deep_cap": 7,
+    "deep_selected": 7,
+    "quick_candidates": 46,
+    "quick_skim_target": 12,
+    "quick_selected": 12
+  },
+  "deep_dive": [
+    {
+      "id": "2609.36222v1",
+      "source": "arxiv",
+      "title": "BASE: Batch-Aware Selection of Experts Using Predicted Removal Error for Efficient MoE Decoding",
+      "abstract": "Large language models are increasingly expensive to serve. In large-scale serving systems, autoregressive decoding is often bottlenecked by transferring model weights from accelerator high-bandwidth memory into on-chip SRAM. Mixture-of-experts (MoE) models reduce computation by activating only a small subset of experts per token, but this sparsity does not translate directly to batched decoding. Different requests select different experts; therefore, the combined active set across many concurrent requests can span a substantial fraction of the expert pool and require significantly more expert weights to be transferred. Most expert-reduction techniques make retention decisions independently for each token and therefore do not address this batch-level expansion. More recently, batch-aware methods have attempted to coordinate expert use across concurrent requests and reuse experts already fetched for the batch. Yet their selection criteria are based primarily on router rankings or expert statistics collected during calibration. Consequently, these criteria are not directly tied to the output error caused by dropping an expert, nor do they capture how an expert's contribution changes across tokens at inference time. We instead rank experts according to how much their removal would change the MoE-layer output. To apply this criterion during serving, we train a lightweight linear predictor during calibration that estimates the expert removal cost for each incoming token, and develop custom GPU kernels for cost prediction and expert selection. Across three MoE architectures, BASE improves the quality-efficiency tradeoff without retraining. On Qwen3-30B-A3B, it improves average accuracy by 29.5 points over the strongest baseline at comparable throughput under a tight expert budget. At a higher expert budget, it is 60% faster than dense inference while remaining within 0.4 accuracy points.",
+      "authors": [
+        "Ali Abbasi",
+        "Justin Shi",
+        "Soheil Kolouri"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-09-28T20:20:13+00:00",
+      "link": "https://arxiv.org/pdf/2609.36222v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "batch-aware expert selection to speed MoE LLM serving",
+      "llm_evidence_cn": "批感知专家选择以加速MoE大模型服务",
+      "llm_evidence": "批感知专家选择以加速MoE大模型服务",
+      "canonical_evidence": "批感知专家选择以加速MoE大模型服务",
+      "llm_tldr_en": "BASE targets the HBM-to-SRAM weight-transfer bottleneck of batched MoE decoding, where concurrent requests activate a large combined expert set, by using predicted removal error to make batch-aware expert retention decisions and reduce transferred expert weights.",
+      "llm_tldr_cn": "大规模MoE模型服务中，自回归解码常受限于将权重从HBM搬运到片上SRAM，而不同请求激活不同专家使批量解码的活跃专家集合过大。本文提出BASE，利用预测移除误差在批次层面统一决定专家保留，从而减少需搬运的专家权重。该工作缓解了大模型服务中的显存带宽瓶颈，提升了MoE解码吞吐。",
+      "llm_tldr": "大规模MoE模型服务中，自回归解码常受限于将权重从HBM搬运到片上SRAM，而不同请求激活不同专家使批量解码的活跃专家集合过大。本文提出BASE，利用预测移除误差在批次层面统一决定专家保留，从而减少需搬运的专家权重。该工作缓解了大模型服务中的显存带宽瓶颈，提升了MoE解码吞吐。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM serving",
+      "matched_requirement_id": "req-5",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.37538v1",
+      "source": "arxiv",
+      "title": "AVSG: Accelerated Vectorized Sparse Gather for Efficient KV Cache Offload in Sparse-Attention LLM Serving",
+      "abstract": "Dynamic sparse attention reduces long-context attention computation by selecting only a subset of tokens, but still requires access to the full KV cache, leaving serving memory-bound. Offloading the KV cache to host memory reduces device memory pressure but places H2D transfers on the decoding critical path. In DSA, substantial overlap in selected KV entries across decoding steps creates an opportunity for device-resident reuse. Exploiting this reuse efficiently, however, presents three critical challenges: costly matching of selected tokens against entries retained in the HBM buffer, uneven distribution of the remaining H2D transfers across accelerator cores, and retaining frequently accessed KV entries within limited HBM capacity. We present AVSG, an operator that addresses these challenges for DSA while preserving its exact token selections. AVSG uses vectorized hash matching to identify reusable HBM-buffer slots and reserve slots for entries requiring transfer, then evenly partitions these H2D transfers across accelerator cores. Lifetime-based buffer management retains frequently accessed KV entries in the device buffer across decoding steps, and shared slot reservations extend reuse across tokens within a multi-token prediction iteration. On a single NPU, vectorized hash matching is 2.80x faster than scalar dual-pointer matching, miss-only transfer raises effective H2D bandwidth by up to 34.44x over request-level assignment, and an 8K-entry buffer reaches a 94.83% hit rate on real requests. These gains translate into end-to-end improvement: on a serving stack processing a real-world production dataset, AVSG reduces time per output token by 39% and increases output throughput by 1.27x relative to the same KV offload layout without HBM-buffer reuse, demonstrating the benefit of efficient matching, balanced transfer, and effective HBM residency in production-scale serving.",
+      "authors": [
+        "Wenwei Kuang",
+        "Xiangyu Wang",
+        "Chong Wu",
+        "Jun Wang",
+        "Weijie Zhang",
+        "Brian K Chen",
+        "Longwen Lan",
+        "Ken Zhang"
+      ],
+      "primary_category": "eess.SP",
+      "categories": [
+        "eess.SP"
+      ],
+      "published": "2026-09-29T13:21:29+00:00",
+      "link": "https://arxiv.org/pdf/2609.37538v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "vectorized sparse gather for KV cache offload in sparse-attention LLM serving",
+      "llm_evidence_cn": "面向稀疏注意力服务KV缓存卸载的向量化稀疏聚集",
+      "llm_evidence": "面向稀疏注意力服务KV缓存卸载的向量化稀疏聚集",
+      "canonical_evidence": "面向稀疏注意力服务KV缓存卸载的向量化稀疏聚集",
+      "llm_tldr_en": "AVSG targets the memory-bound KV cache offload in sparse-attention LLM serving via vectorized sparse gather that reuses overlapping selected KV entries in HBM and balances remaining host-to-device transfers across cores, cutting decode-path transfer cost.",
+      "llm_tldr_cn": "动态稀疏注意力虽减少长上下文计算，但仍需访问完整KV缓存，使服务受限于内存带宽；将KV缓存卸载到主机内存虽缓解显存压力，却把H2D传输置于解码关键路径。AVSG 利用解码步间被选KV条目的重叠，设计向量化稀疏聚集以在HBM缓冲内复用条目，并均衡剩余H2D传输、保留高频访问条目。该方案降低了解码延迟与传输开销，提升了长上下文稀疏注意力LLM服务的效率。",
+      "llm_tldr": "动态稀疏注意力虽减少长上下文计算，但仍需访问完整KV缓存，使服务受限于内存带宽；将KV缓存卸载到主机内存虽缓解显存压力，却把H2D传输置于解码关键路径。AVSG 利用解码步间被选KV条目的重叠，设计向量化稀疏聚集以在HBM缓冲内复用条目，并均衡剩余H2D传输、保留高频访问条目。该方案降低了解码延迟与传输开销，提升了长上下文稀疏注意力LLM服务的效率。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.37988v2",
+      "source": "arxiv",
+      "title": "KV-Kaizen: Learning Context-Adaptive Cache Compression Choices",
+      "abstract": "As the context size of text processed with an LLM grows, the size of KV caches can outstrip the memory allocated for the original model weights. This impacts LLM throughput negatively, since decoding is memory-bound and decode cost grows with cache size. Recent work alleviates this bottleneck by discarding the least relevant tokens. Eviction introduces a tension, since a one-off decision to discard content may prove detrimental later. Instead, we focus on alternative choices that can lead to cache compression without evicting tokens. We achieve this by learning a selector that is able to produce, based on context, a per-layer cache configuration towards an overall compression budget. The selector operates along three axes: sharing one cache across layers (depth), caching at fewer bits (precision), or truncating the low-rank latent cache representations (rank). We call the resulting method KV-Kaizen, for the many small per-layer choices it compounds. We observe that these interventions taken independently and uniformly over all layers limit achievable compression because they degrade accuracy. Crucially, composing them locally and adaptively to the context can instead preserve accuracy while achieving large memory savings. At inference, the selector runs once, before pre-fill. In evaluations on instruction following and reasoning tasks, our selectors reach the Pareto frontier of accuracy against cache size, against learning-free and post-hoc baselines. On long-context tasks, KV-Kaizen improves on eviction and can be composed with it, reaching a 32x smaller decode-time cache on a 14B model while preserving accuracy. A 4x cache size reduction incurs no accuracy degradation from 7B parameters up, and a compressed model is more accurate than a smaller uncompressed one with the same cache size. Together, these findings support pre-training large models and compressing them only afterwards.",
+      "authors": [
+        "Joao Monteiro",
+        "Louis Béthune",
+        "Anastasiia Filippova",
+        "Sonia Laguna",
+        "David Grangier",
+        "Marco Cuturi"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-09-29T16:49:46+00:00",
+      "link": "https://arxiv.org/pdf/2609.37988v2",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "context-adaptive KV cache compression without eviction",
+      "llm_evidence_cn": "无逐出的上下文自适应KV缓存压缩",
+      "llm_evidence": "无逐出的上下文自适应KV缓存压缩",
+      "canonical_evidence": "无逐出的上下文自适应KV缓存压缩",
+      "llm_tldr_en": "KV-Kaizen learns a context-adaptive selector that sets per-layer KV cache configurations to meet a compression budget without evicting tokens, boosting decode throughput.",
+      "llm_tldr_cn": "随上下文增长，LLM的KV缓存规模可超过模型权重，解码受内存带宽限制，而逐出token的一次性决策可能在后续造成不可逆损失。论文不逐出token，而是学习一个选择器，依据上下文为每层生成缓存配置，在层间共享、量化等轴上逼近整体压缩预算。实验显示该方法在给定压缩预算下显著减小KV缓存并提升解码吞吐，同时维持生成质量。工作表明上下文自适应的非逐出式缓存压缩是缓解LLM解码内存瓶颈的有效途径。",
+      "llm_tldr": "随上下文增长，LLM的KV缓存规模可超过模型权重，解码受内存带宽限制，而逐出token的一次性决策可能在后续造成不可逆损失。论文不逐出token，而是学习一个选择器，依据上下文为每层生成缓存配置，在层间共享、量化等轴上逼近整体压缩预算。实验显示该方法在给定压缩预算下显著减小KV缓存并提升解码吞吐，同时维持生成质量。工作表明上下文自适应的非逐出式缓存压缩是缓解LLM解码内存瓶颈的有效途径。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.38386v1",
+      "source": "arxiv",
+      "title": "Decode-Latency Feedback Prefill: A Model-Free Controller and Its Generalization Limits",
+      "abstract": "Concurrent autoregressive inference creates a fundamental interference problem: prefilling a newly arrived long prompt can delay tokens for requests that are already decoding. Fixed prefill chunks reduce this interference, but the best chunk size depends on the model, hardware, load, and latency objective. We introduce Decode-Latency Feedback Prefill (DLFP), a model-free controller that changes only prefill work that overlaps active decodes. After a guarded scheduling cycle, DLFP uses the observed interval as proportional feedback to resize the next prefill chunk; isolated prefills remain unrestricted.   We implement DLFP in vLLM and evaluate it with open-loop Poisson arrivals, exact token accounting, raw request traces, and NVIDIA telemetry. On Qwen3-0.6B in BF16 on one A100 80 GB GPU, three paired 100-request trials reduce P99 inter-token latency by 24.8%, 30.1%, and 28.2% (mean 27.7%, paired 95% confidence interval 21.0% to 34.3%) with exact output agreement, no failures, and unchanged SLO compliance. The benefit is not free: mean P99 time to first token increases 34.8% while remaining inside the declared SLO.   Crucially, the mechanism does not generalize to Qwen3-8B, Qwen3-32B, or a two-GPU tensor-parallel configuration. We trace the failure to an asynchronous scheduler-call interval that is only a proxy for completed GPU iteration time. This negative result defines the boundary of the contribution and motivates a completion-timed controller for concurrent CPU and on-device inference. We do not claim mobile-device performance; the present work is a reproducible proof-of-concept and generalization study.",
+      "authors": [
+        "Gaurav Agarwal",
+        "Ashish Garg",
+        "Isha Singhal"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-09-29T18:44:33+00:00",
+      "link": "https://arxiv.org/pdf/2609.38386v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "prefill scheduling to reduce decode interference in vLLM",
+      "llm_evidence_cn": "预填充调度降低解码干扰",
+      "llm_evidence": "预填充调度降低解码干扰",
+      "canonical_evidence": "预填充调度降低解码干扰",
+      "llm_tldr_en": "DLFP is a model-free controller that resizes only the prefill work overlapping active decodes using proportional feedback on the observed decode interval, implemented in vLLM and evaluated with Poisson arrivals and real traces to expose its generalization limits.",
+      "llm_tldr_cn": "并发自回归推理中，长提示词预填充会拖慢正在解码请求的token生成，而最优预填充分块大小依赖模型、硬件与负载，固定策略难以适配。论文提出DLFP，一种无模型控制器，只调整与活跃解码重叠的预填充工作，并用观测区间作比例反馈动态调整分块大小。作者在vLLM中实现，通过泊松到达、真实请求轨迹和精确token计量进行评测，并分析其泛化边界。该工作为预填充-解码干扰提供了一种轻量、可直接部署的调度方案。",
+      "llm_tldr": "并发自回归推理中，长提示词预填充会拖慢正在解码请求的token生成，而最优预填充分块大小依赖模型、硬件与负载，固定策略难以适配。论文提出DLFP，一种无模型控制器，只调整与活跃解码重叠的预填充工作，并用观测区间作比例反馈动态调整分块大小。作者在vLLM中实现，通过泊松到达、真实请求轨迹和精确token计量进行评测，并分析其泛化边界。该工作为预填充-解码干扰提供了一种轻量、可直接部署的调度方案。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "Efficient LLM inference and serving systems with scheduling, continuous batching, and memory management.",
+      "matched_requirement_id": "req-10",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2610.00432v1",
+      "source": "arxiv",
+      "title": "XOR-Trellis: Ultra-Low-Complexity Dequantization and Curvature-Aware Hadamard-Free LLM Quantization",
+      "abstract": "Trellis-coded quantization enables high-dimensional compression of large language model (LLM) weights at ultra-low bit widths without the exponentially large codebooks required by conventional vector quantization. Practical deployment, however, presents two challenges: reconstructing compressed weights at sufficient parallel throughput to avoid making dequantization an inference bottleneck, and maintaining quantization accuracy without costly incoherence transformations. We address these challenges with two complementary techniques. First, we introduce an ultra-low-complexity trellis dequantizer that uses a structured, hardware-efficient state-to-value mapping while preserving diverse reconstruction choices for trellis search. Second, we reformulate discrete trellis path optimization with a curvature-aware objective that reflects model sensitivity directly in the original coordinate space. Together, these techniques enable high-quality ultra-low-bit trellis quantization with inexpensive, highly parallel runtime reconstruction and without relying on Hadamard-based incoherence processing.",
+      "authors": [
+        "Xiaofan Que",
+        "Nir Elkayam",
+        "Spandan Pyakurel",
+        "Shuokai Pan",
+        "Dibakar Gope"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.AI"
+      ],
+      "published": "2026-09-30T17:05:40+00:00",
+      "link": "https://arxiv.org/pdf/2610.00432v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "ultra-low-bit LLM quantization with hardware-efficient dequantizer",
+      "llm_evidence_cn": "超低位宽LLM量化与硬件友好反量化器",
+      "llm_evidence": "超低位宽LLM量化与硬件友好反量化器",
+      "canonical_evidence": "超低位宽LLM量化与硬件友好反量化器",
+      "llm_tldr_en": "XOR-Trellis introduces a hardware-efficient trellis dequantizer and curvature-aware Hadamard-free quantization to keep ultra-low-bit LLM weights accurate without slowing inference.",
+      "llm_tldr_cn": "Trellis编码量化可在超低位宽压缩LLM权重，但反量化并行吞吐不足会成为推理瓶颈，且缺乏相干变换时精度难以维持。论文提出结构化、硬件友好的状态到值映射的超低复杂度trellis反量化器，并采用曲率感知、免Hadamard变换的量化方法。实验显示方案在保持压缩精度的同时大幅降低反量化开销，避免其成为推理瓶颈。该工作为超低位宽LLM权重量化的实际部署提供了高效反量化与免变换的可行路径。",
+      "llm_tldr": "Trellis编码量化可在超低位宽压缩LLM权重，但反量化并行吞吐不足会成为推理瓶颈，且缺乏相干变换时精度难以维持。论文提出结构化、硬件友好的状态到值映射的超低复杂度trellis反量化器，并采用曲率感知、免Hadamard变换的量化方法。实验显示方案在保持压缩精度的同时大幅降低反量化开销，避免其成为推理瓶颈。该工作为超低位宽LLM权重量化的实际部署提供了高效反量化与免变换的可行路径。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.32632v1",
+      "source": "arxiv",
+      "title": "Learning What to Evaluate: Correlation-Aware Decoupling for Multiobjective Bayesian Optimization",
+      "abstract": "Multiobjective Bayesian optimization (MOBO) with Gaussian process (GP) surrogates is a sample efficient approach to solving multiobjective optimization problems. In MOBO, a Bayesian decision theoretic acquisition function guides the adaptive selection of new candidate inputs, on which objectives and constraints are evaluated to update the surrogate model sequentially. Existing approaches maintain independent GP models for the objectives and constraints, with new observations evaluating all objectives and constraints in a coupled fashion. However, the objectives and constraints often contain inherent correlations which, if exploited, can enable ${decoupled}$ evaluations where only a subset of them are evaluated at each round. We present a new approach that leverages a multitask GP model to jointly learn all objectives and constraints, and propose a total correlation metric that enables identifying an ${optimal}$ subset of objectives and constraints to be evaluated at every round, even under uniform evaluation costs. Theoretically, we show that our acquisition policy is asymptotically consistent despite decoupling and that our proposed decoupled subset selection rule maximizes the expected posterior entropy reduction about unevaluated tasks under mild conditions. Empirically, we show that our approach outperforms coupled and decoupled baselines in the state of the art.",
+      "authors": [
+        "Ashwin Renganathan",
+        "Peter Bachman"
+      ],
+      "primary_category": "stat.ML",
+      "categories": [
+        "stat.ML",
+        "cs.LG"
+      ],
+      "published": "2026-09-26T13:50:39+00:00",
+      "link": "https://arxiv.org/pdf/2609.32632v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "multiobjective Bayesian optimization with correlated surrogate decoupling",
+      "llm_evidence_cn": "面向多目标贝叶斯优化的相关性解耦评估",
+      "llm_evidence": "面向多目标贝叶斯优化的相关性解耦评估",
+      "canonical_evidence": "面向多目标贝叶斯优化的相关性解耦评估",
+      "llm_tldr_en": "Multiobjective Bayesian optimization typically evaluates all objectives and constraints each round. This work exploits correlations among them to enable decoupled evaluations, improving sample efficiency of surrogate-based optimization.",
+      "llm_tldr_cn": "多目标贝叶斯优化借助高斯过程代理模型与采集函数自适应选择候选点，是求解多目标问题的高样本效率方法，但现有做法通常为每个目标与约束维护独立代理模型，并在每轮评估全部目标与约束，造成大量冗余评估。本文发现目标与约束之间存在内在相关性，若能加以利用即可实现解耦评估，即在每轮只评估其中一部分。作者提出相关性感知的解耦策略来指导评估选择，从而在保持优化质量的同时显著减少评估次数，为硬件与设计空间中的昂贵多目标优化提供了更高效的代理优化思路。",
+      "llm_tldr": "多目标贝叶斯优化借助高斯过程代理模型与采集函数自适应选择候选点，是求解多目标问题的高样本效率方法，但现有做法通常为每个目标与约束维护独立代理模型，并在每轮评估全部目标与约束，造成大量冗余评估。本文发现目标与约束之间存在内在相关性，若能加以利用即可实现解耦评估，即在每轮只评估其中一部分。作者提出相关性感知的解耦策略来指导评估选择，从而在保持优化质量的同时显著减少评估次数，为硬件与设计空间中的昂贵多目标优化提供了更高效的代理优化思路。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "Bayesian optimization for hardware",
+      "matched_requirement_id": "req-12",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.39334v1",
+      "source": "arxiv",
+      "title": "Taming Speculative Search for Test-Time Scaling in LLM Serving",
+      "abstract": "Test-time scaling has recently emerged as a powerful approach for improving LLM reasoning by allocating additional computation during inference, substantially enhancing accuracy on challenging tasks such as mathematics and coding. To accelerate the exploration of reasoning paths, recent studies proposed speculative execution. However, we show that supporting speculative execution poses two unique challenges for LLM serving systems: (1) an explosion in the search space of candidate paths and (2) frequent, fine-grained verification tasks for candidates.   To address these challenges, this paper proposes SpecScale, a serving system for efficient speculative execution. We introduce three techniques to reconcile the trade-off between latency and computational overhead: (1) early pruning of low-quality candidate paths, (2) deduplicating computation across redundant candidate paths, and (3) deferring fine-grained verification tasks. We evaluate SpecScale on challenging reasoning benchmarks, including MATH and Olympiad. Our results show that SpecScale significantly outperforms both non-speculative and recent speculative approaches, delivering substantial improvements in throughput and latency while preserving answer quality.",
+      "authors": [
+        "Jinwoo Jeong",
+        "Woohyung Choi",
+        "Myeongjae Jeon",
+        "Jeongseob Ahn"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.CL",
+        "cs.OS"
+      ],
+      "published": "2026-09-30T09:04:53+00:00",
+      "link": "https://arxiv.org/pdf/2609.39334v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "Serving system for efficient speculative execution",
+      "llm_evidence_cn": "支持高效投机执行的serving系统",
+      "llm_evidence": "支持高效投机执行的serving系统",
+      "canonical_evidence": "支持高效投机执行的serving系统",
+      "llm_tldr_en": "SpecScale is a serving system for test-time scaling that tames speculative execution by handling candidate-path explosion and fine-grained verification, reconciling latency and compute overhead.",
+      "llm_tldr_cn": "测试时扩展通过在推理期分配额外计算提升LLM推理能力，近期研究用投机执行加速推理路径探索，但给服务系统带来候选路径搜索空间爆炸与频繁细粒度验证两大挑战。本文提出SpecScale服务系统，引入三项技术权衡延迟与计算开销。该系统高效支持投机执行，加速复杂任务上的推理路径探索。",
+      "llm_tldr": "测试时扩展通过在推理期分配额外计算提升LLM推理能力，近期研究用投机执行加速推理路径探索，但给服务系统带来候选路径搜索空间爆炸与频繁细粒度验证两大挑战。本文提出SpecScale服务系统，引入三项技术权衡延迟与计算开销。该系统高效支持投机执行，加速复杂任务上的推理路径探索。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "speculative decoding",
+      "matched_requirement_id": "req-3",
+      "selection_source": "carryover_cache",
+      "paper_id": "2609.39334v1"
+    }
+  ],
+  "quick_skim": [
+    {
+      "id": "2609.32259v2",
+      "source": "arxiv",
+      "title": "Prefill-Free Cross-Family KV Cache Transfer for Heterogeneous Multi-Agent LLMs",
+      "abstract": "Recent multi-agent LLM systems increasingly combine heterogeneous models for specialized agent roles. However, text-based communication requires each receiver to prefill shared context already processed by the sender. Reusing the sender's key-value (KV) cache avoids this redundancy, but prefill-free transfer across model families must handle differences in tokenization, model depth, and KV representations. To address these issues, we propose \\textit{HeteroFold}, a prefill-free cross-family KV cache transfer method that keeps both the sender and receiver frozen. HeteroFold aligns model structures, maps the sender cache into the receiver space, and calibrates it to preserve receiver behavior. Across six transfer directions, HeteroFold achieves the best cache-transfer performance on all four long-context benchmarks and most short-context settings. It also matches text-based communication on the multi-agent benchmark. At 32K context length, Llama-3.1-8B$\\rightarrow$Ministral-3-14B transfer is $10.7\\times$ faster than Native Prefill and $1.18$--$1.47\\times$ faster than the state-of-the-art prefill-free baselines, Dense Latent and KV Ridge. These results show that HeteroFold enables efficient cross-family KV reuse without receiver prefill.",
+      "authors": [
+        "Vincent-Daniel Yun",
+        "Woosang Lim",
+        "Haneul Yoo",
+        "Sungjoo Yoo",
+        "Murali Annavaram",
+        "Sai Praneeth Karimireddy"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI",
+        "cs.LG",
+        "cs.MA"
+      ],
+      "published": "2026-09-26T05:30:18+00:00",
+      "link": "https://arxiv.org/pdf/2609.32259v2",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "cross-family KV cache transfer avoiding re-prefill",
+      "llm_evidence_cn": "跨模型族KV缓存迁移与免预填充复用",
+      "llm_evidence": "跨模型族KV缓存迁移与免预填充复用",
+      "canonical_evidence": "跨模型族KV缓存迁移与免预填充复用",
+      "llm_tldr_en": "HeteroFold enables prefill-free cross-family KV cache transfer for heterogeneous multi-agent LLMs, aligning model structures and mapping sender caches into receiver space to avoid redundant prefilling while keeping both models frozen.",
+      "llm_tldr_cn": "异构多智能体LLM系统常需接收方重复预填充发送方已处理的上下文，复用KV缓存可省去冗余，但跨模型族面临分词、深度与KV表示差异。论文提出HeteroFold，在双方冻结前提下对齐模型结构，将发送方缓存映射并校准到接收方空间以保持其行为。在六种迁移方向上，该方法实现免预填充的跨族KV复用，降低多智能体通信的重复预填充开销。",
+      "llm_tldr": "异构多智能体LLM系统常需接收方重复预填充发送方已处理的上下文，复用KV缓存可省去冗余，但跨模型族面临分词、深度与KV表示差异。论文提出HeteroFold，在双方冻结前提下对齐模型结构，将发送方缓存映射并校准到接收方空间以保持其行为。在六种迁移方向上，该方法实现免预填充的跨族KV复用，降低多智能体通信的重复预填充开销。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2609.33385v1",
+      "source": "arxiv",
+      "title": "OLED-MoE: Accelerating MoE-Based dLLM Inference via Inter-Iteration Locality-Aware Expert Offloading",
+      "abstract": "Semi-autoregressive diffusion large language models (dLLMs) improve decoding parallelism through iterative block-wise denoising, but scaling them with mixture-of-experts (MoE) layers introduces a large expert parameter footprint that exceeds memory-constrained GPU capacity. Expert offloading is a natural remedy, yet existing MoE serving systems target autoregressive decoding and rely on intra-iteration layer-wise prefetching: while computing one layer, they predict and load experts for subsequent layers. Under dLLM inference, block-wise routing expands the active expert working set within each iteration, making such prefetches difficult to complete in time and costly when mispredicted. Consequently, existing prefetch-based solutions often degenerate into on-demand expert loading with high decoding latency.   We propose OLED-MoE, an expert offloading system that shifts the optimization target from intra-iteration prefetching to inter-iteration expert retention. Its key insight is that adjacent denoising iterations exhibit strong expert routing overlap, and token confidence indicates which experts are likely to be reused. OLED-MoE uses confidence-guided inter-iteration prediction to retain high-value experts in GPU memory without introducing extra prefetch traffic. It further compensates unavoidable cache misses through CPU-GPU cooperative execution, jointly considering dynamic expert computation load and predicted future reuse. Across diverse dLLM workloads, OLED-MoE reduces time per output token (TPOT) by 1.23x-7.93x and improves expert cache utilization by 1.44x-4.23x over state-of-the-art offloading systems. Notably, OLED-MoE approaches full-residency performance while using only 40% of the expert GPU memory, incurring merely 23% higher TPOT despite a 60% reduction in expert memory footprint. OLED-MoE's source code is publicly available at https://github.com/flashserve/OLED-MoE.",
+      "authors": [
+        "Jingyuan Xiao",
+        "Jiayue Wang",
+        "Yitao Hu",
+        "Xinning Wang",
+        "Shi Chen",
+        "Ziqi Gong",
+        "Zhengchao Wang",
+        "Guotao Yang",
+        "Sheng Chen",
+        "Keqiu Li"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.CL"
+      ],
+      "published": "2026-09-27T09:05:06+00:00",
+      "link": "https://arxiv.org/pdf/2609.33385v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "expert offloading for MoE-based dLLM inference",
+      "llm_evidence_cn": "MoE大模型推理的专家卸载与显存管理",
+      "llm_evidence": "MoE大模型推理的专家卸载与显存管理",
+      "canonical_evidence": "MoE大模型推理的专家卸载与显存管理",
+      "llm_tldr_en": "OLED-MoE targets MoE-based diffusion LLM inference, where block-wise routing enlarges the active expert set and breaks layer-wise prefetching; it uses inter-iteration locality-aware expert offloading to cut memory pressure and latency.",
+      "llm_tldr_cn": "基于MoE的扩散大模型在迭代式块状去噪中会扩大每轮激活专家集合，使传统按层预取的专家卸载难以按时完成且误预取代价高。论文提出OLED-MoE，利用迭代间专家访问的局部性进行感知式卸载与预取调度。实验表明该方法能在受限GPU显存下加速dLLM推理，缓解专家参数超出显存的问题。",
+      "llm_tldr": "基于MoE的扩散大模型在迭代式块状去噪中会扩大每轮激活专家集合，使传统按层预取的专家卸载难以按时完成且误预取代价高。论文提出OLED-MoE，利用迭代间专家访问的局部性进行感知式卸载与预取调度。实验表明该方法能在受限GPU显存下加速dLLM推理，缓解专家参数超出显存的问题。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM inference",
+      "matched_requirement_id": "req-6",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.34069v1",
+      "source": "arxiv",
+      "title": "Towards Certificate-Driven Software Porting: A Self-Improving Agentic Harness for Scientific Program Optimization",
+      "abstract": "The upgrade and rewriting of large scientific codebases has traditionally been a major challenge. While evolutionary search with large language models (LLMs) can port and accelerate legacy code, repair feedback in prompts alone does not prevent subsequent candidates from repeating the same errors. We introduce Certificate-Driven Evolutionary Search (CDES), which extends evolutionary search with enforceable restrictions derived from failed candidates, recorded as certificates of assumptions, checker evidence, and justified restrictions. Its control logic enforces these restrictions through rejection, backtracking, and targeted repair while preserving compatible edits. We apply CDES to CPU-to-GPU translation of two particle-simulation functions from the Geant4 toolkit, evaluated with a harness that goes beyond unit tests to combine formal checks, numerical comparisons, physics checks, and GPU safety tests. Generated implementations achieve 13.78x and 23.54x function-level speedups over CPU code, including data conversion and transfers; for one function, GPU throughput exceeds an expert implementation by 14.9%, reaching 16.1% when complementary components are combined. In an ablation over execution settings, certificate feedback increases the fraction of candidates passing required correctness checks from 55% to 90%.",
+      "authors": [
+        "Piyush Jha",
+        "Aishik Ghosh",
+        "Vijay Ganesh"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI",
+        "cs.PL",
+        "cs.SE"
+      ],
+      "published": "2026-09-28T00:50:30+00:00",
+      "link": "https://arxiv.org/pdf/2609.34069v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "evolutionary search with LLMs to port and accelerate legacy code, CPU-to-GPU translation",
+      "llm_evidence_cn": "用LLM进化搜索移植与加速遗留代码，含CPU到GPU翻译",
+      "llm_evidence": "用LLM进化搜索移植与加速遗留代码，含CPU到GPU翻译",
+      "canonical_evidence": "用LLM进化搜索移植与加速遗留代码，含CPU到GPU翻译",
+      "llm_tldr_en": "CDES extends LLM-based evolutionary search with enforceable certificates from failed candidates to avoid repeated errors, applied to CPU-to-GPU translation and optimization of scientific codebases.",
+      "llm_tldr_cn": "大型科学代码库的升级与重写长期困难，基于LLM的进化搜索虽能移植与加速遗留代码，但仅靠提示中的修复反馈无法阻止后续候选重复错误。本文提出证书驱动进化搜索CDES，将失败候选的假设、检查证据与限制记录为证书并强制约束后续搜索。该方法应用于科学程序的CPU到GPU翻译与优化，减少重复错误并提升移植与优化效率，为自动化代码移植与编译优化提供新机制。",
+      "llm_tldr": "大型科学代码库的升级与重写长期困难，基于LLM的进化搜索虽能移植与加速遗留代码，但仅靠提示中的修复反馈无法阻止后续候选重复错误。本文提出证书驱动进化搜索CDES，将失败候选的假设、检查证据与限制记录为证书并强制约束后续搜索。该方法应用于科学程序的CPU到GPU翻译与优化，减少重复错误并提升移植与优化效率，为自动化代码移植与编译优化提供新机制。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "Automated parameter tuning and search for physical design flows such as OpenROAD/ORFS, synthesis, placement, routing, or compiler optimization.",
+      "matched_requirement_id": "req-17",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.33889v1",
+      "source": "arxiv",
+      "title": "Where Activation Sparsity and KV-Cache Sparsity Cross in LLM Decoding",
+      "abstract": "At each step, decoding one sequence with a large language model rereads the projection weights, whose traffic is fixed, and the key-value (KV) cache, whose traffic grows with context. Activation sparsity trims the first term and KV-cache sparsity the second, yet their reported speedups are hard to compare because each depends on context length and on the dense attention kernel it is measured against. We derive a byte crossover, the context length at which the two savings are equal, together with ideal speedup bounds for each branch and for their composition, from model dimensions and keep ratios alone. We then time both branches and their composition from 2K to 128K tokens on two GPUs after a dense prefill of real text, with dense and sparse modes reading the cache through the same split-K attention kernel. The projection branch leads at short context and the KV branch at long context, with speedups that follow their byte bounds up to fixed kernel costs. Adding these costs, measured in separate sweeps, lets the byte account predict the measured crossings of three keep-ratio pairs, a second model, and a second GPU to within 4.1K tokens. Timing the dense baseline with masked instead of split-K attention inflates the apparent speedup of the same KV policy about fivefold. An attention-scored KV selection answers the same passkey and multi-key placements as dense decoding up to 127K tokens, whereas a KV window misses most of them. Under matched perplexity budgets, activation sparsity composed with this selection decodes 14 to 26% faster than the best single branch on both GPUs. Code is available at https://github.com/js-lee-AI/ByteCross.",
+      "authors": [
+        "Jungseob Lee",
+        "Seungyoon Lee",
+        "Seongtae Hong",
+        "Sugyeong Eo",
+        "Heuiseok Lim"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.CL",
+        "cs.PF"
+      ],
+      "published": "2026-09-27T20:11:05+00:00",
+      "link": "https://arxiv.org/pdf/2609.33889v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "comparing activation sparsity and KV-cache sparsity in LLM decoding",
+      "llm_evidence_cn": "LLM解码中激活稀疏与KV缓存稀疏的分析",
+      "llm_evidence": "LLM解码中激活稀疏与KV缓存稀疏的分析",
+      "canonical_evidence": "LLM解码中激活稀疏与KV缓存稀疏的分析",
+      "llm_tldr_en": "The paper derives a byte crossover and ideal speedup bounds comparing activation sparsity and KV-cache sparsity in LLM decoding, then times both and their composition from 2K to 128K tokens on two GPUs.",
+      "llm_tldr_cn": "LLM解码每步需重读固定流量的投影权重与随上下文增长的KV缓存，激活稀疏与KV缓存稀疏分别削减二者，但报告加速比难以比较。论文从模型维度与保留率推导两者相等的字节交叉点及各自与组合的理想加速上界。随后在两个GPU上从2K到128K token实测两种稀疏及其组合，为解码稀疏优化提供统一的理论与实验分析框架。",
+      "llm_tldr": "LLM解码每步需重读固定流量的投影权重与随上下文增长的KV缓存，激活稀疏与KV缓存稀疏分别削减二者，但报告加速比难以比较。论文从模型维度与保留率推导两者相等的字节交叉点及各自与组合的理想加速上界。随后在两个GPU上从2K到128K token实测两种稀疏及其组合，为解码稀疏优化提供统一的理论与实验分析框架。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2609.34340v1",
+      "source": "arxiv",
+      "title": "VarioPath: Workload-Aware All-to-All Communication for PCIe GPU Clusters",
+      "abstract": "AlltoAllv communication is a critical primitive in distributed large-model inference, particularly for mixture-of-experts (MoE) models. The growing adoption of PCIe GPU systems for cost-efficient inference makes AlltoAllv performance on these systems increasingly important. Without a dedicated scale-up interconnect (e.g., NVLink or Infinity Fabric), PCIe GPU systems carry both intra-node and inter-node traffic through the PCIe hierarchy, where concurrent transfers can contend for PCIe link bandwidth. This link contention, compounded by skewed traffic distributions and dynamic traffic demand, makes efficient AlltoAllv scheduling challenging. Existing approaches are either poorly suited to PCIe GPU systems or incur substantial schedule synthesis overhead that reduces their practicality in real-world deployments.   We present VarioPath, an efficient AlltoAllv scheduling framework for PCIe GPU systems. It combines an offline topology-aware analyzer with an online demand-aware scheduler. The analyzer records contention-free transfer patterns as AlltoAllv channels and exploits topology symmetry to build a compact catalog for efficient search. The online scheduler decomposes each AlltoAllv invocation's demand across a sequence of channels, adapting to rapidly changing and skewed traffic while incurring low planning overhead. Evaluation on four platforms (up to 256 GPUs) shows average AlltoAllv speedups of 5.88x over FAST and 1.72x over DeepEP. End-to-end experiments show that VarioPath reduces Qwen3 inference latency by up to 27.2% and Wan2.1 generation latency by 6.1%.",
+      "authors": [
+        "Yao Fei",
+        "Jin Fang",
+        "Size Zheng",
+        "Gongming Zhao",
+        "Hongli Xu",
+        "Jiacheng Zhu",
+        "Zhijing Xin"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.NI"
+      ],
+      "published": "2026-09-28T05:17:42+00:00",
+      "link": "https://arxiv.org/pdf/2609.34340v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "All-to-All communication scheduling for PCIe GPU clusters in distributed LLM inference",
+      "llm_evidence_cn": "面向分布式大模型推理的PCIe GPU集群All-to-All通信调度",
+      "llm_evidence": "面向分布式大模型推理的PCIe GPU集群All-to-All通信调度",
+      "canonical_evidence": "面向分布式大模型推理的PCIe GPU集群All-to-All通信调度",
+      "llm_tldr_en": "Distributed MoE inference on PCIe GPU clusters suffers from link contention during AlltoAllv. VarioPath introduces workload-aware scheduling to avoid PCIe bandwidth contention, improving communication efficiency for large-model inference.",
+      "llm_tldr_cn": "分布式大模型推理，尤其是混合专家模型，高度依赖AlltoAllv通信原语，但在缺乏NVLink等专用互联的PCIe GPU集群上，节点内与节点间流量共享PCIe层级，并发传输会争抢链路带宽，叠加流量倾斜与动态需求使调度十分困难。本文提出VarioPath，一种面向PCIe GPU集群的工作负载感知All-to-All通信方案，通过感知实际流量分布来生成高效调度，避免链路争用。实验表明该方法在PCIe系统上显著提升了通信性能，为低成本分布式大模型推理提供了可用的通信优化路径。",
+      "llm_tldr": "分布式大模型推理，尤其是混合专家模型，高度依赖AlltoAllv通信原语，但在缺乏NVLink等专用互联的PCIe GPU集群上，节点内与节点间流量共享PCIe层级，并发传输会争抢链路带宽，叠加流量倾斜与动态需求使调度十分困难。本文提出VarioPath，一种面向PCIe GPU集群的工作负载感知All-to-All通信方案，通过感知实际流量分布来生成高效调度，避免链路争用。实验表明该方法在PCIe系统上显著提升了通信性能，为低成本分布式大模型推理提供了可用的通信优化路径。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.35481v1",
+      "source": "arxiv",
+      "title": "TopoEP: Topology-Aware Load Balancing for Expert-Parallel MoE Training",
+      "abstract": "Dynamic routing creates severe load imbalance in large-scale expert-parallel Mixture-of-Experts (MoE) training, turning GPUs that host hot experts into stragglers. As each MoE layer waits for its slowest rank, these stragglers prolong the expert-parallel stage and reduce overall training efficiency. Existing expert-parallelism load-balancing (EPLB) systems commonly compute load-balancing plans on the CPU, incurring device--host data transfers and cross-rank synchronization that make scheduling at every layer and microbatch expensive. Their planning formulations also overlook the hierarchical communication costs of modern scale-up and scale-out GPU clusters.   We present \\textit{TopoEP}, a GPU-native, topology-aware load-balancing system for large-scale MoE training. At each MoE layer and training microbatch, \\textit{TopoEP} converts the current routing result into hot-expert replication and token-rerouting decisions and executes the resulting plan without data-dependent host synchronization, reducing critical-path overhead. To generate these decisions, \\textit{TopoEP} uses a deterministic GPU solver that performs inter-node placement followed by intra-node refinement, allowing all ranks to independently produce bitwise-identical plans. On a 32-GPU NVIDIA H800 cluster, integrating \\textit{TopoEP} with Megatron-LM improves end-to-end training throughput by 6.2\\%--11.4\\% across three representative MoE models.",
+      "authors": [
+        "Jiacheng Zhu",
+        "Xie Zhao",
+        "Gongming Zhao",
+        "Hongli Xu",
+        "Yao Fei",
+        "Jin Fang"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.LG"
+      ],
+      "published": "2026-09-28T15:57:31+00:00",
+      "link": "https://arxiv.org/pdf/2609.35481v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "topology-aware load balancing for expert-parallel MoE communication",
+      "llm_evidence_cn": "面向专家并行MoE通信的拓扑感知负载均衡",
+      "llm_evidence": "面向专家并行MoE通信的拓扑感知负载均衡",
+      "canonical_evidence": "面向专家并行MoE通信的拓扑感知负载均衡",
+      "llm_tldr_en": "TopoEP is a GPU-native, topology-aware load-balancing system for expert-parallel MoE training; it plans balancing on GPU while accounting for hierarchical scale-up/scale-out communication costs, reducing stragglers and expert-parallel stage time.",
+      "llm_tldr_cn": "针对MoE训练中动态路由导致专家负载严重不均、热门专家拖慢整个专家并行阶段，而现有均衡方案在CPU规划引入额外传输与同步、且忽视层次化通信代价的问题，论文提出GPU原生、拓扑感知的负载均衡系统TopoEP，把规模扩展与跨机通信成本纳入规划。实验表明其能降低专家并行阶段耗时并提升大规模MoE训练效率，为专家并行调度提供优化方案。",
+      "llm_tldr": "针对MoE训练中动态路由导致专家负载严重不均、热门专家拖慢整个专家并行阶段，而现有均衡方案在CPU规划引入额外传输与同步、且忽视层次化通信代价的问题，论文提出GPU原生、拓扑感知的负载均衡系统TopoEP，把规模扩展与跨机通信成本纳入规划。实验表明其能降低专家并行阶段耗时并提升大规模MoE训练效率，为专家并行调度提供优化方案。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.",
+      "matched_requirement_id": "req-7",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.33916v1",
+      "source": "arxiv",
+      "title": "Validating Memory-Optimal Transformer Kernels on Real Hardware: From Formal Derivation to Measured Performance Across Two HPC Clusters",
+      "abstract": "We validate memory-optimal cost functions for transformer kernels derived via the Mathematics of Arrays (MoA). Companion Papers I-IV formally derive kernels for attention forward, backward, fused forward+backward, decode, and the complete block (RMSNorm, gated MLP) as a hardware-independent specification (DNF) transformed to a machine-specific realization (ONF) via gamma, with verification to machine precision against PyTorch. This paper checks those predictions against measured performance on two HPC clusters (Purdue Anvil, NCSA Delta) across CPU and GPU.   Three results stand out. (1) We identify and fix a GPU regression: fusing forward+backward, proven to avoid materializing an O(n^2) intermediate, initially ran slower than naive on GPU due to atomic contention. Profiling confirmed 2.00x more atomic instructions; a targeted ONF rewrite reversed it, yielding up to 2.5x speedup. (2) Identical derivations produce markedly different real costs by topology: 535x NUMA-locality penalty on one cluster vs <3x oversubscription on another, showing optimal deployment is a function of the machine's array structure. (3) We report a partially resolved anomaly: identical denotational computations run faster in C than Fortran on CPU but faster in Fortran than C on GPU, narrowed to one dominant kernel and one memory-latency stall mechanism (3.17x time gap matches 3.35x stall gap).   We treat hardware-specific optimization as a routine ONF rewrite with fixed, verified DNF, a candidate methodology for scaling AI onto evolving hardware without re-deriving correctness.",
+      "authors": [
+        "Lenore M. Mullin",
+        "Gaetan Hains"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.AI"
+      ],
+      "published": "2026-09-27T20:52:05+00:00",
+      "link": "https://arxiv.org/pdf/2609.33916v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "Memory-optimal transformer kernels for attention and decode validated on GPU/CPU",
+      "llm_evidence_cn": "在GPU/CPU上验证注意力与解码的内存最优Transformer算子",
+      "llm_evidence": "在GPU/CPU上验证注意力与解码的内存最优Transformer算子",
+      "canonical_evidence": "在GPU/CPU上验证注意力与解码的内存最优Transformer算子",
+      "llm_tldr_en": "Formally derives memory-optimal transformer kernels for attention, decode, and full blocks, then validates predicted costs against measured CPU/GPU performance on two HPC clusters, fixing a fusion regression.",
+      "llm_tldr_cn": "针对Transformer算子缺乏跨硬件形式化最优代价模型的问题，本文基于数组数学推导注意力前向、反向、解码与完整块的内存最优算子，并借助gamma变换生成机器相关实现。作者在Purdue Anvil与NCSA Delta两个HPC集群的CPU和GPU上实测性能，发现并修复了融合前向反向的GPU回归。结果验证了形式化代价预测与真实硬件性能一致，为跨平台算子优化提供可复现依据。",
+      "llm_tldr": "针对Transformer算子缺乏跨硬件形式化最优代价模型的问题，本文基于数组数学推导注意力前向、反向、解码与完整块的内存最优算子，并借助gamma变换生成机器相关实现。作者在Purdue Anvil与NCSA Delta两个HPC集群的CPU和GPU上实测性能，发现并修复了融合前向反向的GPU回归。结果验证了形式化代价预测与真实硬件性能一致，为跨平台算子优化提供可复现依据。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2609.34683v1",
+      "source": "arxiv",
+      "title": "AgentPerfBench: A Benchmarking and Evaluation Suite for Inference Performance of Agentic LLMs",
+      "abstract": "The optimization of LLM serving engines, such as vLLM and SGLang, is largely benchmark-driven: optimizations, scheduling policies, hardware and system designs are all selected based on representative workloads. However, a significant mismatch has emerged in the agentic era. Existing benchmarks primarily focus on simple single-turn chatbot workloads. LLM applications are increasingly agentic: coding agents, terminal execution systems, and tool-use agents issue multi-turn requests with growing context lengths. We introduce AgentPerfBench, a benchmark suite for agentic inference. It uses real traces from agentic benchmarks, such as SWE-Bench and TerminalBench, alongside standard chat baselines. This enables benchmarking of models on multi-turn tasks involving tool calling, skill utilization, and increasing context lengths. AgentPerfBench also samples from empirical distributions of input length, output length, and turn count derived from the real traces, generating representative synthetic profiles for cheap and accurate measurements on new hardware. In addition, we further find that several existing benchmarks fail to accurately reflect real hardware performance for two key reasons: 1) they do not account for realistic context-length growth, and 2) they measure inference performance without operating at hardware saturation. We discuss these issues in detail and provide rich kernel-level Nsight Compute (NCU) traces to construct a new multi-dimensional roofline model that captures hardware-system limitations in both memory bandwidth and memory capacity footprint. The benchmarking suite then includes automated scripts to identify potential bottleneck conditions on emerging hardware when evaluated with diverse agentic traces. Together, these contributions quantify the chat-to-agentic gap in current inference benchmarks and characterise per-kernel GPU resource utilisation via roofline analysis.",
+      "authors": [
+        "Cheuk Hang Lau",
+        "Zeyu Cao",
+        "Kevin Wong Cheuk Yin",
+        "Yao Lai",
+        "Haoran Wu",
+        "Nicholas D. Lane",
+        "Robert D. Mullins",
+        "Ilia Shumailov",
+        "Yiren Zhao"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-09-28T09:09:42+00:00",
+      "link": "https://arxiv.org/pdf/2609.34683v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "benchmark for LLM serving engine inference performance",
+      "llm_evidence_cn": "面向LLM服务引擎推理性能的基准",
+      "llm_evidence": "面向LLM服务引擎推理性能的基准",
+      "canonical_evidence": "面向LLM服务引擎推理性能的基准",
+      "llm_tldr_en": "AgentPerfBench is a benchmark suite for agentic LLM inference, using real multi-turn tool-use traces to evaluate serving engines like vLLM and SGLang beyond simple single-turn chatbot workloads.",
+      "llm_tldr_cn": "LLM服务引擎（如vLLM与SGLang）的优化高度依赖基准测试，但现有基准多聚焦单轮聊天负载，与日益智能体的应用（编码代理、终端执行、工具调用）存在明显错配。作者提出面向智能体推理的基准套件AgentPerfBench，采用SWE-Bench与TerminalBench等真实多轮轨迹并辅以标准聊天基线。该套件支持在增长上下文长度的多轮请求下评测模型与服务引擎，为智能体时代的系统优化提供代表性工作负载。",
+      "llm_tldr": "LLM服务引擎（如vLLM与SGLang）的优化高度依赖基准测试，但现有基准多聚焦单轮聊天负载，与日益智能体的应用（编码代理、终端执行、工具调用）存在明显错配。作者提出面向智能体推理的基准套件AgentPerfBench，采用SWE-Bench与TerminalBench等真实多轮轨迹并辅以标准聊天基线。该套件支持在增长上下文长度的多轮请求下评测模型与服务引擎，为智能体时代的系统优化提供代表性工作负载。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM serving",
+      "matched_requirement_id": "req-5",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.36752v1",
+      "source": "arxiv",
+      "title": "cktFormer: Transformer-Based Approach for Automated Analog Circuit Design",
+      "abstract": "Circuit design is a complex and iterative process that requires expertise in electronic engineering. It involves selecting components while meeting performance constraints, such as power efficiency, cost-effectiveness, and signal integrity. However, manual design is time-consuming and prone to errors. Although other stages of the manufacturing pipeline have benefited from AI-driven optimizations, circuit design remains a bottleneck, limiting overall productivity. Generative AI and machine learning offer the potential to automate and improve this stage, boosting efficiency and accuracy. To address this, we introduce a dual transformer architecture that bridges the gap between AI and circuit design by leveraging attention mechanisms to model complex, non-sequential circuit relationships. Our approach structures netlist data into graph-based representations, enabling effective learning of circuit topology and component interactions. The system consists of two interlinked models: a node prediction model that proposes components and an edge prediction model that infers valid connections. This collaborative and decoupled design captures both component-level semantics and global structural coherence. In our experiments, this architecture outperforms recent models such as AnalogGenie and cktGNN in the validity of generated circuits. By addressing key limitations in existing methods, our work advances automation in electronics engineering and contributes a benchmark for AI-driven circuit synthesis.",
+      "authors": [
+        "Pasindu Dodampegama",
+        "Praveen Wijesinghe",
+        "Naveen Basnayake",
+        "Keshawa Jayasundara",
+        "Tharindu Bandaragoda"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.AR"
+      ],
+      "published": "2026-09-29T05:25:02+00:00",
+      "link": "https://arxiv.org/pdf/2609.36752v1",
+      "tags": [
+        "keyword:dse",
+        "query:dse"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "Transformer-based automation of analog circuit design under performance constraints",
+      "llm_evidence_cn": "基于Transformer在性能约束下自动完成模拟电路设计",
+      "llm_evidence": "基于Transformer在性能约束下自动完成模拟电路设计",
+      "canonical_evidence": "基于Transformer在性能约束下自动完成模拟电路设计",
+      "llm_tldr_en": "cktFormer uses a dual transformer architecture with attention mechanisms to automate analog circuit design, selecting components while meeting power, cost, and signal-integrity constraints.",
+      "llm_tldr_cn": "模拟电路设计依赖专家经验、耗时而易错，是制造流程中的效率瓶颈。本文提出双Transformer架构，利用注意力机制建模复杂电路约束与组件选择关系。方法面向功耗、成本与信号完整性等指标自动生成设计。该工作将生成式AI引入电路设计环节，有望提升自动化程度与设计准确性。",
+      "llm_tldr": "模拟电路设计依赖专家经验、耗时而易错，是制造流程中的效率瓶颈。本文提出双Transformer架构，利用注意力机制建模复杂电路约束与组件选择关系。方法面向功耗、成本与信号完整性等指标自动生成设计。该工作将生成式AI引入电路设计环节，有望提升自动化程度与设计准确性。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "EDA optimization",
+      "matched_requirement_id": "req-13",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.34117v1",
+      "source": "arxiv",
+      "title": "SlimWise: Decoupling Expert Pruning Across Prefill and Decode for Efficient MoE Serving",
+      "abstract": "Mixture-of-experts (MoE) models activate few experts per token, yet batched decoding can access nearly the entire expert pool, making expert-weight traffic a major bottleneck. Expert pruning reduces this traffic, but conventional approaches also prune compute-bound prefill, sacrificing model quality for little throughput benefit. We present SlimWise, a serving framework that tailors the expert pool to each inference phase. SlimWise performs prefill with the full model and decode with a pruned model that directly reuses the prefill-generated KV cache without conversion. Across two MoE backbones and three pruning criteria, this training-free KV cache handoff substantially narrows accuracy gaps relative to the full model in many settings. We also show that benchmark accuracy can conceal substantial pruning-induced changes in generation length. To address these distortions and residual accuracy loss, SlimWise introduces a low-cost distillation stage that trains the decoder to continue from full-model KV caches while updating only a small subset of parameters. Implemented in vLLM, SlimWise supports both prefill-decode (PD) disaggregation and PD-colocated serving. On Qwen3.6-35B-A3B, SlimWise improves decode throughput by up to 1.81x at 50% expert pruning with minimal accuracy loss.",
+      "authors": [
+        "Gunho Park",
+        "Kyoungho Jeun",
+        "Juntaek Oh",
+        "Byeongjun Shin",
+        "Baeseong Park",
+        "Minsoo Rhu"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.AI"
+      ],
+      "published": "2026-09-28T01:57:51+00:00",
+      "link": "https://arxiv.org/pdf/2609.34117v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "phase-decoupled expert pruning with KV cache handoff for MoE serving",
+      "llm_evidence_cn": "分阶段专家剪枝与KV缓存交接的MoE服务",
+      "llm_evidence": "分阶段专家剪枝与KV缓存交接的MoE服务",
+      "canonical_evidence": "分阶段专家剪枝与KV缓存交接的MoE服务",
+      "llm_tldr_en": "SlimWise tailors the MoE expert pool per inference phase, running full-model prefill and pruned-model decode that reuses the prefill KV cache without conversion, narrowing accuracy gaps while cutting decode weight traffic.",
+      "llm_tldr_cn": "MoE模型虽每token仅激活少量专家，但批量解码几乎触及整个专家池，专家权重流量成为瓶颈；传统专家剪枝还会误剪计算密集的预填充阶段，损害质量却收益有限。作者提出服务框架SlimWise，按推理阶段定制专家池，预填充用完整模型，解码用剪枝模型并直接复用预填充生成的KV缓存。在两种MoE骨干与三种剪枝准则上，该免训练KV缓存交接显著缩小了相对完整模型的精度差距。",
+      "llm_tldr": "MoE模型虽每token仅激活少量专家，但批量解码几乎触及整个专家池，专家权重流量成为瓶颈；传统专家剪枝还会误剪计算密集的预填充阶段，损害质量却收益有限。作者提出服务框架SlimWise，按推理阶段定制专家池，预填充用完整模型，解码用剪枝模型并直接复用预填充生成的KV缓存。在两种MoE骨干与三种剪枝准则上，该免训练KV缓存交接显著缩小了相对完整模型的精度差距。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2609.34785v1",
+      "source": "arxiv",
+      "title": "BEHAVE: Functional Behavior Modeling Enables Self-Improving Agents for Hardware Design and Verification",
+      "abstract": "Developing agents for hardware design and verification requires reliable correctness feedback. As a hardware specification may permit correct implementations with different latencies, matching design and reference outputs cycle by cycle can reject valid designs. To address this, we introduce BEHAVE, an agentic framework for multi-turn joint hardware design and verification through functional behavior modeling. We define Behavior IR to express task functionality as executable behavior models without prescribing implementation timing beyond the specification. The agent iteratively develops a register-transfer-level (RTL) design and a behavior model as the design's verification reference. Our evaluator, BEHAVE-Sim, checks both artifacts separately against a hidden golden behavior model using input stimuli generated by random sampling and solver-guided search. BEHAVE thus supports power, performance, and area (PPA) exploration across task-permitted latencies and microarchitectures. During training, the same evaluator provides verifiable reinforcement learning (RL) rewards from specification-behavior pairs without reference RTL. For self-improvement, the agent continually searches for high-level implementations relevant to its capability gaps, constructs and checks specification-behavior pairs, and trains on the expanded task pool. We release BEHAVE-Train and BEHAVE-Eval with 600 human-reviewed specification-behavior pairs for realistic hardware workloads. Starting from 60 seed tasks and acquiring 100 new tasks, self-improvement raises Qwen3.8-27B's RTL pass@1 on BEHAVE-Eval from 55.0% to 75.0%, reaching performance comparable to RL using a 540-task pool.",
+      "authors": [
+        "Yuheng Wu",
+        "Berk Gokmen",
+        "Sujeeth Jinesh",
+        "Lauren McLane",
+        "Aarav Wattal",
+        "Qi Yang Huang",
+        "Zhaozhuo Xu",
+        "Thierry Tambe"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI",
+        "cs.AR",
+        "cs.LG"
+      ],
+      "published": "2026-09-28T09:57:29+00:00",
+      "link": "https://arxiv.org/pdf/2609.34785v1",
+      "tags": [
+        "keyword:dse",
+        "query:dse"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "Agentic framework for automated hardware design and verification",
+      "llm_evidence_cn": "面向硬件设计与验证自动化的智能体框架",
+      "llm_evidence": "面向硬件设计与验证自动化的智能体框架",
+      "canonical_evidence": "面向硬件设计与验证自动化的智能体框架",
+      "llm_tldr_en": "BEHAVE is an agentic framework for joint hardware design and verification, using Behavior IR to express task functionality and iteratively co-developing RTL and behavior models evaluated by BEHAVE-Sim.",
+      "llm_tldr_cn": "硬件设计与验证需要可靠正确性反馈，但逐周期比对会误拒时序不同的合法实现。本文提出BEHAVE智能体框架，定义Behavior IR将任务功能表达为可执行行为模型，智能体迭代开发RTL设计与行为模型并以其为验证参照。BEHAVE-Sim评估器据此判定设计正确性。该工作为多轮联合硬件设计与验证提供了新范式。",
+      "llm_tldr": "硬件设计与验证需要可靠正确性反馈，但逐周期比对会误拒时序不同的合法实现。本文提出BEHAVE智能体框架，定义Behavior IR将任务功能表达为可执行行为模型，智能体迭代开发RTL设计与行为模型并以其为验证参照。BEHAVE-Sim评估器据此判定设计正确性。该工作为多轮联合硬件设计与验证提供了新范式。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "LLM or agent based methods for automated EDA, HLS pragma tuning, and design space exploration.",
+      "matched_requirement_id": "req-18",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.38639v1",
+      "source": "arxiv",
+      "title": "Component-Aware Feedback for Self-Evolving Programs",
+      "abstract": "LLM-guided evolutionary search can discover complex programs, but existing methods mostly only save candidate programs and fitness scores while discarding which component edits produced which fitness metric changes. Existing methods force the mutator LLM to infer the effect of prior edits from cluttered histories, making program search slow and unstable. This is especially true for locally servable LLMs to evolve multi-component systems. We introduce component-aware feedback, which compares each evaluated program with its parent, identifies the components that changed, and logs them with the associated metric differences into an attribution memory that later mutations read. The memory keeps each change in two reference frames, local against the parent it came from and global against the seed program, which shows both the immediate effect of a change and the cumulative progress made since the seed. We study this on LLM reranking, a multi-objective optimization problem where a multi-stage pipeline must balance quality against serving cost. Across twelve \\textsc{Bright} datasets, our method reaches the strongest baseline's final quality after a median of one third of the search budget and ends 7.2\\% higher in held-out nDCG@10, and under a cost-aware objective it finds pipelines that are on average more accurate while using 11\\% fewer tokens per query, showing component-aware feedback to be a promising direction for more efficient self-evolving systems.",
+      "authors": [
+        "Ethan Lin",
+        "Jinming Nian",
+        "Yi Fang"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI",
+        "cs.IR"
+      ],
+      "published": "2026-09-29T22:55:44+00:00",
+      "link": "https://arxiv.org/pdf/2609.38639v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "LLM-guided evolutionary search for self-evolving multi-component programs",
+      "llm_evidence_cn": "LLM引导进化搜索用于自演化程序",
+      "llm_evidence": "LLM引导进化搜索用于自演化程序",
+      "canonical_evidence": "LLM引导进化搜索用于自演化程序",
+      "llm_tldr_en": "Component-aware feedback logs which component edits cause which fitness changes into an attribution memory, making LLM-guided evolutionary program search faster and more stable.",
+      "llm_tldr_cn": "LLM引导的进化搜索能发现复杂程序，但现有方法只保存候选程序与适应度，丢弃了哪次组件编辑带来何种指标变化的信息，迫使变异LLM从杂乱历史中推断，导致搜索缓慢不稳定。本文提出组件感知反馈，将每个程序与其父代比较，识别变化组件并记录指标差异到归因记忆中供后续变异读取。该方法为多组件系统的自动搜索提供了更稳定高效的反馈机制。",
+      "llm_tldr": "LLM引导的进化搜索能发现复杂程序，但现有方法只保存候选程序与适应度，丢弃了哪次组件编辑带来何种指标变化的信息，迫使变异LLM从杂乱历史中推断，导致搜索缓慢不稳定。本文提出组件感知反馈，将每个程序与其父代比较，识别变化组件并记录指标差异到归因记忆中供后续变异读取。该方法为多组件系统的自动搜索提供了更稳定高效的反馈机制。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "LLM-driven design space exploration",
+      "matched_requirement_id": "req-11",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    }
+  ]
+}

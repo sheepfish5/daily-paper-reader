@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-03</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-04</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 40 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>28</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-03 22:45:39 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-04 22:09:37 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,10 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共生成 40 篇推荐（精读 28 篇，速读 12 篇）</p>
-<p>精读：《ActKV: Efficient LLM Agents through Action-Guided KV Cache Management》（9.0/10）, 《EAServe: Encode-Aware Disaggregated Serving for Multimodal Large Language Models》（9.0/10）</p>
-<p>速读：《The KV Cache Is the New Memory Wall》（8.0/10）, 《Evaluating the accuracy of KV cache reuse techniques》（8.0/10）, 《Simple Extensions of Single-Objective Acquisition Functions and Hedge Strategies for Multi-Objective Bayesian Optimization》（8.0/10）</p>
-<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
+<p>今日精读7篇、速读12篇共19篇论文，聚焦MoE解码与KV Cache卸载的推理效率优化。最值得关注BASE用预测移除误差做批次感知专家选择，以及AVSG加速稀疏注意力下的向量化稀疏收集，两者均获9.0分。普通读者可优先了解KV Cache卸载与稀疏激活交叉方向，理解大模型推理省显存的现实路径。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -74,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">28 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ActKV: Efficient LLM Agents through Action-Guided KV Cache Management">ActKV: Efficient LLM Agents through Action-Guided KV Cache Management</span></li><li><span class="dpr-home-dashboard-paper-title" title="EAServe: Encode-Aware Disaggregated Serving for Multimodal Large Language Models">EAServe: Encode-Aware Disaggregated Serving for Multimodal Large Language Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="Distance-KV: Exploiting Relative Distance for Efficient Long-Context Inference">Distance-KV: Exploiting Relative Distance for Efficient Long-Context Inference</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="BASE: Batch-Aware Selection of Experts Using Predicted Removal Error for Efficient MoE Decoding">BASE: Batch-Aware Selection of Experts Using Predicted Removal Error for Efficient MoE Decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="AVSG: Accelerated Vectorized Sparse Gather for Efficient KV Cache Offload in Sparse-Attention LLM Serving">AVSG: Accelerated Vectorized Sparse Gather for Efficient KV Cache Offload in Sparse-Attention LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="KV-Kaizen: Learning Context-Adaptive Cache Compression Choices">KV-Kaizen: Learning Context-Adaptive Cache Compression Choices</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>27</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>6</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -90,9 +87,9 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="The KV Cache Is the New Memory Wall">The KV Cache Is the New Memory Wall</span></li><li><span class="dpr-home-dashboard-paper-title" title="Evaluating the accuracy of KV cache reuse techniques">Evaluating the accuracy of KV cache reuse techniques</span></li><li><span class="dpr-home-dashboard-paper-title" title="Simple Extensions of Single-Objective Acquisition Functions and Hedge Strategies for Multi-Objective Bayesian Optimization">Simple Extensions of Single-Objective Acquisition Functions and Hedge Strategies for Multi-Objective Bayesian Optimization</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Prefill-Free Cross-Family KV Cache Transfer for Heterogeneous Multi-Agent LLMs">Prefill-Free Cross-Family KV Cache Transfer for Heterogeneous Multi-Agent LLMs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Where Activation Sparsity and KV-Cache Sparsity Cross in LLM Decoding">Where Activation Sparsity and KV-Cache Sparsity Cross in LLM Decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="Validating Memory-Optimal Transformer Kernels on Real Hardware: From Formal Derivation to Measured Performance Across Two HPC Clusters">Validating Memory-Optimal Transformer Kernels on Real Hardware: From Formal Derivation to Measured Performance Across Two HPC Clusters</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">dse <strong>6</strong></span><span class="dpr-home-dashboard-tag">li <strong>6</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>8</strong></span><span class="dpr-home-dashboard-tag">dse <strong>4</strong></span></div>
 </section>
 </div>
 

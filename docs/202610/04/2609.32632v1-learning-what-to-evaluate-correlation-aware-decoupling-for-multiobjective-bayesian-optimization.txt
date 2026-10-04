@@ -1,0 +1,1681 @@
+Title: Learning What to Evaluate: Correlation-Aware Decoupling for Multiobjective Bayesian Optimization
+
+URL Source: https://arxiv.org/pdf/2609.32632v1
+
+Published Time: Tue, 29 Sep 2026 01:30:43 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Learning What to Evaluate: Correlation-Aware Decoupling for Multiobjective Bayesian Optimization 
+
+Ashwin Renganathan 1,2 Peter Bachman 1
+
+> 1
+
+Aerospace Engineering 
+
+> 2
+
+Institute of Computational and Data Sciences (ICDS) Pennsylvania State University University Park, PA 16802 
+
+Abstract 
+
+Multiobjective Bayesian optimization (MOBO) with Gaussian process (GP) surrogates is a sample efficient approach to solving multiobjective optimization problems. In MOBO, a Bayesian decision theoretic acquisition function guides the adaptive selection of new candidate inputs, on which objectives and constraints are evaluated to update the surrogate model sequentially. Existing approaches maintain independent GP models for the objectives and constraints, with new observations evaluating all objectives and constraints in a coupled fashion. However, the objectives and constraints often contain inherent correlations which, if exploited, can enable 
+
+decoupled evaluations where only a subset of them are evaluated at each round. We present a new approach that leverages a multitask GP model to jointly learn all objectives and constraints, and propose a total correlation metric that enables identifying an optimal subset of objectives and constraints to be evaluated at every round, even under uniform evaluation costs. Theoretically, we show that our acquisition policy is asymptotically consistent despite decoupling and that our proposed decoupled subset selection rule maximizes the expected posterior entropy reduction about unevaluated tasks under mild conditions. Empirically, we show that our approach outperforms coupled and decoupled baselines in the state of the art. 
+
+## 1 Introduction 
+
+Many scientific and engineering design problems require optimizing several expensive objectives while satisfying expensive constraints. Standard MOBO methods, with GP [40] surrogates, usually assume that evaluating a design returns all objectives and constraints together. In many applications, however, separate simulators, tests, operating conditions, or analyses produce these quantities; their evaluations can therefore be “decoupled”. This creates a scalar-oracle budget: the algorithm may choose both a design and an objective or constraint oracle to query. For instance, aircraft design uses computational aerodynamic simulators to evaluate performance at multiple operating conditions, each evaluated independently [8]. Neural architecture search (NAS) requires simultaneously optimizing predictive accuracy and model latency on edge devices [22], which are separately tested. We consider optimizing K objectives subject to C constraints, all independently evaluable: max  
+
+> x∈X
+
+{f1(x), . . . , f K (x)}
+
+s.t. ci(x) = 0 , i ∈ E 
+
+ci(x) ≥ 0, i ∈ I ,
+
+(1) 1arXiv:2609.32632v1 [stat.ML] 26 Sep 2026 where x ∈ X ⊂ Rd is the design variable, fk : X → R, ∀k = 1 , . . . , K and ci : X → R, the objectives and constraints, respectively, are expensive zeroth-order oracles. E and I index the equality and inequality constraints, respectively, and C = |E ∪ I| . X is the domain of f and c. We seek a Pareto 
+
+optimal set of solutions that “Pareto dominates” all other points. Let f (x) = [ f1(x), . . . , f K (x)] ⊤;if f (x) Pareto dominates f (x ′), then fk(x) ≥ fk(x′), ∀k = 1 , . . . , K and ∃k ∈ [K] such that 
+
+fk(x) > f k(x′). We write Pareto dominance as f (x) ≻ f (x ′). The set Y∗ = {f (x) : ∄x′ ∈ X :
+
+f (x ′) ≻ f (x) } is the Pareto frontier , and the set X ∗ = {x ∈ X : f (x) ∈ Y ∗} is the Pareto set .The hypervolume (HV) of a Pareto frontier is the K−dimensional Lebesgue measure λ of the region dominated by Y∗ and bounded below by a reference point r ∈ RK . This monotonically increasing metric is typically used to assess convergence in MOBO. x1                    
+
+> x2
+> f1Branin decoupled Branin obs.
+> x1
+> f2Currin decoupled Currin obs.
+> x1
+> Total correlation TC (x)
+> x1
+> f2uncertainty reduction: σGP −σMTGP
+> 080 160 240
+> f1
+> 36912
+> f2
+> 0.00.51.01.52.0TC (x)
+> −0.0050 −0.0025 0.0000 0.0025 0.0050
+> ∆σ
+
+Figure 1: The Branin and Currin test functions (left and middle left panels) and their total correlation TC( x)(middle right panel). Knowing the TC( x) structure allows us to decouple the two functions’ evaluations – 
+
+f1 is evaluated at 15 points ( ⋆, left) with high TC( x) and f2 is evaluated on 30 points ( •, middle left) with 
+
+low TC( x). Then, we fit two independent GPs using all 45 points for both f1 and f2 (90 evaluations total) and one multitask GP (MTGP) with only the 45 decoupled evaluations. The right panel shows the MTGP’s reduction of posterior uncertainty in f2. Thus, appropriately chosen observation sites allow MTGP to transfer information between tasks, which can improve sample efficiency in MOBO. 
+
+In MOBO, a decision-theoretic rule (the acquisition function) typically selects the next evaluation point [23, 30, 16, 24]. When objectives or constraints are statistically correlated, a query to one oracle can reduce posterior uncertainty about others. Evaluating every oracle at every selected design may then be redundant. The key question is therefore not only where to evaluate, but also which subset of objectives and constraints to evaluate at each design. Multitask Gaussian process (MTGP) models [5] offer an effective way to jointly learn correlated tasks. Figure 1 illustrates the mechanism we exploit: regions with high “total correlation” (defined in Section 3) indicate where observing one task can inform another. In the Branin-Currin example, a multitask posterior trained on selectively decoupled observations has lower uncertainty for one objective than independent, “single task”, models unable to transfer information across tasks. Traditionally, independent GPs emulate objectives and constraints in MOBO. For instance, the expected hypervolume improvement (EHVI) [14], its stochastic extension [12], and predictive entropy search (PESMO) [18] all assume independent GP priors across objectives and constraints. This independence assumption permits simple product factorizations yielding closed-form acquisition functions. However, MTGPs complicate acquisition function construction because cross-output correlations prevent product factorizations possible with independent GPs. Standard acquisitions thus become high-dimensional integrals over correlated Gaussians (truncated Gaussians under constraints), preventing their widespread use in MOBO. Despite this limitation, MTGPs have 2been used in single-objective BO to show that sharing structure across tasks can substantially reduce the evaluations needed for good solutions [33]. In this work, we combine MTGPs with a total-correlation-based metric to propose an optimal way to decouple objective and constraint evaluations in MOBO. A constrained MOBO method is needed to exploit inter-task correlation to decouple objective and constraint evaluations even under uniform oracle evaluation costs , while avoiding intractable MTGP acquisition computations. 
+
+Related work. Recently, Renganathan and Carlson [29] extended Thompson sampling [36] to constrained MOBO as Pareto optimal Thompson sampling (qPOTS). qPOTS is attractive here because it replaces acquisition integration over correlated predictive distributions with optimization over draws of posterior sample paths. Drawing joint sample paths from an MTGP is straightforward, whereas adapting EHVI or PESMO style acquisitions to correlated objective/constraint posteriors leads to difficult high-dimensional integrals. Therefore, we build on qPOTS [29] in this work. MOBO with decoupled evaluations has been addressed before, albeit rarely. These include the entropy-based approaches Predictive Entropy Search (PESMO) [18], Pareto Frontier Entropy Search (PFES) [32], and more recently the Joint Entropy Search (JES) [37]. Other approaches include the hypervolume knowledge gradient (HVKG) [11] and another variant of knowledge gradient [7]. Outside of these two categories, FlexiBO [20] uses the uncertainty reduction in the hypervolume to accommodate decoupled evaluations. However, all of these methods share the following limiting characteristics. (1) They require the cost of evaluating each objective to be different for the decoupling to have a value proposition. Under uniform evaluation costs, they may not provide benefit. (2) They do not consider the decoupling of constraint evaluations. (3) They do not exploit the inherent correlation between objectives; instead, decoupling is achieved as a consequence of cost weighting. (4) They are not directly compatible with MTGPs, which would necessitate appropriate modifications to their acquisition function computation. On the other hand, our proposed approach overcomes all of these limitations, while enabling decoupling under uniform evaluation costs – this crucial benefit broadens decoupling to scenarios where cost is not a factor or unknown. Our take is that, as long as objectives and constraints are correlated and decoupled evaluations are feasible, it should be exploited for better sample efficiency in MOBO regardless of any difference in evaluation costs. Our contributions are summarized as follows. 1. Method. We introduce qPOTS-DOE : “batch Pareto optimal Thompson sampling with decoupled oracle evaluations” for constrained MOBO with partial objective and constraint observations under uniform scalar-oracle costs. 2. Decoupling rule. We propose a two-stage decoupling mechanism: a total correlation (Sec-tion 3.1) gate to decide whether decoupling is warranted at a candidate design, followed by a Gaussian mutual-information criterion to choose the optimal subset of objectives and constraints to evaluate. 3. Theory. We show that despite decoupling our acquisition policy is asymptotically consistent, and that the chosen subset of decoupled evaluations is optimal. 4. Empirics. We demonstrate improved hypervolume performance and evaluation efficiency on synthetic and real-world constrained MOBO benchmarks, including ablations over the TC threshold and batch size. The rest of the paper is organized as follows. In Section 2 we briefly review preliminaries. Our overall method is summarized in Section 3. Our theoretical and empirical results are presented in 3Section 4 and Section 5, respectively. We provide concluding remarks in Section 6. Our software implementation is openly available at https://github.com/csdlpsu/qpots .
+
+## 2 Preliminaries 
+
+Multitask Gaussian process models. A review of “single task” GP models is provided in Section A.2. For MTGP models, the output at each input x ∈ Rd is K-dimensional. We define the vector-valued process 
+
+Y(x) = [Y1(x), . . . , Y K (x)]⊤ ∈ RK ,
+
+where Yk(x) denotes the latent function for task k ∈ { 1, . . . , K }. An MTGP assumes that any finite collection of stacked outputs is jointly Gaussian [5, 1]. We write Y(x) ∼ MTGP (μ(x), K(x, x′)),
+
+where μ(x) ∈ RK is the mean vector and K(x, x′) = cov (Y(x), Y(x′)) ∈ RK×K is a matrix-valued kernel that encodes both input similarity and inter-task correlations [1]. Given inputs 
+
+X = [ x1, . . . , xn]⊤, define the stacked output vector 
+
+y = [Y(x1)⊤, . . . , Y(xn)⊤]⊤ ∈ RnK .
+
+Then y ∼ N (μ, Σ) , where m = [ μ(x1)⊤, . . . , μ(xn)⊤]⊤ and Σ ∈ RnK ×nK is a block covariance matrix with K × K blocks Σ ij = K(xi, xj ), i, j ∈ { 1, . . . , n }. A common observation model is additive Gaussian noise per input: ˜ yi = Y(xi) + εi, εi ∼ N (0, Σε), with Σ ε ∈ RK×K often chosen diagonal (independent task noise) or full (correlated noise). Stacking all observations gives ˜y ∼ N (m, Σ + In ⊗ Σε
+
+> )
+
+,
+
+where ⊗ denotes the Kronecker product. For a test input x∗, define Σ X∗ = [K(xi, x∗)]ni=1 ∈
+
+RnK ×K , Σ∗X = Σ ⊤
+
+> X∗
+
+, Σ∗∗ = K(x∗, x∗) ∈ RK×K . Conditioning the joint Gaussian on observations yields [5, 1]: 
+
+Y(x∗) | X, ˜y ∼ N 
+
+> (
+
+m(x∗) + Σ ∗X
+
+> (
+
+Σ + In ⊗ Σε
+
+> )−1(
+
+˜y − m),
+
+Σ∗∗ − Σ∗X
+
+> (
+
+Σ + In ⊗ Σε
+
+> )−1
+
+ΣX∗
+
+> )
+
+.
+
+(2) A central modeling choice is the form of the matrix-valued kernel K(x, x′). A widely used parameterization is the intrinsic coregionalization model (ICM), K(x, x′) = B k(x, x′), where k(·, ·)is a scalar kernel over inputs and B ∈ RK×K is a positive semidefinite coregionalization matrix capturing task relatedness [5, 1]. Under the ICM kernel, the stacked covariance takes the Kronecker form Σ = Σ x ⊗ B, (Σ x)ij = k(xi, xj ), which can be exploited computationally when n and K
+
+are large. More generally, the linear model of coregionalization (LMC) uses a sum of separable components, allowing multiple latent correlation structures across tasks and inputs [1, 35]. This flexibility often improves transfer across related tasks by sharing statistical strength while preserving task-specific variation. 
+
+## 3 qPOTS-DOE : Batch Pareto optimal Thompson sampling with de-coupled oracle evaluations 
+
+Instead of fitting K independent posterior GP models in [29], we fit a single K-task MTGP model for all objectives. We directly address the constrained setting; but review the unconstrained setting in Section A.2.1. 4In addition to K objectives, let there be a total of C constraints {c1, . . . , c C }, where I ∪ E = [ C]. We fit a single ( K + C)-task multitask GP model for all objectives and constraints. Let 
+
+Y1: K+C (x) ≡
+
+[
+
+Y1(x) · · · YK (x) YK+1 (x) · · · YK+C (x)
+
+]⊤
+
+,
+
+where, for each i ∈ [C], YK+i denotes the posterior task corresponding to constraint ci. The joint multitask posterior, with hyperparameters Ω, is 
+
+Y1: K+C (·) | D1: K+Cn , Ω ∼ MTGP( μn(·), Σn(·, ·)) ,
+
+with [Σn(x, x′)] 
+
+> ij
+
+= cov 
+
+(
+
+Yi(x), Y j (x′) | D1: K+Cn , Ω
+
+)
+
+, i, j ∈ [K + C].
+
+Hence, the objectives and constraints are learned jointly, and the posterior cross-covariances between objective tasks and constraint tasks are retained. For a posterior sample path, define the sampled feasible region as 
+
+X feas  
+
+> Y
+
+=
+
+{
+
+x ∈ X : 1
+
+{ ⋂
+
+> i∈E
+
+YK+i(x) = 0 
+
+}
+
+1
+
+{ ⋂
+
+> i∈I
+
+YK+i(x) ≥ 0
+
+}
+
+= 1 
+
+}
+
+.
+
+Then, we choose points according to 
+
+pX∗ (x) = 
+
+∫
+
+δ
+
+x − arg max  
+
+> x∈X feas
+> Y
+
+{Y1(x), . . . , Y K (x)}
+
+ p
+
+(
+
+Y1: K+C | D 1: K+Cn
+
+)
+
+dY1: K+C ,
+
+where δ is the Dirac’s delta function and dY1: K+C ≡ dY 1 · · · dY K dY K+1 · · · dY K+C . Equivalently, we draw one joint sample path from the ( K + C)-task multitask GP posterior, 
+
+Y1: K+C (·, ω ) = μn(·) + Σ1/2 
+
+> n
+
+(·) Z(ω), Z(ω) ∼ N (0 , I ),
+
+filter the sampled design space by the same feasibility indicators, and solve 
+
+X∗ = arg max  
+
+> x∈X feas
+> ω
+
+{Y1(x, ω ), . . . , Y K (x, ω )},
+
+where 
+
+X feas  
+
+> ω
+
+=
+
+{
+
+x ∈ X : 1
+
+{ ⋂
+
+> i∈E
+
+YK+i(x, ω ) = 0 
+
+}
+
+1
+
+{⋂
+
+> i∈I
+
+YK+i(x, ω ) ≥ 0
+
+}
+
+= 1 
+
+}
+
+.
+
+This cheap multiobjective optimization problem is solved via evolutionary approaches e.g., NSGA-II [13]. Let γ(·, ·) : Rd × Rd → R+ denote the Euclidean distance between two points in X feas  
+
+> ω
+
+. Then, a batch of q acquisitions is chosen per 
+
+xn+1 = arg max 
+
+> x∗∈X∗
+
+min  
+
+> xi∈X
+
+γ(x∗, xi),
+
+xn+2 = arg max 
+
+> x∗∈X∗
+
+min  
+
+> xi∈X∪{ xn+1 }
+
+γ(x∗, xi),
+
+...
+
+xn+q = arg max 
+
+> x∗∈X∗
+
+min  
+
+> xi∈X∪{ xn+1 ,..., xn+q−1}
+
+γ(x∗, xi).
+
+(3) Once a batch of q points is chosen per (3), we then decide if evaluations must be decoupled, followed by choosing the optimal subset of them to evaluate – this is presented next. 53.1 The total correlation metric TC( x) thresholding for decoupling 
+
+A key advantage of MTGPs is their ability to model statistical dependence across tasks. After conditioning on data D, the predictive distribution at a fixed input x is Gaussian, Y(x) | D ∼N(μ(x), Σ( x)), Σ( x) ∈ RK×K , where Σ( x) is the predictive covariance matrix across tasks at x.Then, a standard normalized measure of pairwise coupling is the (posterior) correlation coefficient 
+
+ρkℓ (x) = Σkℓ (x)
+
+> √
+
+Σkk (x) Σ ℓℓ (x) , k̸ = ℓ, 
+
+and the full correlation matrix can be written compactly as 
+
+R(x) = D(x)− 12 Σ( x) D(x)− 12 , D(x) = diag (Σ( x)). (4) While pairwise correlations ρkℓ (x) are intuitive, they do not provide a single scalar summary of the 
+
+overall dependence among all K tasks at x – we overcome this with a “total correlation” metric (also called multi-information ) [38, 9], defined as TC( x) ≜ DKL 
+
+> (
+
+p(Y(x) | D ) ∥∥∥
+
+> K∏
+> k=1
+
+p(Yk(x) | D ))
+
+, (5) which measures how far the joint predictive distribution across tasks deviates from the product of its (task-wise) marginals. Equivalently, in entropy form, TC( x) = ∑Kk=1 H(Yk(x) | D ) − H(Y(x) | D ),
+
+so TC( x) ≥ 0, and TC( x) = 0 if and only if the tasks are independent under the predictive distribution at x [9]. Because Y is multivariate Gaussian, TC( x) has a simple closed form in terms of Σ( x): TC( x) = 12 log 
+
+> ∣∣
+
+diag (Σ( x))∣ ∣∣∣Σ( x)∣∣ = 12 log  
+
+> ∏Kk=1
+
+Σkk (x)
+
+> ∣∣
+
+Σ( x)∣∣ = − 12 log ∣∣R(x)∣∣,
+
+where the last equality uses the identity |Σ( x)| = |D(x)| | R(x)|. This highlights that (for Gaussian predictive distributions) total correlation depends only on the correlation structure, not on the marginal scales. Finally, we use TC( x) ≥ τ as a gate to decide if decoupling is warranted at a candidate x or not, where τ > 0 is a threshold the user must specify. As τ → ∞ , qPOTS-DOE reduces to qPOTS [29]. Note that τ represents the amount of information (in nats) that can be transferred at x between tasks; thus when TC( x) ≥ τ , TC( x) is an upper bound on the maximum possible information transfer from any decoupled subset. In practice we observe (and as shown in the ablation in Figure 5) that choosing τ ∈ [10 −6, 10 0] has negligible impact on performance. Once a candidate x is chosen, and the total correlation gate (TC( x) > τ ) passes, an optimal subset of objectives and constraints for decoupled evaluations is chosen by solving an inner optimization problem – this is described next. 
+
+3.2 Optimal subset for decoupled evaluation 
+
+Without loss of generality, we introduce an inner combinatorial optimization problem that selects a subset of M objectives out of K.1 Let S ⊆ K ≜ {1, . . . , K } and ¯S ≜ K \ S, so that the selected objectives YS (x) are maximally informative about the remaining objectives Y ¯S (x). With a     
+
+> 1In the constrained setting, we would select from K+Cinstead.
+
+6cardinality budget |S| = M (that is, we can evaluate M objectives per candidate x), we define the inner problem as 
+
+S⋆(x) ∈ arg max    
+
+> S⊆K :|S|=M
+
+I(YS (x); Y ¯S (x) | D ). (6) This criterion optimally selects M objectives that are (i) strongly coupled with the rest while (ii) avoiding redundancy among selected objectives, since redundant tasks provide little incremental information. We later show how to determine the cardinality budget M . Using the identity 
+
+I(A; B) = H(A) + H(B)−H(A, B ) and the Gaussian differential entropy H(Z) = 12 log ((2 πe )m|ΣZ|)
+
+for Z ∈ Rm [9], we obtain 
+
+I(YS (x); Y ¯S (x) | D ) = H(YS (x) | D ) + H(Y ¯S (x) | D ) − H(Y(x) | D )
+
+= 12 log 
+
+> ∣∣
+
+ΣSS (x)∣∣ ∣∣Σ ¯S ¯S (x)∣∣∣∣Σ( x)∣∣ . (7) Here Σ SS (x) and Σ ¯S ¯S (x) are principal submatrices of Σ( x) indexed by S and ¯S, respectively. Since log |Σ( x)| does not depend on S, maximizing (7) is equivalent to 
+
+S⋆(x) ∈ arg max  
+
+> S⊆K :|S|=M
+> {
+
+log ∣∣ΣSS (x)∣∣ + log ∣∣Σ ¯S ¯S (x)∣∣}
+
+,
+
+which can be interpreted as finding a partition (of fixed size) that makes both sides “internally uncertain” while being as inter-dependent as possible. In Theorem A.3, we show that this rule selects the best M out of K oracles to evaluate, in terms of the one-step expected entropy reduction. 
+
+Relationship to total correlation. Define the within-subset total correlations TC S (x) and TC ¯S (x) analogously but restricted to objectives in S and ¯S. Using TC = ∑ 
+
+> k
+
+H(Yk) − H(Y) and elementary cancellations, 
+
+I(YS (x); Y ¯S (x) | D ) = TC( x) − TC S (x) − TC ¯S (x),
+
+so maximizing cross-subset mutual information (Equation (6)) favors partitions where the between-group dependence is large relative to the within-group dependence. The inner problem (6) is combinatorial: it requires first choosing a subset size M , and then choosing the optimal subset among (KM 
+
+> )
+
+combinations. Related mutual-information subset selection problems are known to be NP-hard in GP settings [25]. Accordingly, we consider two practical approaches: 
+
+(1) Exact maximization (small K). When K is small (typical in multiobjective optimization), we can evaluate (7) for all subsets of size M , for any M , and select the maximizer. Each evaluation requires computing log-determinants of principal submatrices; this can be done stably via Cholesky factorization. If Σ SS (x) = LL ⊤, log ∣∣ΣSS (x)∣∣ = 2 ∑ 
+
+> i
+
+log Lii , and similarly for Σ ¯S ¯S (x). 
+
+(2) Approximate maximization (moderate/large K). Define the set function 
+
+fx(S) ≜ I(YS (x); Y ¯S (x) | D ).
+
+Because fx(S) = H(YS ) + H(Y ¯S ) − H(Y) and entropy is submodular, fx is a (typically non-monotone) symmetric submodular function of S [9, 25]. This enables the use of standard submodular maximization heuristics and approximation algorithms [15, 6]. A simple and effective heuristic 7under the cardinality constraint |S| = M is a greedy construction followed by swap local search (starting with S = ∅): ∆x(s | S) ≜ fx(S ∪ { s}) − fx(S),s⋆ ∈ arg max  
+
+> s∈K\ S
+
+∆x(s | S), (8) iterated until |S| = M , and then refined by swapping i ∈ S with j ∈ ¯S whenever fx(S \ { i} ∪ { j})improves. Then, we repeat Equation (8) for M = 1 , . . . , K − 1 to pick M that gives the smallest 
+
+fx(S). More sophisticated choices (e.g., randomized methods with constant-factor guarantees for non-monotone submodular maximization) can be used when K is large [15, 6]. Our experiments use the exact maximization approach, but we perform an ablation on exact vs approximate maximization in Figure 13, showing that under moderate K + C, the accuracy difference is not substantial. If objective evaluations at x are noisy, one can compute the mutual information between the 
+
+noisy observed subset and the latent unobserved objectives by replacing the observed covariance block with Σ SS (x) + Σ ε,SS in (7), where Σ ε,SS is the noise covariance for the selected objectives. This makes the subset selection explicitly account for heteroscedastic or task-dependent noise. All the steps involved are summarized in Algorithm 1. 
+
+## 4 Theoretical results 
+
+We prove two key results: (1) that qPOTS-DOE is asymptotically consistent and (2) under a finite sample Dn, any subset of M oracle evaluations chosen per Equation (6) maximizes the one-step expected entropy reduction about the omitted oracles. W.l.o.g, we consider K objectives without constraints. The informal assumptions and results are presented below; but detailed versions, with proofs, are in Section A.3. 
+
+Assumptions. We assume that the design space X is compact and that the K latent oracles are generated by the MTGP model used by the algorithm, with continuous sample paths. Observations may be decoupled: at round i, the algorithm queries a design xi but observes only a subset Si ⊆ [K], with independent Gaussian observation noise of finite, nonzero variance for each observed oracle. The only exploration condition is a no-starvation requirement: every oracle must be directly evaluated on design points that become dense in X . Equivalently, decoupling is allowed, but no task may be permanently ignored – this condition can be enforced by a lightweight safeguard such as occasional coupled evaluations (see line 16 in Algorithm 1). 
+
+Theorem 4.1 (Informal: consistency of qPOTS-DOE ). Under Assumption A.1, decoupled evaluations do not prevent posterior consistency. In particular, if every task is directly evaluated on a set of design points that becomes dense in X , then the multitask GP posterior learned from the partially observed data Dn concentrates on the true task values. Equivalently, for any fixed design point x ∈ X 
+
+and every task k ∈ [K], the posterior mean converges to the true value Y0,k (x) and the posterior uncertainty vanishes as n → ∞ .
+
+Theorem 4.2 (Informal: finite-sample value of decoupling) . Fix the current data Dn and a candidate design x. If only M < K oracles can be evaluated at x, then the qPOTS-DOE subset rule 
+
+S⋆n(x) ∈ arg max   
+
+> S⊆[K]: |S|=M
+
+I(YS (x); Y ¯S (x) | D n)
+
+selects the M oracles whose observation gives the largest expected one-step reduction in posterior uncertainty about the unevaluated oracles Y ¯S (x).
+
+80 25 50 75 100 125 150  
+
+> Evaluations
+> −101234567
+> Objective index
+> Training Acquisitions Objectives  Constraints (80) (90) (86) (91) (72) (122) (78) (73)
+
+Figure 2: qPOTS-DOE decoupled evaluations (OSY) 
+
+## 5 Empirical results 
+
+We demonstrate our methodology on several synthetic and real-world benchmarks varying in input (d), output ( K), and constraint ( C) dimensionality. We focus on evaluating high K +C dimensionality since the benefit of decoupling is the primary objective of this paper; high d scaling is focus of future work. We compare qPOTS-DOE against qPOTS [29] (no decoupling) and qLogNEHVI [12, 2] (a classical baseline, also with no decoupling) and four decoupled baselines: HVKG [11] (our main competitor), PESMO [18], MESMO [4], and JESMO [37], all under uniform costs. For synthetic experiments , we consider the Branin-Currin, ZDT1/2, DTLZ4/5, Gaussian mixture model (GMM), BNH [19], OSY [28], and CONSTR [19] test functions. Additional test functions are included in the supplementary material. For real-world experiments , we consider the Vehicle Safety problem [34], the Penicillin production problem [26], the Car side-impact problem [21], and the disc brake problem [34]. Further details on all experiments, including the reference point r
+
+(Table 1), are provided in the Appendix. We use MTGPs with an ICM kernel [5] for task correlation and the anisotropic Matern for input correlation, for qPOTS and qPOTS-DOE , and independent “single task” GPs for all other methods (as they are designed to be). We provide each experiment with a set of n = 10 × d seed samples chosen uniformly at random from X , and fully coupled observations to start the algorithm; then they are repeated 10 times to observe mean and max / min performance. Our metric for comparison is the hypervolume indicator [41] and the number of oracle evaluations. Our implementation primarily builds on GPyTorch [17] and BoTorch [3]; we leverage MPI4Py [10] to parallelize our repetitions on CPUs. The full source code is available at https://github.com/csdlpsu/qpots .The results of the synthetic experiments are shown in Figure 3 – notice that qPOTS-DOE is the clear winner in 6 /8 experiments (BNH, DTLZ4-5, ZDT2, OSY, CONSTR); in the remaining 2, it is still no worse than others; crucially, qPOTS-DOE outperforms HVKG in all of them. Note that PESMO/JESMO/MESMO were run until we ran out of memory, and hence are missing in some experiments. The real-world experiments are shown in Figure 4, where qPOTS-DOE beats all competitors in all cases. Figure 2 shows how qPOTS-DOE picks the objective and constraint evaluation at each round, for the OSY problem ( K = 2 , C = 6) at q = 1 (additional illustrations are shown in Figure 9). In this example, if decoupling were not allowed, then the total objective and constraint evaluations would have been 160 × 8 = 1280 – on the other hand, qPOTS-DOE required only 692 evaluations total (46% fewer evaluations). 
+
+Ablations. We set q = 4 for all experiments; however, an ablation on q (see Section A.1) shows that qPOTS-DOE maintains its performance across q 2. We also did an ablation on τ , varying 
+
+> 2Note that the perceived difference in the plots is an artifact of the changing x-axis scale.
+
+9it in [10 −6, 1] for the OSY and Branin-Currin experiments (Figure 5); note that when τ = ∞,
+
+qPOTS-DOE reduces to qPOTS as expected. We found that any choice between [10 −6, 1) had a marginal impact on performance; as a default choice, we set (and recommend) τ = 10 −4 in our method. We observe that identifying an optimal τ for each problem is not critical for the overall performance. We include additional ablations on the kernel choice, run-time comparisons, and the benefit of multitask over single-task GPs, in the Appendix. 0 200 400 600 800 
+
+Function Evaluations 
+
+> 4400 4600 4800 5000 5200 5400 5600
+> Hypervolume
+
+(a) Branin-Currin 2 /2/−0 200 400 600 800 
+
+Function Evaluations  
+
+> 13 14 15 16 17 18 19 20
+> Hypervolume
+
+(b) ZDT1 2 /5/−0 200 400 600 800 
+
+Function Evaluations  
+
+> 16 17 18 19 20 21 22
+> Hypervolume
+
+(c) ZDT2 2 /5/−0 250 500 750 1000 1250 1500 
+
+Function Evaluations  
+
+> 14 16 18 20 22
+> Hypervolume
+
+(d) DTLZ4 4 /5/−0 250 500 750 1000 1250 1500 
+
+Function Evaluations 
+
+> 12 14 16 18
+> Hypervolume
+
+(e) DTLZ5 4 /5/−0 500 1000 1500 
+
+Function Evaluations  
+
+> 5000 5100 5200 5300 5400 5500 5600 5700
+> Hypervolume
+
+(f) BNH 2 /2/20 1000 2000 3000 
+
+Function Evaluations  
+
+> 05000 10000 15000 20000 25000 30000
+> Hypervolume
+
+(g) OSY 6 /2/60 250 500 750 1000 1250 1500 
+
+Function Evaluations  
+
+> 500 520 540 560
+> Hypervolume
+
+(h) CONSTR 2 /2/2qPOTS-DOE (Ours) qPOTS HVKG qLogNEHVI Sobol Sobol (decoupled) PESMO MEMO JESMO 
+
+Figure 3: Synthetic experiments. The numbers in the labels follow d/K/C dimensions. Solid lines are the mean and filled colors are the min / max range over 10 repetitions. 0 500 1000 1500 2000 2500 
+
+Function Evaluations 
+
+> 28000 30000 32000 34000 36000
+> Hypervolume
+
+(a) Car side-impact 7 /4/−0 500 1000 1500 2000 2500 
+
+Function Evaluations  
+
+> 66 68 70 72 74 76
+> Hypervolume
+
+(b) Disc brake 4 /2/40 200 400 600 800 1000 1200 
+
+Function Evaluations  
+
+> 27000 28000 29000 30000 31000 32000
+> Hypervolume
+
+(c) Vehicle safety 5 /3/−0 200 400 600 800 1000 1200 
+
+Function Evaluations  
+
+> 3.23.33.43.5
+> Hypervolume
+> ×10 6
+
+(d) Penicillin 7 /3/−qPOTS-DOE (Ours) qPOTS HVKG qLogNEHVI Sobol Sobol (decoupled) PESMO MEMO JESMO 
+
+Figure 4: Real-world experiments. Solid lines are the mean and filled colors are the min / max range over 10 repetitions. 
+
+10 0 500 1000 1500 2000 
+
+> Function Evaluations
+> 5000 10000 15000 20000 25000 30000
+> Hypervolume
+
+OSY 0 200 400 600 800      
+
+> Function Evaluations
+> 4900 5000 5100 5200 5300 5400 5500 5600
+> Hypervolume 0200 400 600 800
+> Function Evaluations
+> 5590 5595 5600 5605 5610 5615
+> Hypervolume
+
+Branin-Currin (inset: zoom-in) τ = ∞                  
+
+> τ= 1 .0×10 0
+> τ= 1 .0×10 −1
+> τ= 1 .0×10 −2
+> τ= 1 .0×10 −3
+> τ= 1 .0×10 −4
+> τ= 1 .0×10 −6
+
+Figure 5: Ablation studies. Top row: ablation on q (OSY problem); bottom row: ablation on τ .
+
+## 6 Conclusions 
+
+We introduced qPOTS-DOE , a batch Thompson sampling framework for constrained multiobjective Bayesian optimization that exploits correlations among objectives and constraints to support decoupled oracle evaluations under uniform evaluation costs. By replacing independent surrogate models with a multitask GP, qPOTS-DOE preserves cross-task posterior structure; by using total correlation as a decoupling gate and Gaussian mutual information to select which objectives or constraints to evaluate, it turns correlation into a practical mechanism for reducing redundant evaluations. Theoretical analysis shows that the resulting policy remains asymptotically consistent under dense-design and no-starvation , and that our subset rule for decoupling is optimal, while the empirical results on synthetic and real-world benchmarks indicate that qPOTS-DOE improves hypervolume performance relative to several existing coupled and decoupled baselines. Overall, the method broadens the role of decoupled evaluations in MOBO: decoupling need not rely only on unequal costs, but can also arise from statistical dependence among expensive oracles. Future work should focus on high (input) dimensional scaling, testing on additional gains due to variable costs, and robustness to misspecified task correlations. 
+
+Limitations . qPOTS-DOE is most effective when objectives and constraints exhibit exploitable posterior correlations; when such correlations are weak or poorly captured by the MTGP kernel, the gains from decoupling may diminish, although the TC threshold allows the method to revert toward coupled evaluation. The method also introduces hyperparameters, notably the TC threshold and the decoupled task budget, and while our ablations suggest limited sensitivity to the threshold, adaptive selection remains a direction to explore. 11 References 
+
+[1] Mauricio A Alvarez, Lorenzo Rosasco, and Neil D Lawrence. Kernels for vector-valued functions: A review. Foundations and Trends® in Machine Learning , 4(3):195–266, 2012. [2] Sebastian Ament, Samuel Daulton, David Eriksson, Maximilian Balandat, and Eytan Bakshy. Unexpected improvements to expected improvement for bayesian optimization. Advances in neural information processing systems , 36:20577–20612, 2023. [3] Maximilian Balandat, Brian Karrer, Daniel Jiang, Samuel Daulton, Ben Letham, Andrew G Wil-son, and Eytan Bakshy. Botorch: A framework for efficient monte-carlo bayesian optimization. 
+
+Advances in neural information processing systems , 33:21524–21538, 2020. [4] Syrine Belakaria, Aryan Deshwal, and Janardhan Rao Doppa. Max-value entropy search for multi-objective bayesian optimization. Advances in neural information processing systems , 32. [5] Edwin V Bonilla, Kian Chai, and Christopher Williams. Multi-task gaussian process prediction. In Advances in neural information processing systems , volume 20, 2007. [6] Niv Buchbinder, Moran Feldman, Joseph Seffi, and Roy Schwartz. A tight linear time (1/2)-approximation for unconstrained submodular maximization. SIAM Journal on Computing , 44 (5):1384–1402, 2015. [7] Jack M Buckingham, Sebastian Rojas-Gonzalez, and Juergen Branke. Knowledge gradient for multi-objective bayesian optimization with decoupled evaluations. In International Conference on Evolutionary Multi-Criterion Optimization , pages 117–132. Springer, 2025. [8] Kade Carlson and Ashwin Renganathan. Multiobjective aerodynamic design optimization of the nasa common research model. Aerospace Science and Technology , page 111120, 2025. [9] Thomas M. Cover and Joy A. Thomas. Elements of Information Theory . Wiley-Interscience, 2 edition, 2006. ISBN 978-0471241959. [10] Lisandro Dalcin and Yao-Lung L Fang. mpi4py: Status update after 12 years of development. 
+
+Computing in Science & Engineering , 23(4):47–54, 2021. [11] Sam Daulton, Maximilian Balandat, and Eytan Bakshy. Hypervolume knowledge gradient: a lookahead approach for multi-objective bayesian optimization with partial information. 
+
+International Conference on Machine Learning , pages 7167–7204, 2023. [12] Samuel Daulton, Maximilian Balandat, and Eytan Bakshy. Differentiable expected hypervol-ume improvement for parallel multi-objective bayesian optimization. In Advances in neural information processing systems , volume 33, pages 9851–9864, 2020. [13] Kalyanmoy Deb, Amrit Pratap, Sameer Agarwal, and TAMT Meyarivan. A fast and elitist multiobjective genetic algorithm: Nsga-ii. IEEE transactions on evolutionary computation , 6 (2):182–197, 2002. [14] Michael Emmerich and Jan-willem Klinkenberg. The computation of the expected improvement in dominated hypervolume of pareto front approximations. Technical report, Leiden University, 2008. 12 [15] Uriel Feige, Vahab S Mirrokni, and Jan Vondrák. Maximizing non-monotone submodular functions. SIAM Journal on Computing , 40(4):1133–1153, 2011. [16] Peter I. Frazier. A tutorial on bayesian optimization. arXiv preprint arXiv:1807.02811 , 2018. [17] Jacob Gardner, Geoff Pleiss, Kilian Q Weinberger, David Bindel, and Andrew G Wilson. GPyTorch: Blackbox matrix-matrix Gaussian process inference with GPU acceleration. In 
+
+Advances in Neural Information Processing Systems , pages 7576–7586, 2018. [18] Eduardo C Garrido-Merchán and Daniel Hernández-Lobato. Predictive entropy search for multi-objective bayesian optimization with constraints. Neurocomputing , 361:50–68, 2019. [19] Eduardo C Garrido-Merchán and Daniel Hernández-Lobato. Parallel predictive entropy search for multi-objective bayesian optimization with constraints. arXiv preprint arXiv:2004.00601 ,2020. [20] Md Shahriar Iqbal, Jianhai Su, Lars Kotthoff, and Pooyan Jamshidi. Flexibo: a decoupled cost-aware multi-objective optimization approach for deep neural networks. Journal of Artificial Intelligence Research , 77:645–682, 2023. [21] Himanshu Jain and Kalyanmoy Deb. An evolutionary many-objective optimization algorithm using reference-point based nondominated sorting approach, part ii: Handling constraints and extending to an adaptive approach. IEEE Transactions on evolutionary computation , 18(4): 602–622, 2013. [22] Vijay Janapa Reddi, David Kanter, Peter Mattson, Jared Duke, Thai Nguyen, Ramesh Chukka, Ken Shiring, Koan-Sin Tan, Mark Charlebois, William Chou, et al. Mlperf mobile inference benchmark: An industry-standard open-source machine learning benchmark for on-device ai. 
+
+Proceedings of Machine Learning and Systems , 4:352–369, 2022. [23] Donald R. Jones, Matthias Schonlau, and William J. Welch. Efficient global optimization of expensive black-box functions. Journal of Global Optimization , 13(4):455–492, 1998. [24] Joshua Knowles. Parego: A hybrid algorithm with on-line landscape approximation for expensive multiobjective optimization problems. IEEE Transactions on Evolutionary Computation , 10 (1):50–66, 2006. [25] Andreas Krause, Ajit Singh, and Carlos Guestrin. Near-optimal sensor placements in gaussian processes: Theory, efficient algorithms and empirical studies. Journal of Machine Learning Research , 9(2), 2008. [26] Qiaohao Liang and Lipeng Lai. Scalable bayesian optimization accelerates process optimization of penicillin production. In NeurIPS 2021 AI for Science Workshop , 2021. [27] Xingtao Liao, Qing Li, Xujing Yang, Weigang Zhang, and Wei Li. Multiobjective optimization for crash safety design of vehicles using stepwise regression model. Structural and multidisciplinary optimization , 35:561–569, 2008. [28] Andrzej Osyczka and Sourav Kundu. A new method to solve generalized multicriteria opti-mization problems using the simple genetic algorithm. Structural optimization , 10(2):94–99, 1995. 13 [29] Ashwin Renganathan and Kade Carlson. qpots: Efficient batch multiobjective bayesian optimization via pareto optimal thompson sampling. In International Conference on Artificial Intelligence and Statistics , pages 4051–4059. PMLR, 2025. [30] Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P Adams, and Nando De Freitas. Taking the human out of the loop: A review of bayesian optimization. Proceedings of the IEEE , 104 (1):148–175, 2015. [31] Ilya M Sobol. Distribution of points in a cube and approximate evaluation of integrals. USSR Computational mathematics and mathematical physics , 7:86–112, 1967. [32] Shinya Suzuki, Shion Takeno, Tomoyuki Tamura, Kazuki Shitara, and Masayuki Karasuyama. Multi-objective bayesian optimization using pareto-frontier entropy. In International conference on machine learning , pages 9279–9288. PMLR, 2020. [33] Kevin Swersky, Jasper Snoek, and Ryan P Adams. Multi-task bayesian optimization. In 
+
+Advances in neural information processing systems , volume 26, 2013. [34] Ryoji Tanabe and Hisao Ishibuchi. An easy-to-use real-world multi-objective optimization problem suite. Applied Soft Computing , 89:106078, 2020. [35] Yee Whye Teh, Matthias Seeger, and Michael I Jordan. Semiparametric latent factor models. In 
+
+International Workshop on Artificial Intelligence and Statistics , pages 333–340. PMLR, 2005. [36] William R Thompson. On the likelihood that one unknown probability exceeds another in view of the evidence of two samples. Biometrika , 25(3-4):285–294, 1933. [37] Ben Tu, Axel Gandy, Nikolas Kantas, and Behrang Shafei. Joint entropy search for multi-objective bayesian optimization. Advances in Neural Information Processing Systems , 35: 9922–9938, 2022. [38] Satosi Watanabe. Information theoretical analysis of multivariate correlation. IBM Journal of research and development , 4(1):66–82, 1960. [39] Christopher KI Williams. Prediction with gaussian processes: From linear regression to linear prediction and beyond. In Learning in graphical models , pages 599–621. Springer, 1998. [40] Christopher KI Williams and Carl Edward Rasmussen. Gaussian processes for machine learning ,volume 2. MIT press Cambridge, MA, 2006. [41] Kaifeng Yang, Michael Emmerich, André Deutz, and Thomas Bäck. Efficient computation of expected hypervolume improvement using box decomposition algorithms. Journal of Global Optimization , 75:3–34, 2019. 14 A Supplementary material 
+
+A.1 Additional experiments and ablations 
+
+Details on experiments. The Penicillin production problem ( d = 7 , K = 3) seeks to maximize Penicillin yield while minimizing both the production time and the carbon dioxide byproduct emission. The d = 7 input variables include the culture medium volume, biomass concentration, temperature (in K), glucose substrate concentration, substrate feed rate, substrate feed concentration and the H+ concentration [26]. The Vehicle Safety problem ( d = 5 , K = 3) [34] concerns the design of automobiles for enhanced safety. Specifically, we consider the minimization of vehicle mass, the vehicle acceleration during a full-frontal crash, and the toe-board intrusion—a measure of the mechanical damage to the vehicle during an off-frontal crash, with respect to d = 5 design variables which represent the reinforced parts of the frontal frame; further details are found in [27]. The Car side-impact problem is aimed at minimizing the weight of the car while minimizing the pubic force experienced by a passenger and the average velocity of the V-pillar responsible for withstanding the impact load. Additionally, as the fourth objective, the maximum constraint violation of 10 constraints which include limiting values of abdomen load, pubic force, velocity of V-pillar, and rib deflection is also added [21]. 
+
+Experimental settings. Additionally, we also include Sobol sampling [31] with and without decoupling. We implemented decoupled variants of PESMO, MESMO, and JESMO by introducing an evaluation mask that specifies which objective is observed at a candidate design, and by optimizing over the input ( x) - objective index ( k) pairs rather than over x alone. For PESMO, the entropy reduction is restricted to the masked objective term, while for MESMO and JESMO we use a projection-based approximation that conditions only on the observed objective by projecting the posterior and sampled Pareto geometry onto the corresponding subspace and recomputing the lower-dimensional box decomposition. 15 0 200 400 600 800 
+
+Function Evaluations 
+
+4400 4600 4800 5000 5200 5400 5600 
+
+> Hypervolume
+
+(a) BC 2 /2/−0 500 1000 1500 
+
+Function Evaluations 
+
+5000 5100 5200 5300 5400 5500 5600 5700  
+
+> Hypervolume
+
+(b) BNH 2 /2/20 250 500 750 1000 1250 1500 
+
+Function Evaluations 
+
+14 16 18 20 22  
+
+> Hypervolume
+
+(c) DTLZ4 5 /4/−0 500 1000 1500 
+
+Function Evaluations 
+
+050000 100000 150000 200000 
+
+> Hypervolume
+
+(d) SRN 2 /2/20 250 500 750 1000 1250 1500 
+
+Function Evaluations 
+
+12 14 16 18  
+
+> Hypervolume
+
+(e) DTLZ5 5 /4/−0 250 500 750 1000 1250 1500 
+
+Function Evaluations 
+
+500 520 540 560  
+
+> Hypervolume
+
+(f) CONSTR 2 /2/20 200 400 600 800 
+
+Function Evaluations 
+
+13 14 15 16 17 18 19 20 
+
+> Hypervolume
+
+(g) ZDT1 5 /2/−0 200 400 600 800 
+
+Function Evaluations 
+
+16 17 18 19 20 21 22  
+
+> Hypervolume
+
+(h) ZDT2 5 /2/−0 250 500 750 1000 1250 1500 
+
+Function Evaluations 
+
+45678910  
+
+> Hypervolume
+
+(i) GMM 2 /4/−0 250 500 750 1000 1250 1500 
+
+Function Evaluations 
+
+14 16 18 20 22 
+
+> Hypervolume
+
+(j) DTLZ2 5 /4/−0 200 400 600 800 
+
+Function Evaluations 
+
+400 450 500 550  
+
+> Hypervolume
+
+(k) DTLZ7 20 /2/−0 500 1000 1500 2000 
+
+Function Evaluations 
+
+9500 9600 9700 9800 9900 10000  
+
+> Hypervolume
+
+(l) C2DTLZ2 5 /4/10 200 400 600 800 1000 1200 
+
+Function Evaluations 
+
+4200 4400 4600 4800 
+
+> Hypervolume
+
+(m) Cons. Branin-Currin 2 /2/10 250 500 750 1000 1250 1500 
+
+Function Evaluations 
+
+88 90 92 94 96 98  
+
+> Hypervolume
+
+(n) MW7 0 1000 2000 3000 
+
+Function Evaluations 
+
+05000 10000 15000 20000 25000 30000  
+
+> Hypervolume
+
+(o) OSY qPOTS-DOE (Ours) qPOTS HVKG qLogNEHVI Sobol Sobol (decoupled) PESMO MEMO JESMO 
+
+Figure 6: Synthetic experiments 
+
+16 Algorithm 1 qPOTS-DOE : Batch Pareto optimal Thompson sampling with Decoupled Oracle Evaluations 
+
+Require: Initial data D0; objective and constraint oracles fk, k = 1 , 2, 3, . . . and cj , j ∈ I ∪ E ;batch size q; decoupling threshold τ ; rounds T 
+
+> 1:
+
+for i = 0 , . . . , T − 1 do  
+
+> 2:
+
+Fit one multitask Gaussian process to all observations in Di 
+
+> 3:
+
+Draw one joint Thompson sample of all objectives and constraints  
+
+> 4:
+
+Find the feasible Pareto set under this sampled model  
+
+> 5:
+
+Select q diverse candidate designs from the sampled Pareto set  
+
+> 6:
+
+for each candidate design x do  
+
+> 7:
+
+Compute a dependence score TC( x) between the objective/constraint tasks  
+
+> 8:
+
+if TC < τ then  
+
+> 9:
+
+Evaluate all objectives and constraints at x ▷ coupled evaluation  
+
+> 10:
+
+else  
+
+> 11:
+
+Identify M , and choose M tasks that are most informative about the remaining tasks  
+
+> 12:
+
+Evaluate only those selected tasks at x ▷ decoupled evaluation  
+
+> 13:
+
+end if  
+
+> 14:
+
+Add the new observations to Di+1  
+
+> 15:
+
+end for  
+
+> 16:
+
+(optional) Occasionally force rarely observed tasks to be evaluated ▷ prevents task starvation  
+
+> 17:
+
+end for  
+
+> 18:
+
+return The feasible designs and estimated Pareto frontier from the final model                                                                                                                                                             
+
+> Table 1: Summary of all experiments
+> Test Case Dim Obj Cons Ref Point Ablations:
+> BNH 222(−150 ,−50) –BraninCurrin 220(−300 ,−20) q= 1 ,2,4,8C2DTLZ2 541(−10 ,−10 ,−10 ,−10) –CarsideImpact 740(−50 ,−10 ,−20 ,−20) q= 1 ,2,4,8CONSTR 222(−10 ,−60) –Constrained Branin-Currin 221(−300 ,−20) –DiscBrake 424(−10 ,−10) q= 1 ,2,4,8DTLZ2 540(−10 ,−10 ,−10 ,−10) –DTLZ3 320(−100 ,−100) –DTLZ4 540(−1,−1,−1,−1) –DTLZ5 540(−1,−1,−1,−1) –DTLZ7 20 20(−25 ,−25) –GMM 240(−1,−1,−1,−1) –MW7 222(−10 ,−10) –OSY 626(−100 ,−100) q= 1 ,2,4,8Penicillin 730(−40 ,−70 ,−1000) –SRN 222(−1000 ,−200) –VehicleSafety 530(−1900 ,−20 ,−10) –ZDT1 520(−1,−1) –ZDT2 520(−1,−1) –
+
+17 0 500 1000 1500 2000 2500 
+
+Function Evaluations 
+
+28000 30000 32000 34000 36000 
+
+> Hypervolume
+
+(a) Car side-impact 0 500 1000 1500 2000 2500 
+
+Function Evaluations 
+
+66 68 70 72 74 76  
+
+> Hypervolume
+
+(b) Disc brake 0 200 400 600 800 1000 1200 
+
+Function Evaluations 
+
+3.23.33.43.5
+
+> Hypervolume
+
+×10 6
+
+(c) Penicillin 0 200 400 600 800 1000 1200 
+
+Function Evaluations 
+
+27000 28000 29000 30000 31000 32000  
+
+> Hypervolume
+
+(d) Vehicle safety qPOTS-DOE (Ours) qPOTS HVKG qLogNEHVI Sobol Sobol (decoupled) PESMO MEMO JESMO 
+
+Figure 7: Real-world experiments. 
+
+18 0 50 100 150 200 
+
+Function Evaluations 
+
+4400 4600 4800 5000 5200 5400 5600 
+
+> Hypervolume
+
+0 100 200 300 400 
+
+Function Evaluations 
+
+4400 4600 4800 5000 5200 5400 5600 
+
+> Hypervolume
+
+0 200 400 600 800 
+
+Function Evaluations 
+
+4400 4600 4800 5000 5200 5400 5600 
+
+> Hypervolume
+
+0 500 1000 1500 
+
+Function Evaluations 
+
+4400 4600 4800 5000 5200 5400 5600 
+
+> Hypervolume
+
+0 100 200 300 400 
+
+Function Evaluations 
+
+28000 30000 32000 34000 36000 
+
+> Hypervolume
+
+0 200 400 600 800 
+
+Function Evaluations 
+
+28000 30000 32000 34000 36000 
+
+> Hypervolume
+
+0 500 1000 1500 2000 2500 
+
+Function Evaluations 
+
+28000 30000 32000 34000 36000 
+
+> Hypervolume
+
+0 500 1000 1500 2000 2500 3000 
+
+Function Evaluations 
+
+28000 30000 32000 34000 36000 
+
+> Hypervolume
+
+0 100 200 300 400 500 600 
+
+Function Evaluations 
+
+66 68 70 72 74 76 
+
+> Hypervolume
+
+0 200 400 600 800 1000 1200 
+
+Function Evaluations 
+
+66 68 70 72 74 76 
+
+> Hypervolume
+
+0 500 1000 1500 2000 2500 
+
+Function Evaluations 
+
+66 68 70 72 74 76 
+
+> Hypervolume
+
+0 1000 2000 3000 4000 5000 
+
+Function Evaluations 
+
+66 68 70 72 74 76 
+
+> Hypervolume
+
+0 200 400 600 800 
+
+Function Evaluations 
+
+05000 10000 15000 20000 25000 30000 
+
+> Hypervolume
+
+(a) q = 1 0 500 1000 1500 
+
+Function Evaluations 
+
+05000 10000 15000 20000 25000 30000  
+
+> Hypervolume
+
+(b) q = 2 0 1000 2000 3000 
+
+Function Evaluations 
+
+05000 10000 15000 20000 25000 30000  
+
+> Hypervolume
+
+(c) q = 4 0 1000 2000 3000 4000 5000 6000 
+
+Function Evaluations 
+
+05000 10000 15000 20000 25000 30000  
+
+> Hypervolume
+
+(d) q = 8 qPOTS-DOE (Ours) qPOTS HVKG qLogNEHVI Sobol Sobol (decoupled) PESMO MEMO JESMO 
+
+Figure 8: Ablation on batch size q. Row 1: Branin-Currin, row-2: Car side-impact, row-3: Disc brake, row-4: OSY. 
+
+19 0 25 50 75 100 125 150 
+
+Evaluations 
+
+−101234567
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (80) (90) (86) (91) (72) (122) (78) (73) (a) q = 1 0 50 100 150 200 250 
+
+Evaluations 
+
+−101234567
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (120) (168) (89) (162) (79) (125) (102) (79) (b) q = 2 0 50 100 150 200 250 300 
+
+Evaluations 
+
+−101234567
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (137) (166) (117) (147) (107) (183) (100) (84) 
+
+(c) q = 4 0 200 400 600 800 
+
+Evaluations 
+
+0246
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (158) (291) (215) (227) (142) (414) (233) (212) (d) q = 8 
+
+Figure 9: Distribution of decoupled oracle evaluations (OSY) 0 20 40 60 80 100 120 140 
+
+Evaluations 
+
+012345
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (66) (67) (88) (90) (74) (44) 
+
+(a) q = 1 0 50 100 150 200 250 
+
+Evaluations 
+
+012345
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (85) (82) (113) (94) (147) (55) (b) q = 2 0 100 200 300 400 
+
+Evaluations 
+
+012345
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (115) (112) (172) (187) (246) (78) 
+
+(c) q = 4 0 200 400 600 800 
+
+Evaluations 
+
+−1012345
+
+> Objective index
+
+Training Acquisitions Objectives  Constraints (149) (286) (144) (377) (463) (110) (d) q = 8 
+
+Figure 10: Distribution of decoupled oracle evaluations (Disc brake) 
+
+20 Figure 11: Coupled single-task GP ablation on Disc brake, OSY, and Penicillin. 
+
+Figure 12: ICM versus LMC: cumulative runtime and hypervolume. 
+
+Figure 13: Exact versus greedy-plus-swap subset selection: cumulative selection time, hypervolume, and oracle evaluations. 
+
+21 Figure 14: Ablation on the decoupling threshold τ for Branin-Currin and OSY. qPOTS-DOE  (Ours) qPOTS HVKG qNEHVI PESMO MESMO JESMO Sobol Sobol (decoupled) 10 2
+
+> 10 3
+> 10 4
+> 10 5
+> Total Time for 100 iterations (seconds)
+
+Figure 15: Runtime comparison on OSY. 
+
+22 A.2 Additional detail on the method 
+
+Gaussian process models. Let f : X → R be an expensive zeroth-order oracle, and the input 
+
+x be a d-dimensional vector x ∈ X ⊂ Rd, and let Y (x) denote a real-valued random function evaluated at x. A GP is a stochastic process such that any finite collection of function values is jointly Gaussian [40, 39]. We write the GP prior as 
+
+Y (x) ∼ GP (m(x), k (x, x′)),
+
+where m(x) = E[Y (x)] is the mean function and k(x, x′) = cov( Y (x), Y (x′)) is a positive semidefinite covariance (kernel) function. Given a set of inputs X = [ x1, . . . , xn]⊤ ∈ Rn×d, define the vector of latent function values y = [Y (x1), . . . , Y (xn)]⊤ ∈ Rn. By the definition of a GP, y is multivariate Gaussian: y ∼ N (m, Σ) , mi = m(xi), Σij = k(xi, xj ). Let there be noisy observations of f
+
+of the form ˜ yi = Y (xi) + εi, εi i.i.d. 
+
+∼ N (0 , σ 2), so that the observation vector ˜ y = [˜ y1, . . . , ˜yn]⊤
+
+satisfies ˜ y ∼ N (m, Σ + σ2In
+
+). Then, for a test input x∗ ∈ Rd, define the cross-covariances ΣX∗ = [k(xi, x∗)]ni=1 ∈ Rn×1, Σ∗X = Σ ⊤
+
+> X∗
+
+, Σ∗∗ = k(x∗, x∗) ∈ R. Conditioning the joint Gaussian of (˜ y, Y (x∗)) yields the standard GP regression posterior [40]: 
+
+Y (x∗) | X, ˜y ∼ N 
+
+(
+
+m(x∗) + Σ ∗X
+
+(Σ + σ2In
+
+)−1(˜y − m), Σ∗∗ − Σ∗X
+
+(Σ + σ2In
+
+)−1ΣX∗
+
+)
+
+.
+
+This posterior provides both a predictive mean and a calibrated uncertainty (predictive variance) at 
+
+x∗.
+
+A.2.1 Unconstrained qPOTS-DOE with MTGPs 
+
+Let Y1: K (x) ≡
+
+[
+
+Y1(x) · · · YK (x)
+
+]⊤
+
+. Then, the multitask posterior is written as 
+
+Y1: K (·) | D1: Kn , Ω ∼ MTGP( μn(·), Σn(·, ·)) ,
+
+where [Σn(x, x′)] 
+
+> ij
+
+= cov 
+
+(
+
+Yi(x), Y j (x′) | D1: Kn , Ω
+
+)
+
+, i, j ∈ [K].
+
+Thus, the posterior over the K objective sample paths is no longer factorized across objectives. We choose x according to 
+
+pX∗ (x) = 
+
+∫
+
+δ
+
+(
+
+x − arg max 
+
+> x∈X
+
+{Y1(x), . . . , Y K (x)}
+
+)
+
+p
+
+(
+
+Y1: K | D1: Kn
+
+)
+
+dY1: K , (9) where dY1: K ≡ dY 1 · · · dY K . If Σn(·, ·) is block diagonal across the K tasks, then (9) reduces to the independent-GP factorization as in [29]. In practice, this is equivalent to drawing one joint sample path from the multitask posterior, 
+
+Y1: K (·, ω ) = μn(·) + Σ1/2 
+
+> n
+
+(·) Z(ω), Z(ω) ∼ N (0 , I ),
+
+and choosing the next point(s) from the Pareto set of the jointly sampled objective paths: 
+
+X∗ = arg max 
+
+> x∈X
+
+{Y1(x, ω ), . . . , Y K (x, ω )}.
+
+As in [29], this cheap multiobjective optimization problem is solved via evolutionary approaches e.g., NSGA-II. 23 Let γ(·, ·) : Rd × Rd → R+ denote the Euclidean distance between two points in X . Then, the next batch of q points is chosen per 
+
+xn+1 = arg max  
+
+> x∗∈X ∗
+
+min 
+
+> xi∈Xn
+
+γ(x∗, xi),
+
+xn+2 = arg max 
+
+> x∗∈X∗
+
+min  
+
+> xi∈Xn∪{ xn+1 }
+
+γ(x∗, xi),
+
+...
+
+xn+q = arg max 
+
+> x∗∈X∗
+
+min  
+
+> xi∈Xn∪{ xn+1 ,..., xn+q−1}
+
+γ(x∗, xi).
+
+(10) Equation (10) is unchanged from the independent-GP setting; only the posterior sample path used to construct X∗ is now drawn jointly from the multitask GP posterior. 
+
+A.3 Proofs 
+
+Assumption A.1 (Regularity and no-starvation) . Let X ⊂ Rd be compact with nonempty interior, and let 
+
+Y(x) = (Y1(x), . . . , Y K (x))⊤
+
+be a correctly specified K-task Gaussian process prior with mean μ0(x) and matrix-valued covariance kernel 
+
+K0(x, x′) = Cov (Y(x), Y(x′)) ∈ RK×K .
+
+Assume that the process admits an almost surely continuous version on X . At round i, the algorithm queries a design point xi ∈ X and observes only a subset of tasks Si ⊆ [K]. For each k ∈ Si, the observation model is 
+
+yi,k = Yk(xi) + εi,k , εi,k ∼ N (0 , σ 2
+
+> k
+
+),
+
+where the noise variables are independent across rounds and tasks, with 0 < σ 2 
+
+> k
+
+< ∞. Let 
+
+Dn = {(xi, S i, {yi,k : k ∈ Si})}ni=1 
+
+denote the partial-observation data after n rounds. Finally, assume no starvation under decoupling: for every task k ∈ [K], the set of design points at which task k is directly observed, 
+
+Xn,k := {xi : i ≤ n, k ∈ Si},
+
+has fill distance 
+
+hn,k := sup 
+
+> x∈X
+
+min 
+
+> z∈X n,k
+
+∥x − z∥2
+
+satisfying 
+
+hn,k −→ 0 as n → ∞ , ∀k ∈ [K].
+
+Note that the no-starvation assumption is only necessary to prove Theorem A.2; but, in practice, it may not be necessary. Indeed, all experiments reported in this paper don’t perform line 16 of Algorithm 1 (occasional evaluations of all objectives and constraints). 
+
+Theorem A.2 (Posterior consistency under decoupled oracle evaluations) . Let X ⊂ Rd be compact with nonempty interior, and let 
+
+Y(x) = (Y1(x), . . . , Y K (x))⊤
+
+24 denote a K-task Gaussian process prior with mean μ0 : X → RK and matrix-valued covariance kernel 
+
+K0(x, x′) = Cov (Y(x), Y(x′)) ∈ RK×K .
+
+Assume that the latent objective vector 
+
+Y0(x) = (Y0,1(x), . . . , Y 0,K (x))⊤
+
+is generated from this correctly specified K-task GP model, and that the process admits an almost surely continuous version on X .At round i, the algorithm selects a design point xi ∈ X and evaluates only a subset of objectives 
+
+Si ⊆ [K], ¯Si := [ K] \ Si.
+
+For every k ∈ Si, the observation model is 
+
+yi,k = Y0,k (xi) + εi,k , εi,k ∼ N (0 , σ 2
+
+> k
+
+),
+
+where the noise variables are independent across rounds and objectives, with 0 < σ 2 
+
+> k
+
+< ∞. No observation is collected for objectives k ∈ ¯Si. Let 
+
+Dn = {(xi, S i, {yi,k : k ∈ Si})}ni=1 
+
+denote the partial-observation data after n rounds, and write the resulting multitask GP posterior as 
+
+Y | D n ∼ GP (μn(·), Kn(·, ·)) .
+
+Assume no starvation under decoupling: for every objective k ∈ [K], the set of design points at which objective k is directly evaluated, 
+
+Xn,k := {xi : i ≤ n, k ∈ Si},
+
+has fill distance 
+
+hn,k := sup 
+
+> x∈X
+
+min 
+
+> z∈X n,k
+
+∥x − z∥2
+
+satisfying 
+
+hn,k −→ 0 as n → ∞ , ∀k ∈ [K].
+
+Then, for any finite set 
+
+X ⋆ = {x(1) , . . . , x(m)} ⊂ X 
+
+and any ϵ > 0,
+
+Π( ∥Y(X ⋆) − Y0(X ⋆)∥2 > ϵ | D n) −→ 0 almost surely under the true data-generating law .
+
+Equivalently, 
+
+μn(X ⋆) −→ Y0(X ⋆), Kn(X ⋆, X ⋆) −→ 0
+
+almost surely. In particular, for every fixed x ∈ X ,
+
+μn(x) −→ Y0(x), Kn(x, x) −→ 0K×K .
+
+25 Proof. Let Fn := σ(Dn) denote the filtration generated by the partial-observation data. For each task k ∈ [K], define the task-specific data 
+
+Dn,k := {(xi, y i,k ) : i ≤ n, k ∈ Si}.
+
+Thus Dn,k contains only the direct observations of objective k, whereas Dn contains all observations from the evaluated subsets Si and no observations from the omitted subsets ¯Si = [ K] \ Si.We first show that the posterior variance of each task vanishes at every fixed input. Fix k ∈ [K]and x ∈ X . Consider the scalar GP regression problem for Yk using only Dn,k , and write 
+
+σ2
+
+> n,k
+
+(x) := Var( Yk(x) | D n,k ) .
+
+Let μk denote the prior mean of Yk, and define the centered process ˜Yk(x) := Yk(x) − μk(x). Since the covariance kernel is continuous and the process admits an almost surely continuous version, Yk
+
+is mean-square continuous. Hence 
+
+ωk(r) := sup 
+
+> u,v∈X ∥u−v∥2≤r
+
+(
+
+E
+
+[( ˜Yk(u) − ˜Yk(v))2]) 1/2
+
+−→ 0 as r ↓ 0.
+
+By the no-starvation condition, the task-k design set 
+
+Xn,k := {xi : i ≤ n, k ∈ Si}
+
+has fill distance hn,k → 0. Therefore, for every fixed x ∈ X , there exists a sequence rn ↓ 0 such that the number of task-k observations in the local ball 
+
+In,k (x) := {i ≤ n : k ∈ Si, ∥xi − x∥2 ≤ rn}
+
+satisfies 
+
+Nn,k (x) := |In,k (x)| −→ ∞ .
+
+For example, on a compact box or any compact domain with the usual local covering regularity, this follows from the fill-distance condition by taking rn/h n,k → ∞ and rn → 0. Define the local linear estimator ̂
+
+Yn,k (x) := μk(x) + 1
+
+Nn,k (x)
+
+∑ 
+
+> i∈In,k (x)
+
+(yi,k − μk(xi)).
+
+Since 
+
+yi,k = Yk(xi) + εi,k , εi,k ∼ N (0 , σ 2
+
+> k
+
+),
+
+with independent noise, we have 
+
+Yk(x) −̂ Yn,k (x) = 1
+
+Nn,k (x)
+
+∑ 
+
+> i∈In,k (x)
+
+( ˜Yk(x) − ˜Yk(xi)) − 1
+
+Nn,k (x)
+
+∑ 
+
+> i∈In,k (x)
+
+εi,k .
+
+Using Cauchy’s inequality in L2 and the independence of the observation noise, 
+
+E
+
+[(Yk(x) −̂ Yn,k (x))2]
+
+≤ ωk(rn)2 + σ2
+
+> k
+
+Nn,k (x) −→ 0.
+
+26 The scalar GP posterior variance is the minimum mean-squared error among estimators measurable with respect to Dn,k . Therefore, 
+
+σ2
+
+> n,k
+
+(x) = Var( Yk(x) | D n,k ) ≤ E
+
+[(Yk(x) −̂ Yn,k (x))2]
+
+−→ 0.
+
+Now compare the scalar posterior to the full multitask posterior. Since Dn,k ⊆ D n, conditioning on the full multitask data cannot increase conditional variance. Hence 
+
+[Kn(x, x)] 
+
+> kk
+
+= Var( Yk(x) | D n) ≤ Var( Yk(x) | D n,k ) = σ2
+
+> n,k
+
+(x) −→ 0.
+
+This holds for every k ∈ [K]. Since Kn(x, x) is positive semidefinite, 
+
+∣∣∣[Kn(x, x)]
+
+> kℓ
+
+∣∣∣ ≤
+
+√[Kn(x, x)]
+
+> kk
+
+[Kn(x, x)]
+
+> ℓℓ
+
+,
+
+so every off-diagonal entry also converges to zero. Therefore, 
+
+Kn(x, x) −→ 0K×K for every fixed x ∈ X .
+
+Next, let 
+
+X ⋆ = {x(1) , . . . , x(m)} ⊂ X 
+
+be any finite set, and define the stacked latent vector 
+
+Z := Y(X ⋆) := (Y(x(1) )⊤, . . . , Y(x(m))⊤)⊤ ∈ RmK .
+
+Under the multitask GP posterior, 
+
+Z | D n ∼ N (μ⋆n, K⋆n),
+
+where 
+
+μ⋆n := E[Z | F n], K⋆n := Cov( Z | F n).
+
+Applying the previous variance argument to each component Yk(x(j)) gives tr( K⋆n) −→ 0.
+
+Since K⋆n is positive semidefinite, this also implies 
+
+K⋆n −→ 0mK ×mK .
+
+It remains to show that the posterior mean converges to the true latent values. By correct specification, the true objective vector Y0(X ⋆) is the realized value of Z under the same GP data-generating law. Moreover, 
+
+μ⋆n = E[Z | F n]is an L2 martingale with respect to ( Fn)n≥1. Since 
+
+E
+
+[
+
+∥Z − μ⋆n∥22 | F n
+
+]
+
+= tr( K⋆n) −→ 0,
+
+and the conditional variances are bounded above by the prior second moment, dominated convergence gives 
+
+E
+
+[
+
+∥Z − μ⋆n∥22
+
+]
+
+−→ 0.
+
+27 The martingale convergence theorem implies that μ⋆n converges almost surely and in L2 to E[Z | F ∞], where F∞ := σ(∪n≥1Fn). Since the L2 limit is unique and μ⋆n → Z in L2, we obtain 
+
+μ⋆n −→ Z = Y0(X ⋆) almost surely .
+
+Finally, for any ϵ > 0, Π( ∥Y(X ⋆) − Y0(X ⋆)∥2 > ϵ | D n)
+
+≤ Π( ∥Y(X ⋆) − μ⋆n∥2 > ϵ/ 2 | D n) + 1{∥ μ⋆n − Y0(X ⋆)∥2 > ϵ/ 2} .
+
+By Chebyshev’s inequality, Π( ∥Y(X ⋆) − μ⋆n∥2 > ϵ/ 2 | D n) ≤ 4 tr( K⋆n)
+
+ϵ2 −→ 0,
+
+and the indicator term converges to zero almost surely because μ⋆n → Y0(X ⋆) almost surely. Therefore, Π( ∥Y(X ⋆) − Y0(X ⋆)∥2 > ϵ | D n) −→ 0 almost surely .
+
+Since X ⋆ was arbitrary, the same argument applied to a singleton X ⋆ = {x} gives, for every fixed 
+
+x ∈ X ,
+
+μn(x) −→ Y0(x), Kn(x, x) −→ 0K×K .
+
+This proves posterior consistency under decoupled oracle evaluations. 
+
+Theorem A.3 (Finite-sample information transfer under decoupling) . Fix a round n, a candidate design x ∈ X , and suppose that the K-oracle multitask posterior at x satisfies 
+
+Y1: K (x) | Dn ∼ N (μn(x), Σn(x)) , Σn(x) ≻ 0.
+
+Let K ≜ {1, . . . , K }. For any nonempty proper subset S ⊊ K, write 
+
+¯S ≜ K \ S. 
+
+Suppose that a decoupled evaluation observes the selected oracle values through 
+
+ZS (x) = YS (x) + εS , εS ∼ N (0 , Σε,SS ),
+
+where εS is independent of Y1: K (x) | Dn and Σε,SS ⪰ 0. Define the expected one-step posterior entropy reduction about the unevaluated oracles Y ¯S (x) by 
+
+∆n(S; x) ≜ H(Y ¯S (x) | Dn) − EZS (x)|Dn [H(Y ¯S (x) | Dn, Z S (x))] .
+
+Then 
+
+∆n(S; x) = I(ZS (x); Y ¯S (x) | Dn) ,
+
+and this quantity has the closed form 
+
+∆n(S; x) = 12 log 
+
+∣∣∣Σn, ¯S ¯S (x)
+
+∣∣∣∣∣∣Σn, ¯S ¯S (x) − Σn, ¯SS (x) (Σ n,SS (x) + Σ ε,SS )−1 Σn,S ¯S (x)
+
+∣∣∣
+
+.
+
+Equivalently, 
+
+∆n(S; x) = 12 log |Σn,SS (x) + Σ ε,SS |
+
+∣∣∣Σn, ¯S ¯S (x)
+
+∣∣∣∣∣∣∣∣[Σn,SS (x) + Σ ε,SS Σn,S ¯S (x)Σn, ¯SS (x) Σn, ¯S ¯S (x)
+
+]∣ ∣∣∣∣
+
+.
+
+28 Consequently, for any fixed decoupled oracle budget M ∈ { 1, . . . , K − 1}, the subset 
+
+S⋆n(x) ∈ arg max   
+
+> S⊆K :|S|=M
+
+I(ZS (x); Y ¯S (x) | Dn)
+
+maximizes the expected one-step posterior entropy reduction about the unevaluated oracles. In the noiseless latent-oracle case Σε,SS = 0 , this reduces to 
+
+∆n(S; x) = I(YS (x); Y ¯S (x) | Dn) = 12 log |Σn,SS (x)|
+
+∣∣∣Σn, ¯S ¯S (x)
+
+∣∣∣
+
+|Σn(x)| ,
+
+which is exactly the Gaussian mutual-information criterion used for subset selection. Moreover, let 
+
+TC n(x) ≜
+
+> K
+
+∑
+
+> k=1
+
+H(Yk(x) | Dn) − H(Y1: K (x) | Dn) ,
+
+and define TC n,S (x) and TC n, ¯S (x) analogously for the subvectors YS (x) and Y ¯S (x). Then, for every 
+
+S ⊊ K,
+
+0 ≤ ∆n(S; x) ≤ I(YS (x); Y ¯S (x) | Dn) = TC n(x) − TC n,S (x) − TC n, ¯S (x) ≤ TC n(x).
+
+Thus, if TC n(x) < τ , then no decoupled M -oracle evaluation at x can reduce the posterior entropy of the unevaluated oracles by more than τ nats. Finally, 
+
+∆n(S; x) = 0 ⇐⇒ Σn,S ¯S (x) = 0 ,
+
+so a decoupled evaluation transfers strictly positive information to the unevaluated oracles exactly when the selected and unevaluated oracle blocks have nonzero posterior cross-covariance at x.Proof. Condition throughout on Dn. Since 
+
+[
+
+ZS (x)
+
+Y ¯S (x)
+
+]
+
+is jointly Gaussian, the conditional covariance of Y ¯S (x) after observing ZS (x) is Σn, ¯S ¯S (x) − Σn, ¯SS (x) (Σ n,SS (x) + Σ ε,SS )−1 Σn,S ¯S (x).
+
+This covariance does not depend on the realized value of ZS (x). Applying the Gaussian entropy formula 
+
+H(W ) = 12 log((2 πe )m|ΣW |)therefore gives the stated expression for ∆ n(S; x). Since expected entropy reduction is mutual information, ∆n(S; x) = I(ZS (x); Y ¯S (x) | D n) .
+
+Maximizing this quantity over all subsets S ⊆ K with |S| = M therefore maximizes the expected one-step posterior entropy reduction about the unevaluated oracles. For the total-correlation bound, the observation model gives the Markov relation 
+
+Y ¯S (x) −→ YS (x) −→ ZS (x)29 conditional on Dn. Hence, by the data-processing inequality, 
+
+I(ZS (x); Y ¯S (x) | D n) ≤ I(YS (x); Y ¯S (x) | D n) .
+
+Using TC n(x) = 
+
+> K
+
+∑
+
+> k=1
+
+H(Yk(x) | D n) − H(Y1: K (x) | D n) ,
+
+and the analogous definitions for TC n,S (x) and TC n, ¯S (x), direct cancellation yields 
+
+I(YS (x); Y ¯S (x) | D n) = TC n(x) − TC n,S (x) − TC n, ¯S (x).
+
+Nonnegativity of total correlation gives the final upper bound by TC n(x). Finally, for jointly Gaussian random vectors, zero mutual information is equivalent to zero cross-covariance. Since Cov( ZS (x), Y ¯S (x) | Dn) = Σ n,S ¯S (x),
+
+we have ∆ n(S; x) = 0 if and only if Σ n,S ¯S (x) = 0. 30

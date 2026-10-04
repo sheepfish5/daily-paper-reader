@@ -1,0 +1,158 @@
+Title: Decode-Latency Feedback Prefill: A Model-Free Controller and Its Generalization Limits
+
+URL Source: https://arxiv.org/pdf/2609.38386v1
+
+Published Time: Thu, 01 Oct 2026 00:12:51 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# Decode-Latency Feedback Prefill: A Model-Free Controller and Its Generalization Limits 
+
+## Gaurav Agarwal 
+
+## gaurav.iit219@gmail.com 
+
+## Ashish Garg, Ph.D. 
+
+## ashish.philly@gmail.com 
+
+## Isha Singhal 
+
+## ishasinghal22@gmail.com 
+
+# Abstract 
+
+Concurrent autoregressive inference creates a fundamen-tal interference problem: prefilling a newly arrived long prompt can delay tokens for requests that are already de-coding. Fixed prefill chunks reduce this interference, but the best chunk size depends on the model, hardware, load, and latency objective. We introduce Decode-Latency Feed-back Prefill (DLFP), a model-free controller that changes only prefill work that overlaps active decodes. After a guarded scheduling cycle, DLFP uses the observed interval as proportional feedback to resize the next prefill chunk; isolated prefills remain unrestricted. We implement DLFP in vLLM and evaluate it with open-loop Poisson arrivals, exact token accounting, raw request traces, and NVIDIA telemetry. On Qwen3-0.6B in BF16 on one A100 80 GB GPU, three paired 100-request trials reduce P99 inter-token latency by 24.8%, 30.1%, and 28.2% (mean 27.7%, paired 95% confidence interval 21.0–34.3%) with exact output agreement, no failures, and unchanged SLO compliance. The benefit is not free: mean P99 time to first token increases 34.8% while remaining inside the declared SLO. Crucially, the mechanism does not generalize to Qwen3-8B, Qwen3-32B, or a two-GPU tensor-parallel configura-tion. We trace the failure to an asynchronous scheduler-call interval that is only a proxy for completed GPU iteration time. This negative result defines the boundary of the contribution and motivates a completion-timed controller for concurrent CPU and on-device inference. We do not claim mobile-device performance; the present work is a reproducible proof-of-concept and generalization study. 
+
+# 1 Introduction 
+
+Large language model inference alternates between two operationally different phases. Prefill processes all prompt tokens and exposes substantial parallelism. Decode gen-erates one token per active sequence per iteration and is sensitive to any work added to the critical path. Con-tinuous batching improves utilization, but a long prompt admitted beside active decodes can turn one iteration into a visible pause for every interactive user in that batch [10, 3, 1]. This problem is increasingly relevant outside datacenters. A laptop assistant may generate an answer while indexing a document; a phone may run an interactive agent beside a background summarizer. Small open-weight models make such concurrency plausible, but edge devices add strict responsiveness, power, and thermal constraints. A useful scheduler should therefore protect decode latency without relying on an expensive per-device latency model. Fixed-size chunked prefill is an effective baseline [1]. Its tuning, however, is fragile. Large chunks maximize prefill throughput but create decode stalls. Small chunks add repeated scheduling and kernel overhead, and can move latency from inter-token delay into time to first token (TTFT). Recent systems use predictors, deadline state, or offline calibration to choose chunks [4, 9]. We ask a narrower question: can recent observed latency directly close the loop? 
+
+We make three contributions: 1. We design and implement DLFP, a proportional, model-free controller that caps only prefills overlapping active decodes and resets when interference disappears. 2. We provide a controlled end-to-end evaluation with deterministic token inputs, open-loop Poisson arrivals, three paired trials, confidence intervals, exact-output checks, and retained raw telemetry. 3. We report both the positive small-model result and failed 8B, 32B, and two-GPU transfer experiments. The failures identify scheduler-call cadence as a non-portable feedback signal under asynchronous execution. The resulting claim is intentionally bounded. DLFP is 
+
+verified for the Qwen3-0.6B single-GPU operating point tested here. It is not yet a generally validated serving policy, and it has not been evaluated on a phone or CPU-only laptop. 
+
+# 2 Background and Motivation 
+
+## 2.1 Continuous batching and prefill inter-ference 
+
+Let Dt be the set of requests decoding at scheduler iteration 
+
+t, and let pt be the number of prompt tokens admitted for prefill. A simplified mixed iteration time is 
+
+Lt ≈ Ldecode (Dt) + Lprefill (pt, D t) + Loverhead . (1) Every request in Dt observes approximately Lt before receiving its next token. A large pt can therefore create 1arXiv:2609.38386v1 [cs.AI] 29 Sep 2026 a correlated latency spike across all active decoders even when the admission queue is empty. PagedAttention reduces KV-cache fragmentation and en-ables high-concurrency serving [3]. Iteration-level schedul-ing and continuous batching, as in Orca [10], improve utilization. Sarathi-Serve shows that chunked prefill can form decode-maximal batches and tame the throughput– latency tradeoff [1]. Prefill/decode disaggregation instead separates the phases across resources [11], which is attrac-tive at datacenter scale but not always available on a single device. 
+
+## 2.2 Why feedback control? 
+
+An analytical or learned latency model must cover model size, attention shapes, batch composition, kernels, device generation, clock state, and competing work. For heteroge-neous laptops and phones, maintaining such a model can be more costly than the controller itself. Feedback control of-fers a tempting alternative: observe a latency consequence, adjust the prefill budget, and repeat. The central risk is measurement fidelity. If the observation is not the actual completed device latency, the controller can confidently move in the wrong direction. Our generalization study makes this risk concrete. 
+
+# 3 Design 
+
+## 3.1 Control policy 
+
+DLFP activates only when at least one request is already decoding and a prefill would share the next scheduling cycle. Let ct be the current prefill cap in tokens, T the target mixed-iteration latency, and ˆLt the observed interval following a guarded cycle. The next cap is 
+
+ct+1 = clamp 
+
+
+
+floor 128 
+
+
+
+ct
+
+T
+
+ˆLt
+
+
+
+, c min , c max 
+
+
+
+. (2) If the observation exceeds the target, the next chunk shrinks; if it is below target, the chunk grows. Quantiza-tion to 128-token increments avoids unstable fine-grained changes. When no decoder is active, the controller resets to cinitial and does not cap isolated prefill. The evaluated parameters are T = 80 ms, cinitial = 3072, 
+
+cmin = 1024, and cmax = 6144. A retained observability run recorded a live update from 3072 to 4224 tokens after a 57.51 ms observation, confirming that the controller did not remain a static cap. 
+
+## 3.2 Scheduler integration 
+
+The implementation modifies the vLLM V1 scheduler. It first detects whether a running request has completed its prompt. For both running chunked-prefill requests and newly admitted requests, it limits prompt tokens to the current cap only if a decoder is active. Decode schedul-ing, model weights, BF16 precision, attention backend, sampling, KV layout, and isolated-prefill scheduling are unchanged. The prototype uses elapsed scheduler-call cadence as ˆLt. This choice is cheap and appeared correlated with iteration duration on the initial small-model configuration. Under asynchronous scheduling, however, a later scheduler call can occur before or after different amounts of queued GPU work. Section 6 shows why this approximation is the principal design limitation. 
+
+# 4 Experimental Methodology 
+
+## 4.1 Hardware and software 
+
+The main experiment uses one NVIDIA A100 80 GB GPU. The server runs vLLM 0.17.1, PyTorch 2.10, CUDA 12.8 user-space libraries, FlashAttention-2, CUDA graphs, and asynchronous scheduling. The public Qwen3-0.6B check-point [8] is served in BF16 with maximum model length 18,000, maximum 64 sequences, and an 8,192-token global batch budget. Prefix caching is disabled. Startup and graph compilation are excluded from measurement. Generalization experiments use Qwen3-8B and Qwen3-32B in BF16 across two A100 80 GB GPUs connected through a PCIe host bridge without NVLink. We also test Qwen3-0.6B with tensor parallel size two. 
+
+## 4.2 Workloads and SLOs 
+
+We construct exact-token workloads for Chat (1,024 in-put/128 output), RAG (8,192/256), Agent (16,384/256), and Decode-heavy (256/1,024). Requests arrive open-loop according to independent exponential inter-arrival times. The primary comparison uses nonmatching Agent prompts, offered load 1.0 request/s, 100 measured requests after three warmups, and seeds 801, 802, and 803. The Agent SLO is TTFT ≤ 5 s, mean inter-token la-tency (ITL) ≤ 35 ms, and end-to-end latency ≤ 14 s. SLO-compliant goodput counts only requests meeting all three conditions. We record each token ID and timestamp, HTTP and engine failures, token usage, queue depth, KV occupancy, GPU utilization, memory, power, and sampled energy. 
+
+## 4.3 Comparison discipline 
+
+Within each paired seed, baseline and candidate use iden-tical model, prompts, arrival schedule, output length, pre-cision, hardware, and measurement code. Every candidate must reconcile request counts and prompt/output tokens, introduce no failures, and match greedy output IDs where deterministic agreement is expected. We report Student’s t
+
+95% confidence intervals over three paired trial-level values (df = 2). P99 results from small reconnaissance runs are not used as final claims. 2Table 1: Qwen3-0.6B single-GPU Agent results. Lower P99 ITL is better.                     
+
+> Seed Baseline DLFP Reduction SLO pass P99 ITL (ms) 801 122.22 91.95 24.8% 100/100 802 187.07 130.85 30.1% 100/100 803 200.36 143.84 28.2% 100/100 Mean ——27.7% 300/300
+
+Figure 1: Held-out P99 ITL for the three paired trials. Each trial independently clears the 10% reduction gate. 
+
+# 5 Results 
+
+## 5.1 Primary latency result 
+
+Table 1 reports the held-out comparison. All 600 baseline and candidate requests complete successfully, all workload fingerprints match, and all 76,800 paired generated token IDs agree exactly. Mean paired P99 ITL reduction is 27.7%, with a 95% con-fidence interval of 21.0–34.3%. Every trial independently exceeds the predeclared 10% threshold. Mean goodput changes by −0.10% (95% CI −0.50 to +0 .29%), and energy per output token changes by +0 .05% (95% CI −1.55 to +1 .66%); neither is a claim. 
+
+## 5.2 Tradeoff 
+
+DLFP prioritizes decode smoothness. Mean P99 TTFT increases 34.8% (95% CI 3.6–65.9%), while mean P99 end-to-end latency increases 7.8% (95% CI −3.5–19.2%). Both remain inside the declared Agent SLO for all final requests. This tradeoff rules out unconditional deployment: DLFP is useful only when interactive token cadence is more important than minimum TTFT. 
+
+## 5.3 Controls 
+
+Automatic prefix caching substantially improves matching-prefix RAG TTFT but returns to baseline on nonmatching prompts; it validates the harness but is an established technique. Fixed prefill caps can reduce ITL, but a 2,048-token cap reduces aggregate SLO compliance to 287/300. A 4,096-token cap fails the repeated 10% gate, while a 3,072-token cap loses SLO passes and is not a new mechanism. 
+
+# 6 Generalization and Negative Re-sults 
+
+## 6.1 Two-GPU Qwen3-0.6B 
+
+With tensor parallel size two, paired P99 ITL reductions are 5.3%, 8.2%, and 24.7%. The 12.7% mean has a confidence interval crossing zero. Candidate SLO passes fall from 110/300 to 101/300, P99 TTFT rises 44.1%, and energy per output token rises 4.3%. This is not a win. 
+
+## 6.2 Qwen3-8B 
+
+At 0.10 request/s, baseline P99 ITL is 19 ms; DLFP raises it to 281 ms and reduces SLO passes from 10/20 to 7/20. There is little interference to remove, and fragmented prefills create additional tail events. At 0.25 request/s, DLFP reduces P99 ITL from 1.763 s to 707 ms, but P99 TTFT rises from 12.33 to 14.81 s and SLO passes fall from 2/20 to 0/20. The controller moves latency rather than restoring useful goodput. 
+
+## 6.3 Qwen3-32B 
+
+At 0.05 request/s on two GPUs, baseline/DLFP P99 values are 18.07/21.64 s TTFT, 314/670 ms ITL, and 45.61/45.86 s end-to-end. A model-specific SLO yields 5/12 passes in both configurations, and energy per output token regresses 4.7%. A completion-aware revision updates the controller when the scheduler output returns and bounds each control step. It also fails. Under synchronous scheduling, baseline P99 ITL is 41.1 ms versus 194.8 ms for the candidate, with SLO passes falling from 5/12 to 4/12. The evidence rejects simple retuning as a solution. 
+
+## 6.4 Root cause 
+
+The small-model success depended on an accidental corre-lation between scheduler-call cadence and completed GPU iteration time. Larger kernels, asynchronous queueing, and tensor-parallel synchronization break that correlation. The proportional update can then expand the cap after observing a short host interval even when device work is still outstanding. More generally, splitting one large stall into several moderate stalls can increase the fraction of token gaps that reach the global P99. 37 Implications for Concurrent Edge Inference 
+
+The motivating use case remains promising, but the current implementation is not a mobile result. A single interactive phone session has no overlapping prefill and decode, so DLFP cannot help. The opportunity appears when mul-tiple local tasks overlap: foreground generation plus doc-ument ingestion, multiple agent branches, or background summarization. CPU-only laptops are a particularly useful next target. A synchronous CPU runtime can expose actual completion time directly, avoiding the asynchronous GPU proxy that caused our failures. Mobile GPU and NPU runtimes re-quire device events or runtime completion callbacks, plus thermal and energy measurements. Candidate runtimes include llama.cpp [2], MLC LLM [5], and ExecuTorch [7]. A publishable edge evaluation should include several 0.5B–3B quantized models, multiple phones and CPU laptops, sustained thermal runs, foreground/background priority, and strong fixed-chunk controls. The acceptance criterion should combine P99 ITL, TTFT, SLO goodput, energy per token, and quality. Until those experiments exist, our result should be described as evidence motivating completion-timed adaptive prefill for edge concurrency, not as proof of edge speedup. 
+
+# 8 Related Work 
+
+Iteration-level scheduling and continuous batching were de-veloped in systems such as Orca [10]; vLLM’s PagedAtten-tion improves KV-cache memory management and serving throughput [3]. Sarathi-Serve introduces decode-maximal batching and chunked prefill [1]. DistServe separates pre-fill and decode to optimize goodput [11], while Splitwise studies phase separation on heterogeneous resources [6]. Recent adaptive chunking approaches select prefill work using latency models, fairness objectives, or decode dead-lines. LPRS uses an offline feature-based latency predictor and active prefill control [4]. SLOWeave chooses chunks against request deadlines using a monotone cost model [9]. DLFP differs in using a direct proportional update without an offline model or per-request deadline state. Adaptive chunk sizing itself is therefore prior art; our claim is the specific model-free controller and its measured behavior, not the broad idea of adaptive prefill. On-device runtimes focus primarily on compilation, ker-nels, quantization, and portable deployment [5, 2, 7]. Our proposed edge direction is complementary: schedule con-current request phases after the model already runs effi-ciently on the device. 
+
+# 9 Limitations and Threats to Va-lidity 
+
+The verified positive result covers one small model, one server GPU, one primary workload and rate, three trials, and 100 requests per trial. GPU clocks were not locked. NVML power is sampled. The controller’s observation does not measure device completion, and the failed larger-model experiments show that the result must not be generalized by model size or device count. The workloads use deterministic synthetic token se-quences to ensure exact comparability; production prompts may change attention shapes, output entropy, and stopping behavior. Temperature zero enables a strong exact-output check but does not replace a semantic quality evaluation for quantized or speculative systems. P99 estimates from 100 requests remain less precise than a large production trace, although each request contains 255 ITL observations. Finally, a bounded literature search cannot establish worldwide novelty or patentability. We found close work on fixed and adaptive chunking. We therefore describe DLFP as a differentiated research prototype and report its generalization failures prominently. 
+
+# 10 Reproducibility and Ethics 
+
+The artifact contains the scheduler patch, environment manifest, model hashes, benchmark generator, exact com-mands, raw JSON request records, telemetry, summary scripts, and negative results. No proprietary model or private user data is used; all models are public Qwen checkpoints and prompts are synthetic. No driver modi-fication is required. The benchmark refuses to run when unrelated GPU processes are present. The system does not change model outputs intentionally. All final positive-run tokens match exactly. The primary ethical risk is overclaiming: presenting an A100 result as a phone result could mislead deployment decisions. We explicitly avoid that claim. 
+
+# 11 Conclusion 
+
+DLFP demonstrates that lightweight feedback can materi-ally improve decode smoothness at one small-model operat-ing point: mean P99 ITL falls 27.7% with exact outputs, no failures, and unchanged SLO compliance. Equally impor-tant, the mechanism fails on larger models and multi-GPU execution because its host scheduler interval is not a reli-able device-completion signal. The next step is not broader deployment of the current patch; it is a completion-timed controller evaluated on real concurrent CPU and mobile workloads. Reporting both outcomes turns a promising isolated speedup into a useful systems result with a clear research path. 4References 
+
+[1] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav S. Gula-vani, Alexey Tumanov, and Ramachandran Ramjee. Taming throughput-latency tradeoff in llm inference with sarathi-serve. In 18th USENIX Symposium on Operating Systems Design and Implementation , 2024. [2] Georgi Gerganov and contributors. llama.cpp: Llm in-ference in c/c++. https://github.com/ggml-org/ llama.cpp , 2023. [3] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gon-zalez, Hao Zhang, and Ion Stoica. Efficient memory management for large language model serving with pagedattention. In Proceedings of the 29th ACM Sym-posium on Operating Systems Principles , 2023. [4] Haoxin Liu, Jiayi Wang, Yueshen Xu, and Rui Li. Fairness-aware and latency-controllable schedul-ing for chunked-prefill llm serving. arXiv preprint arXiv:2606.09061 , 2026. [5] MLC LLM Contributors. Mlc llm: Universal llm deployment engine with ml compilation. https:// llm.mlc.ai/ , 2023. [6] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Inigo Goiri, Saeed Maleki, and Ri-cardo Bianchini. Splitwise: Efficient generative llm inference using phase splitting. In ACM/IEEE 51st Annual International Symposium on Computer Archi-tecture , 2024. [7] PyTorch Edge Team. Executorch: On-device ai infer-ence. https://pytorch.org/executorch/ , 2024. [8] Qwen Team. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. [9] Siyu Song, Qi Bai, Jinbo Hao, Kai Li, Chenchen Wang, and Jiayu Sun. Deadline-aware adaptive prefill chunking for efficient large language model serving. 
+
+arXiv preprint arXiv:2609.07883 , 2026. [10] Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and Byung-Gon Chun. Orca: A dis-tributed serving system for transformer-based genera-tive models. In 16th USENIX Symposium on Operat-ing Systems Design and Implementation , 2022. [11] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xuanzhe Liu, Xin Jin, and Hao Zhang. Distserve: Disaggregating prefill and decoding for goodput-optimized large language model serving. In 
+
+18th USENIX Symposium on Operating Systems De-sign and Implementation , 2024. 5
