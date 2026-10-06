@@ -1,0 +1,604 @@
+Title: Coarse-to-Fine Macro Placement via Evolutionary Search and Critical Macro Tuning
+
+URL Source: https://arxiv.org/pdf/2609.34452v1
+
+Published Time: Tue, 29 Sep 2026 03:33:13 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+Preprint 
+
+# COARSE -TO -F INE MACRO PLACEMENT VIA EVOLU -
+
+## TIONARY SEARCH AND CRITICAL MACRO TUNING 
+
+Biao Liu, Zhiping Jin, Kaixuan Sun, Zengrui Lu, Qingquan Zhang, Bo Yuan ∗
+
+Department of Computer Science and Engineering Southern University of Science and Technology Shenzhen, China 
+
+ABSTRACT 
+
+Macro placement is a critical stage in chip physical design that substantially affects downstream implementation quality. Recent search-based methods im-prove existing layouts through partial reconstruction, but quality-biased or spa-tially restricted macro selection can limit the diversity of reconstruction pro-posals, potentially hindering escape from local optima. Moreover, coarse-grid representations restrict placement precision. To address these challenges, we propose C2FPlace, a Coarse-to-Fine macro Place ment framework that inte-grates population-based evolutionary search with fine-grained refinement. Dur-ing coarse-grained optimization, tournament selection chooses promising parents from randomly sampled groups of layouts, and stochastic partial rip-up and re-place generates offspring by sampling macro subsets across the entire layout. A two-phase schedule samples reconstruction ratios from a higher range early in the search and a lower range later, supporting broad exploration followed by more conservative refinement. During fine-grained optimization, critical macro tun-ing enables positional adjustments beyond the coarse grid to obtain additional half-perimeter wirelength (HPWL) reduction. Experiments on the ISPD2005 benchmark show that C2FPlace reduces HPWL by 17.82% over EGPlace and 17.86% over RollPlace on average. On the ICCAD2025 benchmark, C2FPlace achieves the best average ranking among the compared methods under the eval-uated power, performance, and area (PPA) metrics. Our codes are available in https://github.com/lxxxxb/C2FPlace. 
+
+1 INTRODUCTION 
+
+Macro placement is a critical stage in chip physical design that significantly affects downstream de-sign closure. In modern VLSI systems, high-quality macro placement facilitates subsequent standard cell placement, clock tree synthesis, and detailed routing. Conversely, poor macro placement can degrade implementation quality even after extensive downstream optimization Kang et al. (1994); MacMillen et al. (2000). The macro placement problem is NP-hard, with tightly coupled decisions arising from macro dimensions, connectivity, and non-overlap constraints. Analytical placers ad-dress placement through continuous optimization and gradient-based numerical techniques Cheng et al. (2019); Lin et al. (2019); Liao et al. (2022). Although these methods offer strong scalabil-ity, their solutions can depend on initialization and subsequent legalization, which may alter the optimized placement objectives. Recent reinforcement learning (RL) and black-box optimization (BBO) methods have shown promising results for macro placement Mirhoseini et al. (2021); Lai et al. (2022; 2023); Shi et al. (2023); Geng et al. (2024); Xue et al. (2024); Li et al. (2025); Zhou et al. (2025); Geng et al. (2025). Beyond constructing layouts sequentially, recent search-based approaches improve existing solu-tions through partial reconstruction while retaining the positions of unselected macros, as shown in Table 1. EGPlace Li et al. (2025) maintains a population of layouts and uses fitness-based proba-bilities to select parents for evolution. RollPlace Zhou et al. (2025) organizes candidate layouts in a Monte Carlo search tree and uses the Upper Confidence Bound applied to Trees (UCT) criterion for 
+
+> ∗
+
+Corresponding author. 
+
+1arXiv:2609.34452v1 [cs.AR] 28 Sep 2026 Preprint Table 1: Comparison of macro placement methods and their search mechanisms.                                     
+
+> Method Parent selection Macro selection Update scale Granularity
+> MaskPlace (Lai et al., 2022) N/A N/A N/A Coarse grid ChiPFormer (Lai et al., 2023) N/A N/A N/A Coarse grid WireMask-BBO (Shi et al., 2023) 1+1 EA N/A All Coarse grid EfficientPlace (Geng et al., 2024) UCT N/A N/A Coarse grid MaskRegulate (Xue et al., 2024) Fixed N/A All Coarse grid EGPlace (Li et al., 2025) Fitness-based Score-guided Fixed ratio Coarse grid RollPlace (Zhou et al., 2025) UCT Rectangle Region-based Coarse grid
+> C2FPlace (ours) Tournament Random subset Two-phase ratio Coarse-to-fine
+
+candidate selection. These methods demonstrate the value of maintaining multiple candidates and reusing existing placement structures. Despite these advances, generating sufficiently diverse reconstruction proposals remains an impor-tant challenge. In EGPlace, parent selection follows a softmax distribution over fitness values, while macro selection is guided by scores derived from wirelength, congestion, and overlap. Although both selections are stochastic, their preference for current quality estimates may concentrate search effort on similar candidates and macro subsets. RollPlace samples two coordinates to define a rect-angular region and repositions all macros within that region. Such region-based selection couples macro inclusion to spatial proximity, restricting the subsets that can be reconstructed together in a single update. These selection biases may limit exploration of alternative macro combinations and make it harder to escape local optima. This motivates combining quality-aware parent selection with macro-subset sampling that is not tied to current macro scores or a single rectangular region. The extent of reconstruction introduces a further exploration–exploitation trade-off. Repositioning a large subset of macros permits broader coordinated changes, but also exposes more established placement relationships to modification. Repositioning a small subset retains more of the current structure, but offers fewer opportunities for substantial rearrangement. A fixed reconstruction ra-tio, as used in the reported EGPlace experiments, does not explicitly reflect these differing needs across search stages. Varying the reconstruction scale over time offers a way to encourage broad exploration early in the search and preserve more of the evolved layout during later refinement. A second challenge arises from placement granularity. Many recent methods discretize the place-ment canvas into a coarse grid, such as 224 ×224 , to make the search space tractable. While this rep-resentation reduces optimization complexity, it also restricts available macro coordinates. Even after effective coarse-grid search, finer positional adjustments may further improve wirelength, particu-larly for macros whose pins determine net bounding boxes. Combining coarse-grained exploration with targeted fine-grained refinement can exploit these remaining opportunities without repeating global search at a finer resolution. To address these challenges, we propose C2FPlace, a coarse-to-fine macro placement framework centered on population-based evolutionary search. C2FPlace first generates multiple initial layouts through repeated WireMask-guided Lai et al. (2022); Shi et al. (2023) greedy placement. During coarse-grained optimization, tournament selection randomly samples a group of individuals and chooses the best among them as the parent. This provides quality-aware selection based on relative ranking within each sampled group, without requiring a softmax transformation of fitness values. Offspring are generated through stochastic partial rip-up-and-replace: a reconstruction ratio is sam-pled, and the corresponding subset of macros is randomly selected across the entire layout for repo-sitioning, while unselected macros retain their positions. A two-phase schedule draws ratios from a higher range during the initial search phase and a lower range during the subsequent phase. To-gether, random parent-group sampling, random macro-subset selection, and varying reconstruction ratios provide multiple sources of search variation, while tournament selection and elitist replace-ment favor promising layouts. The schedule shifts the search from broad reconstruction toward more conservative refinement. Following coarse-grained search, C2FPlace performs fine-grained critical macro tuning to further reduce half-perimeter wirelength (HPWL). This stage selectively adjusts critical macros beyond 2Preprint the coarse-grid coordinates while preserving the global arrangement established by evolutionary search. Coarse-grained optimization thus provides the main search capability, and fine-grained tun-ing complements it with additional positional refinement. Our main contributions are summarized as follows: • We propose a population-based evolutionary search strategy that combines tournament se-lection with stochastic partial rip-up and re-place. Random macro-subset sampling across the layout promotes diverse reconstruction proposals, while a two-phase reconstruction-ratio schedule supports broad exploration followed by more conservative refinement. • We propose a coarse-to-fine framework that integrates population-based search on a coarse placement grid with fine-grained critical macro tuning, enabling additional HPWL reduc-tion through positional adjustments beyond the grid. • Experiments on the ISPD2005 benchmark C2FPlace reduces HPWL by 17.82% over EG-Place and 17.86% over RollPlace on average. On the ICCAD2025 benchmark, C2FPlace achieves the best average ranking among the compared methods under the evaluated PPA metrics. 
+
+2 RELATED WORK 
+
+2.1 LEARNING -BASED METHODS 
+
+Learning-based methods, particularly reinforcement learning (RL), learn policies for constructing or refining macro placements. GraphPlace Mirhoseini et al. (2021) formulates macro placement as a sequential Markov decision process, while DeepPR Cheng & Yan (2021) and PRNet Cheng et al. (2022b) incorporate feedback from standard-cell placement and routing. MaskPlace Lai et al. (2022) uses pixel-wise masks to represent placement constraints and wirelength information, and GoodFloorPlan Xu et al. (2021) combines graph convolutional networks with sequence-pair rep-resentations. To improve learning efficiency, ChiPFormer Lai et al. (2023) adopts offline RL with placement-data pretraining, whereas EfficientPlace Geng et al. (2024) integrates Monte Carlo Tree Search with RL. More recently, MaskRegulate Xue et al. (2024) focuses on iterative refinement and incorporates regularity priors into its state representation and reward design to improve placement quality and downstream PPA. 2.2 OPTIMIZATION -BASED METHODS 
+
+Optimization-based approaches include partition-based, analytical, and meta-heuristic methods. Partition-based methods Breuer (1977); Agnihotri et al. (2005); Roy et al. (2006) recursively di-vide the placement region and netlist, while Hier-RTLMP Kahng et al. (2024) applies hierarchical decomposition to complex designs. Analytical methods use quadratic Spindler & Johannes (2007); Spindler et al. (2008); Lin et al. (2015); Li et al. (2016); Cheng et al. (2022a) or nonlinear for-mulations Chen et al. (2008); Kahng & Qinke Wang (2005); Hsu et al. (2014). Electrostatic ap-proaches include ePlace-MS Lu et al. (2015b), ePlace Lu et al. (2015a), and RePlAce Cheng et al. (2019); other scalable frameworks include PeF Li et al. (2022), DREAMPlace Lin et al. (2019), and Xplace Liu et al. (2024). These methods generally require subsequent legalization to obtain feasible layouts. Meta-heuristic approaches include evolutionary search Cohoon & Paris (1987) and simulated annealing Shunmugathammal et al. (2020); Kahng et al. (2022). AutoDMP Ag-nesina et al. (2023) uses Bayesian optimization to tune DREAMPlace Lin et al. (2019), while WireMask-BBO Shi et al. (2023) combines black-box search with WireMask-guided greedy place-ment. EGPlace Li et al. (2025) evolves a population through score-guided macro repositioning, and RollPlace Zhou et al. (2025) combines Monte Carlo tree search with order exchanges and re-peated rollouts. Building on partial reconstruction, C2FPlace combines tournament selection with scheduled random-subset repositioning, followed by fine-grained critical macro tuning. 3Preprint 
+
+3 PRELIMINARY 
+
+3.1 PROBLEM FORMULATION 
+
+The input of a macro placement problem is a netlist, which contains wire nets and module informa-tion, such as macro sizes and pin offsets. A wire net connects a group of pins from different modules. A placement solution is represented as P = {(xi, y i)}Ni=1 , where (xi, y i) denotes the position of the i-th macro and N is the total number of macros. Since exact routing evaluation is computation-ally expensive, heuristic metrics such as half-perimeter wirelength (HPWL) are commonly used to guide macro placement. HPWL provides an efficient wirelength estimation by converting routing optimization into a geometric calculation Mirhoseini et al. (2021); Garey & Johnson (1977). This paper focuses on minimizing HPWL under non-overlap constraints, formulated as: 
+
+min  
+
+> P
+
+HPWL (P ), s.t. Overlap (x, y, w, h ) = 0 (1) where x and y represent macro positions, and w and h represent macro width and height, respec-tively. HPWL is defined as the sum of the half-perimeters of the bounding boxes for all wire nets in the netlist, which is formulated as: 
+
+HPWL = X
+
+> ei∈E
+
+" 
+
+max 
+
+> p∈ei
+
+xp − min 
+
+> p∈ei
+
+xp
+
+
+
++
+
+
+
+max 
+
+> p∈ei
+
+yp − min 
+
+> p∈ei
+
+yp
+
+ #
+
+, (2) where E is the set of all wire nets, and p denotes a pin in net ei with coordinates (xp, y p).3.2 WIRE MASK -B ASED PLACEMENT OPERATOR 
+
+C2FPlace employs a WireMask-based placement operator Lai et al. (2022); Shi et al. (2023) as the basic placement primitive. Given a macro to be placed, the operator first identifies legal locations satisfying boundary and non-overlap constraints. For each legal location, WireMask estimates the induced wirelength by computing the HPWL of nets connected to the macro, and the location with the minimum estimated wirelength is selected. Specifically, the placement region is discretized into a G × G grid. For a macro m, the legality mask Lm indicates whether each grid location satisfies placement constraints, while the WireMask Wm records the estimated HPWL cost of placing m at each legal location. The selected position is obtained by: 
+
+(im, j m) = arg min  
+
+> (i,j )
+
+{Wm(i, j ) | Lm(i, j ) = 1 }. (3) Here, (im, j m) denotes a coarse-grained grid index, which must be mapped to physical coordinates. Fine-grained tuning evaluates the same wirelength cost on its fine-grained candidate set. This place-ment operator is consistently used in initialization, evolutionary search, and critical macro tuning, providing a unified optimization primitive throughout C2FPlace. 
+
+4 METHOD 
+
+Figure 1 illustrates the overall pipeline of C2FPlace. Starting from a population of diverse WireMask-guided initial placements, C2FPlace performs evolutionary optimization in two stages. The coarse-grained stage uses tournament selection and a staged exploration-to-exploitation recon-struction strategy to explore diverse solutions while preserving high-quality structures. The resulting layouts are further refined by fine-grained critical macro tuning to correct discretization errors from coarse-grid placement. WireMask-guided greedy placement serves as the common placement oper-ator throughout the search. 4.1 INITIAL POPULATION GENERATION 
+
+The optimization starts from a diverse population generated by the WireMask-based placement op-erator. Instead of relying on a single individual initialization, C2FPlace independently constructs 20 initial placement solutions through greedy WireMask-guided macro placement. During initialization, macros are placed according to a deterministic ordering heuristic that priori-tizes larger and more strongly connected macros. This strategy alleviates early resource contention 4Preprint Stage 2: Coarse-Grained Optimization              
+
+> 3152Re-place 1352Re-placement Order Child Placement 𝑃 !"#
+> 𝑃 $%&'!
+> VS Update Population
+> 𝑡 = 𝑡 + 1
+> Child vs Population-Worst
+> Stage 2: Low Rip-up Ratio Initialized Population
+> …Tournament Selection Parent Placement 𝑃 !
+> 3152Partially Rip-up
+> 𝑃 !"#
+> Stage 1: High Rip-up Ratio Stage 2: Low Rip-up Ratio
+> Chip Canvas Position Mask Wire Mask Initialized Population
+> Stage 1: Initialization
+> …
+> Repeat Greedy Placement for Initialization 1Identify Critical Macro Fine-Grained Tuning =Fine-Grained Tuning Example on Macro 1 Select Better One (Lower HPWL) According to Parent-Children Comparison
+> 𝑡 = 𝑡 + 1
+> Parent Placement 𝑃 !
+> Child Placement 𝑃 !"#
+> Stage 3: Fine-Grained Critical Macro Tuning
+> Bounding Box for Net 1 Bounding Box for Net 2 Valid Position Invalid Position High HPWL Low HPWL Coarse Grid Fine Grid Best HPWL Iterative Process Rip-up Macros Re-Placed Macros Critical Macros Pin HPWL: Half-Perimeter Wire Length Rip-up Ratio: Percentage of Macros Removed and Re-Placed Update Population: If 𝑃 !"# is better than 𝑃 $%&'! , replace 𝑃 $%&'!
+> Tournament Selection: Randomly pick several individuals and select the best one
+
+Figure 1: Overview of C2FPlace. The framework initializes a population of diverse greedy place-ments, evolves them through stochastic evolutionary search with partial rip-up and re-place, and performs critical macro tuning for further HPWL reduction. and produces stable placement configurations. Crucially, when multiple locations offer equivalent optimality, the algorithm selects randomly among them. By repeatedly applying the greedy place-ment procedure, C2FPlace obtains a diverse initial population, providing multiple promising starting points for subsequent evolutionary optimization. 4.2 COARSE -G RAINED EVOLUTIONARY SEARCH 
+
+C2FPlace optimizes the initial population through a steady-state evolutionary search. At each iter-ation, five individuals are randomly sampled for tournament selection, and the one with the lowest HPWL is chosen as the parent. The parent undergoes partial rip-up and re-place to generate an off-spring, which is evaluated and incorporated into the population through elitist update, as described in Section 4.2.2. 4.2.1 MUTATION STRATEGY 
+
+Inspired by evolutionary optimization, C2FPlace generates new candidate placements through stochastic mutation rather than complete reconstruction. Our mutation strategy consists of three complementary components: partial rip-up and re-place, staged exploration-to-exploitation schedul-ing, and heuristic-guided reinsertion. 
+
+Partial Rip-up and Re-place Instead of reconstructing the entire placement, C2FPlace performs optimization by modifying only a subset of macros in each iteration. Specifically, a subset of macros is randomly selected and removed from the current placement, while all remaining macros remain fixed. Compared with reconstruction, this strategy reduces optimization cost while preserving high-quality placement structures accumulated during previous iterations, thereby providing a better bal-ance between search diversity and solution stability. 
+
+Exploration-to-Exploitation To balance these competing objectives,C2FPlace uses a two-phase schedule for exploration-to-exploitation schedule. At the first phase, the rip-up ratio is sampled from a high-valued interval, providing stronger perturbation for global exploration. At the second phase, The sampling interval shifts toward lower values, enabling a transition toward exploitation. 5Preprint 
+
+Heuristic-Guided Reinsertion After determining the rip-up ratio, the selected macros are re-moved from the current placement and reinserted one by one using the WireMask-based placement operator described in Section 3.2. C2FPlace follows a topology-aware heuristic ordering that prior-itizes macros with higher connectivity and larger area. 4.2.2 POPULATION UPDATE 
+
+After mutation, the generated offspring is evaluated based on its HPWL. To preserve high-quality solutions while continuously improving the population, C2FPlace adopts an elitist replacement strat-egy. Specifically, the offspring is compared with the worst individual in the current population and replaces it only when achieving better placement quality. Algorithm 1 summarizes the complete coarse-grained evolutionary search procedure. 4.3 CRITICAL MACRO TUNING 
+
+Although coarse-grained evolutionary search effectively explores the macro placement space, the obtained solution may still contain suboptimal positions for macros with significant impact on wire-length. This is mainly because coarse-grid representation limits placement flexibility and introduces discretization errors, especially for macros determining net bounding-box boundaries. Therefore, C2FPlace performs critical macro tuning to selectively refine influential macros while preserving the optimized global placement structure. Different from the global exploration performed in evolutionary search, critical macro tuning fo-cuses on local improvement around high-quality solutions. To balance refinement flexibility and placement precision, C2FPlace adopts a dual-granularity refinement strategy, including structure-preserving coarse-grid displacement and fine-grid offset refinement. 4.3.1 CRITICAL MACRO IDENTIFICATION 
+
+For each net, C2FPlace identifies macros that define the four boundaries of its HPWL bounding box as shown on the right side of Figure 1. Since displacing these macros can affect the dimensions of the bounding box, they exert the most significant influence on total wirelength. For net n with pin set Pn, the bounding box boundaries are defined as: 
+
+xmin (n) = min 
+
+> p∈Pn
+
+p.x, xmax (n) = max 
+
+> p∈Pn
+
+p.x, ymin (n) = min 
+
+> p∈Pn
+
+p.y, ymax (n) = max 
+
+> p∈Pn
+
+p.y. (4) A macro is classified as an extreme provider if it hosts at least one pin lying on any of these four boundaries. To exclude nets whose bounding box is governed by a single macro, we only consider nets with multiple extreme providers. The critical macro set is then formulated as: 
+
+Mcrit = [
+
+> n
+> |En|≥ 2
+
+En, (5) where En represents the set of extreme providers for net n.4.3.2 DUAL -G RANULARITY REFINEMENT 
+
+After identifying the critical macro set, C2FPlace considers two complementary placement strategies for refinement. The first allows larger-scale movement to escape unfavorable coarse-grid positions, while the second focuses on recovering fine-grained precision within the current coarse cell. 
+
+Structure-Preserving Coarse-Grid Displacement Although coarse-grid placement provides ef-ficient global exploration, a macro may still be trapped at a suboptimal coarse-grid location. There-fore, C2FPlace first performs coarse-grid displacement to explore neighboring coarse locations. Dif-ferent from unrestricted movement, the displacement is constrained to avoid disturbing surrounding macros. Specifically, the movement from the original location to a candidate location is feasible only when the swept region of the macro does not overlap with other placed macros. Among all feasible candidates, the position with the minimum incremental HPWL is selected. This constraint enables larger-scale local exploration while maintaining the optimized placement structure. 6Preprint Table 2: HPWL ( ×10 5) comparison of different macro placement methods on the ISPD2005 bench-mark. Lower HPWL values indicate better placement quality. The results of baseline methods are taken from EGPlace and RollPlace. Performance metrics are reported as mean values with standard deviations (mean ± std), except for the deterministic method NTUPlace3. The best-performing re-sults are highlighted in bold , while the second-best results are marked in brown. “ w/ ” and “ w/o ”denote the settings with and without Stage 3 critical macro tuning. Method adaptec1 adaptec2 adaptec3 adaptec4 bigblue1 bigblue2 bigblue3 bigblue4 SP-SA 18 .84 ± 4.62 117 .36 ± 8.73 115 .48 ± 7.56 120 .03 ± 4.25 5.12 ± 1.43 N/A 164 .70 ± 19 .55 N/A NTUPlace3 26.62 321.17 328.44 462.93 22.85 N/A 455.53 N/A RePlAce 16 .19 ± 2.10 153 .26 ± 29 .01 111 .21 ± 11 .69 37.64 ± 1.05 2.45 ± 0.06 N/A 119 .84 ± 34 .43 N/A DREAMPlace 15 .81 ± 1.64 140 .79 ± 26 .73 121 .94 ± 25 .05 37.41 ± 0.87 2.44 ± 0.06 N/A 107 .19 ± 29 .91 112 .95 ± 4.03                                                                                                                                                                                                                                         
+
+> GraphPlace 30 .10 ±2.98 351 .71 ±38 .20 358 .18 ±13 .95 151 .42 ±9.72 10 .58 ±1.29 N/A 357 .48 ±47 .83 N/A DeepPR 19 .91 ±2.13 203 .51 ±6.27 347 .16 ±4.32 311 .86 ±56 .74 23 .33 ±3.65 N/A 430 .48 ±12 .18 433 .90 ±5.26
+> MaskPlace 7.62 ±0.67 75 .16 ±4.97 100 .24 ±13 .54 87 .99 ±3.25 3.04 ±0.06 N/A 90 .04 ±4.83 130 .15 ±10 .94
+> ChiPFormer 6.62 ±0.05 67 .10 ±5.46 76 .70 ±1.15 68 .80 ±1.59 2.95 ±0.04 N/A 72 .92 ±2.56 94 .90 ±2.50
+> EfficientPlace 5.94 ±0.04 46 .79 ±1.60 56 .35 ±0.99 58 .47 ±1.61 2.14 ±0.01 10 .48 ±0.25 58 .38 ±0.54 88 .01 ±2.71
+> WireMask-EA 6.15 ±0.05 64 .38 ±4.43 58 .18 ±1.04 59 .52 ±1.71 2.15 ±0.01 19 .47 ±0.17 59 .85 ±3.39 87 .81 ±3.30
+> EGPlace 5.72 ±0.01 37 .69 ±1.08 60 .13 ±1.83 56 .08 ±0.43 2.20 ±0.01 10 .40 ±0.34 52 .41 ±8.16 67 .14 ±2.42
+> RollPlace 5.93 ±0.07 34 .83 ±1.81 54 .88 ±3.08 64 .66 ±3.49 2.05 ±0.03 10 .89 ±0.22 53 .56 ±7.31 69 .67 ±2.70
+> C2FPlace w/o 5.60 ±0.17 29.13 ±1.91 51.19 ±2.05 43 .67 ±1.21 2.04 ±0.01 7.50 ±0.28 37.98 ±4.32 56.29 ±1.29 C2FPlace w/ 5.60 ±0.17 29.06 ±1.90 51.06 ±2.05 43 .39 ±1.22 2.04 ±0.01 7.43 ±0.27 37.90 ±4.34 56.18 ±1.29
+
+Fine-Grid Offset Refinement After coarse-grid displacement, C2FPlace further improves place-ment precision through fine-grid offset refinement. Instead of changing the coarse-grid location, this strategy searches fine-grained offsets within the current coarse grid cell to compensate for dis-cretization errors. For each critical macro, all feasible offsets within the corresponding coarse cell are evaluated, and the position with the minimum incremental HPWL is selected. This refinement improves placement accuracy while avoiding unnecessary perturbations to the global solution. 4.3.3 CRITICAL MACRO TUNING PROCEDURE 
+
+During each tuning iteration, C2FPlace first applies coarse-grid displacement to the critical macros. It then re-computes the critical macro set and applies fine-grid offset refinement. The candidate placement is accepted only if its total HPWL is lower than that of the current placement.The WireMask-based placement operator described in Section 3.2 evaluates the incremental HPWL of each feasible candidate, and the best position is selected for reinsertion. To ensure monotonic improvement, C2FPlace adopts an elitist update strategy. The refined place-ment replaces the current solution only when it achieves lower HPWL. Therefore, the critical macro tuning stage progressively improves local placement quality while preserving the globally optimized placement structure. The pseudocode of Stage 3 is shown in Appendix A.1. 
+
+5 EXPERIMENTS 
+
+5.1 BENCHMARKS , B ASELINES AND SETTINGS 
+
+For evaluation, we use the ISPD2005 benchmark Nam et al. (2005) to assess macro placement performance and the ICCAD2025 benchmark Lu et al. (2025) to evaluate large-scale placement capability and post-placement PPA. We compare C2FPlace with the packing-based SP-SA Murata et al. (1996), representative analytical placers (NTUPlace3 Chen et al. (2008), RePlAce Cheng et al. (2019), and DREAMPlace Lin et al. (2019)), RL-based approaches (GraphPlace Mirhoseini et al. (2021), DeepPR Cheng & Yan (2021), MaskPlace Lai et al. (2022), ChiPFormer Lai et al. (2023), and EfficientPlace Geng et al. (2024)), and optimization-based methods (WireMask-EA Shi et al. (2023), EGPlace Li et al. (2025), and RollPlace Zhou et al. (2025)). Detailed settings of C2FPlace are provided in Appendix A.3. 5.2 ISPD2005 R ESULTS 
+
+5.2.1 PLACEMENT QUALITY COMPARISON 
+
+We evaluate macro placement quality on the ISPD2005 benchmark containing eight circuits. Fol-lowing previous works, all macros are placed for adaptec1-4 , bigblue1 , and bigblue3 ,7Preprint 0 200 400 600 800 1000 
+
+> Time (minutes)
+> 5.50 5.75 6.00 6.25 6.50 6.75 7.00
+> HPWL (×10 5)
+> adaptec1 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(a) 0 200 400 600 800 1000  
+
+> Time (minutes)
+> 30 40 50 60 70 80
+> HPWL (×10 5)
+> adaptec2 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(b) 0 200 400 600 800 1000  
+
+> Time (minutes)
+> 50 55 60 65 70 75 80 85 90
+> HPWL (×10 5)
+> adaptec3 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(c) 0 200 400 600 800 1000  
+
+> Time (minutes)
+> 50 60 70 80
+> HPWL (×10 5)
+> adaptec4 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(d) 0 200 400 600 800 1000 
+
+> Time (minutes)
+> 2.0 2.2 2.4 2.6 2.8 3.0
+> HPWL (×10 5)
+> bigblue1 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(e) 0 200 400 600 800 1000  
+
+> Time (minutes)
+> 810 12 14 16 18 20
+> HPWL (×10 5)
+> bigblue2 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(f) 0 200 400 600 800 1000  
+
+> Time (minutes)
+> 40 60 80 100 120 140
+> HPWL (×10 5)
+> bigblue3 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(g) 0 200 400 600 800 1000  
+
+> Time (minutes)
+> 60 70 80 90 100 110
+> HPWL (×10 5)
+> bigblue4 Convergence
+> WireMask-EA EfficientPlace EGPlace RollPlace C2FPlace
+
+(h) 
+
+Figure 2: Convergence of best-so-far HPWL over runtime for methods rerun on our AMD EPYC 9654 CPU and RTX 6000 ada under a unified 1000-minute budget. Solid lines denote mean values, and shaded regions indicate standard deviation intervals over five independent runs. while the first 1024 macros are considered for the large-scale bigblue2 and bigblue4 . The HPWL results are reported in Table 2. As shown in Table 2, C2FPlace with Stage 3 achieves the lowest HPWL on seven of eight circuits, whereas DREAMPlace performs best on adaptec4 . Across the eight benchmarks adaptec1-4 ,
+
+bigblue1-4 , C2FPlace reduces HPWL by 2.10%, 22.90%, 15.08%, 22.63%, 7.27%, 28.56%, 27.69%, and 16.32% compared with EGPlace, and achieves HPWL reductions of 5.56%, 16.57%, 6.96%, 32.90%, 0.49%, 31.77%, 29.24%, and 19.36% relative to RollPlace, respectively. Averaged over all benchmarks, C2FPlace reduces HPWL by 17.82% against EGPlace and 17.86% against RollPlace, demonstrating the effectiveness of the proposed coarse-to-fine population-based evolu-tionary macro placement framework. The visualization for adaptec3 is shown in Appendix B.4. Furthermore, we perform ablation experiments to evaluate the contribution of Stage 3. On average, Stage 3 brings a 0.31% HPWL reduction compared to without Stage 3. These results confirm that Stage 3, which performs fine-grained tuning of critical macros, can further reduce HPWL beyond the previous stages. However, the improvement is negligible in certain scenarios (e.g., adaptec1 
+
+and adaptec4 ), where the gain is almost zero. This demonstrates the effectiveness of the proposed coarse-to-fine population-based evolutionary macro placement framework. 5.2.2 CONVERGENCE ANALYSIS 
+
+As shown in Figure 2, all methods are evaluated under the same 1000-minute runtime budget, with all other hyperparameters following their original settings, and C2FPlace allocates this budget as 500 min for Stage 2 Phase 1, 400 min for Stage 2 Phase 2, and 100 min for Stage 3. C2FPlace rapidly reduces HPWL in the early stage and continues to improve throughout optimization, demonstrating effective global exploration while preserving flexibility for later refinement. The convergence curves also demonstrate the benefit of staged partial rip-up. By exploring di-verse local reconstruction trajectories, C2FPlace avoids premature stagnation and maintains steady HPWL improvements, particularly on large and highly connected circuits. The subsequent low-ratio updates and Stage 3 critical macro tuning further reduce residual wirelength overhead, confirming the effectiveness of the coarse-to-fine optimization strategy. 5.3 ICCAD2025 R ESULTS 
+
+To assess the scalability and downstream physical design quality of C2FPlace, we further evaluate it on the ICCAD2025 benchmark. We exclude ariane (136 macros) and apply C2FPlace and search-based baselines to standard-cell placement on the remaining five circuits, with the largest design 8Preprint Table 3: Intermediate and PPA metrics on the ICCAD2025 benchmarks with a 1000-minute runtime budget. “ w/ ” and “ w/o ” denote the settings with and without Stage 3 critical macro tuning.                                                                                                                                                                                                                             
+
+> Intermediate Metrics PPA Metrics Benchmark Method Placement Detailed Placement Timing Performance Power ↓
+> HPWL ↓HPWL ↓WNS ↑TNS ↑NVP ↓
+> ac97 top WireMask-EA 106125 115299 -350.88 -262524.84 1889 9.18e-02
+> EGPlace 84244 85090 -305.20 -257896.27 1897 1.16e-01 RollPlace 154668 158904 -484.65 -272175.41 1892 1.06e-01 C2FPlace w/o stage 3 34778 35014 -279.11 -216087.58 1893 1.34e-01 C2FPlace w/ stage 3 33837 34164 -292.12 -234145.58 1893 1.35e-01 aes WireMask-EA 38660 58318 -177.86 -48986.96 547 4.26e-02 EGPlace 32228 34538 -121.73 -13915.60 431 3.97e-02 RollPlace 57638 68329 -243.78 -49069.95 564 4.31e-02 C2FPlace w/o stage 3 28518 30546 -93.51 -10578.63 331 3.88e-02 C2FPlace w/ stage 3 28071 30267 -85.26 -8798.57 329 3.86e-02
+> aes cipher top WireMask-EA 101754 119643 -293.34 -61544.95 596 9.77e-02 EGPlace 103438 105149 -168.46 -32984.75 498 9.15e-02 RollPlace 323464 340744 -768.79 -271215.72 935 1.52e-01 C2FPlace w/o stage 3 54767 55137 -140.75 -26973.63 394 8.15e-02 C2FPlace w/ stage 3 53654 54123 -136.97 -25533.20 387 8.12e-02
+> des WireMask-EA 9435 13090 -102.95 -2972.96 44 1.73e-02 EGPlace 8224 8863 -94.09 -2490.54 33 1.64e-02 RollPlace 23463 26892 -230.60 -9451.57 95 2.10e-02 C2FPlace w/o stage 3 7631 7890 -77.57 -2310.32 34 1.61e-02
+> C2FPlace w/ stage 3 7476 7781 -77.14 -2273.51 34 1.61e-02
+> pci bridge32 WireMask-EA 195019 254100 -782.01 -1018531.31 3250 1.72e-01 EGPlace 185046 188753 -612.53 -555181.25 3285 1.31e-01 RollPlace 281574 305189 -822.14 -658746.44 2835 1.52e-01 C2FPlace w/o stage 3 74777 78749 -413.01 -354008.03 3151 1.14e-01
+> C2FPlace w/ stage 3 73108 77547 -471.76 -394838.00 3237 1.21e-01 Average Rank WireMask-EA 3.80 4.00 4.00 4.20 3.40 3.60 EGPlace 3.20 3.00 3.00 3.00 3.40 3.00 RollPlace 5.00 5.00 5.00 4.80 3.60 4.20 C2FPlace w/o stage 3 2.00 2.00 1.60 1.60 2.20 2.00
+> C2FPlace w/ stage 3 1.00 1.00 1.40 1.40 2.00 2.00
+
+containing over 12K cells. Following the official flow, we use OpenROAD v2.0 with the provided ASAP7 technology library to obtain placement and PPA metrics. Note that Placement HPWL is from the placer, while Detailed Placement HPWL is measured after legalization and detailed placement where the latter is typically larger due to row/site alignment and design-rule constraints. As shown in Table 3, C2FPlace with Stage 3 achieves the lowest placement HPWL on all five circuits, rwith an average per-circuit reduction of 37.92% relative to the best baseline for each cir-cuit. Compared with C2FPlace without Stage 3, it reduces placement HPWL by 2.11% on average, and the corresponding average reduction after detailed placement is 1.62%. For downstream PPA, C2FPlace with Stage 3 achieves the best average ranking in WNS (1.40), TNS (1.40), and NVP (2.00), while maintaining competitive power efficiency. These results demonstrate the scalability of C2FPlace and the effectiveness of Stage 3. However, Stage 3 improves average WNS and TNS rankings but degrades timing on ac97 top and pci bridge32 , showing that HPWL reduction does not always translate proportionally to downstream timing and power. 
+
+6 CONCLUSION 
+
+We propose C2FPlace, a coarse-to-fine macro placement framework that combines tournament se-lection, stochastic macro-subset reconstruction, and a two-phase reconstruction-ratio schedule with critical macro tuning. During the coarse-grained optimization stage, C2FPlace performs evolu-tionary search through stochastic partial rip-up and re-place, enabling diverse solution exploration while progressively refining promising placement structures. After global optimization, C2FPlace performs fine-grained critical macro tuning to compensate for discretization errors introduced by coarse-grid placement and further improve placement quality. Experiments demonstrate the ef-fectiveness and scalability of C2FPlace. On the ISPD2005 benchmark, C2FPlace achieves the best 9Preprint average HPWL among all compared methods and outperforms the state-of-the-art methods EGPlace and RollPlace by 17.82% and 17.86%, respectively. Furthermore, evaluations on the ICCAD2025 benchmark demonstrate that C2FPlace scales to large-scale placement scenarios with thousands to tens of thousands of movable modules and achieves the best overall average ranking in both interme-diate placement metrics and downstream PPA evaluations. These results demonstrate that C2FPlace provides an effective and scalable solution for modern macro placement by combining evolutionary search for global exploration with critical macro tuning for local precision optimization. 
+
+REFERENCES 
+
+Anthony Agnesina, Puranjay Rajvanshi, Tian Yang, Geraldo Pradipta, Austin Jiao, Ben Keller, Brucek Khailany, and Haoxing Ren. AutoDMP: Automated DREAMPlace-based macro place-ment. In Proceedings of the International Symposium on Physical Design , pp. 149–157, 2023. Ameya R. Agnihotri, Satoshi Ono, and Patrick H. Madden. Recursive bisection placement: Feng shui 5.0 implementation details. In Proceedings of the International Symposium on Physical Design , pp. 230–232, 2005. Melvin A Breuer. A class of min-cut placement algorithms. In Proceedings of the Design Automa-tion Conference , pp. 284–290, 1977. Tung-Chieh Chen, Zhe-Wei Jiang, Tien-Chang Hsu, Hsin-Chen Chen, and Yao-Wen Chang. NTU-place3: An analytical placer for large-scale mixed-size designs with preplaced blocks and density constraints. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems ,pp. 1228–1240, 2008. Chung-Kuan Cheng, Andrew B. Kahng, Ilgweon Kang, and Lutong Wang. RePlAce: Advancing solution quality and routability validation in global placement. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1717–1730, 2019. Chung-Kuan Cheng, Chia-Tung Ho, and Chester Holtz. Net separation-oriented printed circuit board placement via margin maximization. In Proceedings of the Asia and South Pacific Design Automation Conference (ASP-DAC) , pp. 288–293, 2022a. Ruoyu Cheng and Junchi Yan. On joint learning for solving placement and routing in chip design. In Proceedings of Advances in Neural Information Processing Systems , pp. 16508–16519, 2021. Ruoyu Cheng, Xianglong Lyu, Yang Li, Junjie Ye, Jianye Hao, and Junchi Yan. The policy-gradient placement and generative routing neural networks for chip design. In Proceedings of Advances in Neural Information Processing Systems , pp. 26350–26362, 2022b. James P Cohoon and William D Paris. Genetic placement. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 956–964, 1987. M. R. Garey and D. S. Johnson. The rectilinear Steiner tree problem is NP-complete. SIAM Journal on Applied Mathematics , pp. 826–834, 1977. Zijie Geng, Jie Wang, Ziyan Liu, Siyuan Xu, Zhentao Tang, Mingxuan Yuan, Jianye Hao, Yongdong Zhang, and Feng Wu. Reinforcement learning within tree search for fast macro placement. In 
+
+Proceedings of the International Conference on Machine Learning , pp. 15402–15417, 2024. Zijie Geng, Jie Wang, Ziyan Liu, Siyuan Xu, Zhentao Tang, Shixiong Kai, Mingxuan Yuan, Jianye Hao, and Feng Wu. LaMPlace: Learning to optimize cross-stage metrics in macro placement. In 
+
+Proceedings of the International Conference on Learning Representations , 2025. Meng-Kai Hsu, Yi-Fang Chen, Chau-Chin Huang, Sheng Chou, Tzu-Hen Lin, Tung-Chieh Chen, and Yao-Wen Chang. NTUplace4h: A novel routability-driven placement algorithm for hierar-chical mixed-size circuit designs. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1914–1927, 2014. A.B. Kahng and Qinke Wang. Implementation and extensibility of an analytic placer. IEEE Trans-actions on Computer-Aided Design of Integrated Circuits and Systems , pp. 734–747, 2005. 10 Preprint Andrew B. Kahng, Ravi Varadarajan, and Zhiang Wang. RTL-MP: Toward practical, human-quality chip planning and macro placement. In Proceedings of the International Symposium on Physical Design , pp. 3–11, 2022. Andrew B Kahng, Ravi Varadarajan, and Zhiang Wang. Hier-RTLMP: A hierarchical automatic macro placer for large-scale complex IP blocks. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1552–1565, 2024. E.Q. Kang, Rung-Bin Lin, and E. Shragowitz. Fuzzy logic approach to VLSI placement. IEEE Transactions on Very Large Scale Integration (VLSI) Systems , pp. 489–501, 1994. Y. Lai, Y. Mu, and P. Luo. MaskPlace: Fast chip placement via reinforced visual representation learning. In Proceedings of Advances in Neural Information Processing Systems , 2022. Y. Lai, J. Liu, Z. Tang, B. Wang, J. Hao, and P. Luo. Chipformer: Transferable chip placement via offline decision transformer. In Proceedings of the International Conference on Machine Learning , pp. 18346–18364, 2023. Wuxi Li, Shounak Dhar, and David Z. Pan. UTPlaceF: A routability-driven FPGA placer with phys-ical and congestion aware packing. In Proceedings of the International Conference on Computer-Aided Design , pp. 1–7, 2016. Ximeng Li, Keyu Peng, Fuxing Huang, and Wenxing Zhu. Pef: Poisson’s equation-based large-scale fixed-outline floorplanning. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 2002–2015, 2022. Zhao Li, Ji Zhang, Jun Gao, et al. EGPlace: An efficient macro placement method via evolutionary search with greedy repositioning guided mutation. In Proceedings of the Forty-second Interna-tional Conference on Machine Learning , pp. 13237–13255, 2025. Peiyu Liao, Siting Liu, Zhitang Chen, Wenlong Lv, Yibo Lin, and Bei Yu. DREAMPlace 4.0: Timing-driven global placement with momentum-based net weighting. In Proceedings of the Design, Automation & Test in Europe Conference & Exhibition (DATE) , pp. 939–944, 2022. Tao Lin, Chris Chu, and Gang Wu. POLAR 3.0: An ultrafast global placement engine. In Pro-ceedings of the IEEE/ACM International Conference on Computer-Aided Design (ICCAD) , pp. 520–527, 2015. Yibo Lin, Shounak Dhar, Wuxi Li, Haoxing Ren, Brucek Khailany, and David Z Pan. DREAMPlace: Deep learning toolkit-enabled GPU acceleration for modern VLSI placement. In Proceedings of the Annual Design Automation Conference , pp. 1–6, 2019. Lixin Liu, Bangqi Fu, Shiju Lin, Jinwei Liu, Evangeline FY Young, and Martin DF Wong. Xplace: An extremely fast and extensible placement framework. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1872–1885, 2024. Jingwei Lu, Pengwen Chen, Chin-Chih Chang, Lu Sha, Dennis Jen-Hsin Huang, Chin-Chi Teng, and Chung-Kuan Cheng. ePlace: Electrostatics-based placement using fast Fourier transform and Nesterov’s method. ACM Transactions on Design Automation of Electronic Systems , pp. 1–34, 2015a. Jingwei Lu, Hao Zhuang, Pengwen Chen, Hongliang Chang, Chin-Chih Chang, Yiu-Chung Wong, Lu Sha, Dennis Huang, Yufeng Luo, Chin-Chi Teng, et al. ePlace-MS: Electrostatics-based place-ment for mixed-size circuits. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 685–698, 2015b. Yi-Chen Lu, Rongjian Liang, Wen-Hao Liu, and Haoxing Ren. 2025 ICCAD CAD Contest Problem C: Incremental placement optimization beyond detailed placement: Simultaneous gate sizing, buffering, and cell relocation. In Proceedings of the IEEE/ACM International Conference On Computer-Aided Design (ICCAD) , pp. 1–3, 2025. Don MacMillen, Raul Camposano, Dwight Hill, and Thomas W Williams. An industrial view of electronic design automation. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1428–1448, 2000. 11 Preprint Azalia Mirhoseini, Anna Goldie, Mustafa Yazgan, Joe Wenjie Jiang, Ebrahim Songhori, Shen Wang, Young-Joon Lee, Eric Johnson, Omkar Pathak, Azade Nova, et al. A graph placement methodol-ogy for fast chip design. Nature , pp. 207–212, 2021. H. Murata, K. Fujiyoshi, S. Nakatake, and Y. Kajitani. VLSI module placement based on rectangle-packing by the sequence-pair. IEEE Transactions on Computer-Aided Design of Integrated Cir-cuits and Systems , pp. 1518–1524, 1996. G.-J. Nam, C. J. Alpert, P. Villarrubia, B. Winter, and M. Yildiz. The ISPD2005 placement contest and benchmark suite. In Proceedings of the 2005 International Symposium on Physical design ,pp. 216–220, 2005. J.A. Roy, S.N. Adya, D.A. Papa, and I.L. Markov. Min-cut floorplacement. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1313–1326, 2006. Y. Shi, K. Xue, L. Song, and C. Qian. Macro placement by wire-mask-guided black-box optimiza-tion. In Proceedings of Advances in Neural Information Processing Systems , 2023. M. Shunmugathammal, C. Christopher Columbus, and S. Anand. A novel B* tree crossover-based simulated annealing algorithm for combinatorial optimization in VLSI fixed-outline floorplans. 
+
+Circuits, Systems, and Signal Processing , pp. 900–918, 2020. Peter Spindler and Frank M Johannes. Fast and accurate routing demand estimation for efficient routability-driven placement. In Proceedings of 2007 Design, Automation & Test in Europe Con-ference & Exhibition , pp. 1–6. IEEE, 2007. Peter Spindler, Ulf Schlichtmann, and Frank M Johannes. Kraftwerk2—a fast force-directed quadratic placement approach using an accurate net model. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1398–1411, 2008. Qi Xu, Hao Geng, Song Chen, Bo Yuan, Cheng Zhuo, Yi Kang, and Xiaoqing Wen. GoodFloorplan: Graph convolutional network and reinforcement learning-based floorplanning. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 3492–3502, 2021. Ke Xue, Ruo-Tong Chen, Xi Lin, Yunqi Shi, Shixiong Kai, Siyuan Xu, and Chao Qian. Reinforce-ment learning policy as macro regulator rather than macro placer. In Proceedings of Advances in Neural Information Processing Systems , pp. 140565–140588, 2024. Qi Zhou, Guojun Liu, Guangzhi Qi, Ming Lu, Jiechu Liu, Zhongli Liu, Jianqun Yang, and Xingji Li. RollPlace: Improving macro placement via monte carlo rollout search. IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 3155–3168, 2025. 12 Preprint 
+
+A IMPLEMENTATION DETAILS 
+
+A.1 DETAILED OPTIMIZATION PROCEDURES 
+
+This section provides the detailed optimization procedures of the coarse-to-fine refinement process. The complete pseudocode is presented in Algorithms 1 and 2. The optimization consists of two stages: coarse-grained evolutionary search and fine-grained critical macro tuning. 
+
+Algorithm 1 Coarse-Grained Evolutionary Search 
+
+Require: Initial population P, macro set M, iterations T , ratio intervals R
+
+Ensure: Optimized placement P ⋆ 
+
+> 1:
+
+for t = 1 , . . . , T do  
+
+> 2:
+
+Randomly sample T individuals from P 
+
+> 3:
+
+Select parent: 
+
+Ppar ← arg min  
+
+> Pi∈T
+
+HPWL( Pi) 
+
+> 4:
+
+Sample rip-up ratio ρ ∼ U (R) 
+
+> 5:
+
+k ← max(1 , ⌊ρ|M|⌋ ) 
+
+> 6:
+
+Randomly select k macros: S ← Sample( M, k ) 
+
+> 7:
+
+Remove S from Ppar to obtain partial layout eP 
+
+> 8:
+
+Preserve original relative order: π ← SortByIndex( S) 
+
+> 9:
+
+for each macro m ∈ π do  
+
+> 10:
+
+c⋆ ← arg min c∈L c(m| eP ) Wm(c| eP ) 
+
+> 11:
+
+Reinsert m into eP 
+
+> 12:
+
+end for  
+
+> 13:
+
+Find worst individual: 
+
+Pworst ← arg max  
+
+> Pi∈P
+
+HPWL( Pi) 
+
+> 14:
+
+if HPWL( eP ) < HPWL( Pworst ) then  
+
+> 15:
+
+Replace Pworst with eP 
+
+> 16:
+
+end if  
+
+> 17:
+
+end for  
+
+> 18:
+
+P ⋆ ← arg min Pi∈P HPWL( Pi) 
+
+> 19:
+
+return P ⋆
+
+A.2 BENCHMARK CIRCUIT STATISTICS 
+
+Table 4 summarizes the circuit statistics of the ISPD2005 Nam et al. (2005) and ICCAD2025 Lu et al. (2025) benchmarks used in our experiments. For the ISPD2005 circuits, C2FPlace optimizes the macro subset, and thus the number of modules to place corresponds to the number of macros. For bigblue2 and bigblue4, we optimize only 1024 macros, following the setting described in the main paper. All macros are placed for the other six ISPD2005 circuits. For the ICCAD2025 benchmarks, C2FPlace is applied to standard-cell placement, and “Modules to Place” therefore denotes the number of standard cells optimized by C2FPlace. The ariane circuit is excluded from the C2FPlace experiments because its placement setting differs from the other ICCAD2025 circuits. The table also reports the numbers of ports, nets, pins, and the corresponding area utilization to provide a detailed overview of the benchmark characteristics. A.3 HYPERPARAMETER SETTINGS 
+
+Table 5 summarizes the hyperparameter settings used in C2FPlace. The coarse-grained evolutionary search is performed in two phases with different rip-up ratios. The first phase uses relatively large rip-up ratios to encourage broader exploration, while the second phase gradually reduces the rip-up ratio for more localized refinement. We use a population size of 20 and a tournament size of 5 throughout the evolutionary search. 13 Preprint 
+
+Algorithm 2 Critical Macro Tuning via Structure-Preserving Coarse-Grid Displacement and Fine-Grid Offset Refinement 
+
+Require: Initial placement P , netlist N , iterations T3
+
+Ensure: Optimized placement P
+
+1: for t = 1 , . . . , T 3 do 
+
+2: eP ← P
+
+3: Structure-Preserving Coarse-Grid Displacement 
+
+4: Identify bounding-box critical macros Mcrit from N and eP
+
+5: for each macro m ∈ M crit do 
+
+6: (cm, δm) ← GetPosition( m, eP )
+
+7: Remove m from eP
+
+8: Generate legal coarse locations Ccoarse  
+
+> m
+
+satisfying footprint and structure-preserving con-straints 
+
+9: c⋆m ← arg min c∈C coarse  
+
+> m
+
+Wm(c, δm | eP )
+
+10: Reinsert m at (c⋆m, δm) into eP
+
+11: end for 
+
+12: Fine-Grid Offset Refinement 
+
+13: Update bounding-box critical macros Mcrit from N and eP
+
+14: for each macro m ∈ M crit do 
+
+15: (cm, δm) ← GetPosition( m, eP )
+
+16: Remove m from eP
+
+17: Generate feasible fine offsets Dfine  
+
+> m
+
+(cm) within the current coarse footprint 
+
+18: δ⋆m ← arg min δ∈D fine   
+
+> m(cm)
+
+Wm(cm, δ | eP )
+
+19: Reinsert m at (cm, δ⋆m) into eP
+
+20: end for 
+
+21: if HPWL( eP ) < HPWL( P ) then 
+
+22: P ← eP
+
+23: end if 
+
+24: end for 
+
+25: return P
+
+Table 4: Circuit statistics of the ISPD2005 and ICCAD2025 benchmarks. 
+
+Circuit Macros Standard Cells Modules to Place Ports Nets Pins Area Util (%) 
+
+adaptec1 543 210904 543 0 221142 944053 55.62 adaptec2 566 254457 566 0 266009 1069482 74.46 adaptec3 723 450927 723 0 466758 1875039 61.51 adaptec4 1329 494716 1329 0 515951 1912420 48.62 bigblue1 560 277604 560 0 284479 1144691 31.58 bigblue2 23084 534782 1024 0 577235 2122282 32.43 bigblue3 1298 1095514 1298 0 1123170 3833218 66.81 bigblue4 8170 2169183 1024 0 2229886 8900078 35.68 ac97 top 0 7750 7750 132 7806 28406 56.23 aes 0 4393 4393 389 4653 17029 57.06 aes cipher top 0 11630 11630 388 11890 40834 64.64 ariane 136 105594 0 495 108198 441645 59.89 des 0 2317 2317 197 2441 7549 56.09 pci bridge32 0 12091 12091 368 12254 45333 59.46 14 Preprint Table 5: Hyperparameter settings of C2FPlace. 
+
+Hyperparameter Value 
+
+Population size 20 Tournament size 5Stage 2 Phase 1 iterations 5,000 Stage 2 Phase 1 rip-up ratio [0 .4, 0.7] 
+
+Stage 2 Phase 2 iterations 5,000 Stage 2 Phase 2 rip-up ratio [0 .1, 0.4] 
+
+Critical macro tuning iterations 50 Coarse grid size 512 Random seeds {0, 1, 2, 3, 4}
+
+Hardware AMD EPYC 9654 CPU After the coarse-grained search, we perform 50 iterations of fine-grained critical macro tuning. Unless otherwise specified, all experiments use a coarse grid size of 512 and five random seeds 
+
+{0, 1, 2, 3, 4}. The experiments are conducted on an AMD EPYC 9654 CPU. A.4 PPA E VALUATION FLOW 
+
+We use OpenROAD v2.0 to evaluate the downstream PPA performance of the placements generated by C2FPlace. For each placement, the corresponding DEF and SDC files are loaded together with the ASAP7 technology and standard-cell libraries. We then perform detailed placement and estimate the parasitics based on the resulting placement. Finally, we report the total negative slack (TNS), worst negative slack (WNS), power, and the number of endpoints with setup violations (NVP). The complete Tcl script used for this evaluation is shown in Fig. 3, ensuring a consistent evaluation flow across all tested circuits.                            
+
+> set def_file $::env(DEF_FILE)
+> set sdc_file $::env(SDC_FILE)
+> foreach libFile [glob "../ASAP7/LIB/*nldm*.lib"] {read_liberty $libFile }read_lef ../ASAP7/techlef/asap7_tech_1x_201209.lef
+> foreach lef [glob "../ASAP7/LEF/*.lef"] {read_lef $lef }read_def $def_file read_sdc $sdc_file
+> source ../ASAP7/setRC.tcl detailed_placement estimate_parasitics -placement report_tns report_wns report_power
+> set nvp_setup [sta::endpoint_violation_count max]
+> puts "NVP (setup violation count): $nvp_setup"
+
+Figure 3: OpenROAD v2.0 Tcl script for PPA evaluation. 15 Preprint 
+
+B ADDITIONAL RESULTS 
+
+To evaluate the sensitivity of C2FPlace to key design choices, we conduct an ablation study on eight ISPD2005 benchmark Nam et al. (2005) circuits, focusing on coarse-grid granularity and rip-up ratio scheduling. We compare the proposed staged random-ratio schedule with ten fixed-ratio settings ranging from 0.1 to 1.0. Each heatmap cell in Fig. 4 reports the mean final-best HPWL over five random seeds. To aggregate results across circuits, we use normalized HPWL instead of directly averaging raw HPWL values, since circuit scales vary significantly across the benchmark suite. For circuit c,coarse-grid size g, and ratio setting s, let Hc,g,s denote the five-seed mean HPWL. The normalized metric is defined as: 
+
+¯Rg,s = 1
+
+|C| 
+
+X
+
+> c∈C
+
+Hc,g,s 
+
+min s′∈S Hc,g,s ′
+
+, (6) where C denotes the eight circuits and S contains all ratio settings, including fixed ratios and the staged random schedule. A lower ¯Rg,s indicates better overall performance, while ¯Rg,s − 1 repre-sents the average relative degradation from the best setting for each circuit. B.1 IMPACT OF COARSE -GRID GRANULARITY 
+
+We first investigate the influence of coarse-grid granularity on placement quality. As shown in Fig. 4, increasing the grid size generally improves HPWL by providing finer placement resolution. However, the improvement is not monotonic and varies across circuits and rip-up ratios. The numer-ical scales are reported separately in the subcaptions, where adaptec1 and bigblue1 use ×10 5
+
+while the remaining circuits use ×10 6.The optimal granularity is circuit dependent. For example, adaptec2 achieves its best result at 
+
+cg256 , while adaptec3 and bigblue2 obtain the lowest HPWL at cg512 ; the remaining cir-cuits prefer cg1024 . These results indicate that finer grids do not always guarantee better placement quality, as the effectiveness of granularity depends on the interaction between resolution and pertur-bation strength. Therefore, coarse-grid granularity should be considered as an important component of the coarse-to-fine optimization process rather than a fixed parameter shared across all circuits. B.2 EFFECTIVENESS OF RANDOM RIP -UP RATIO 
+
+We evaluate the staged random-ratio schedule using the normalized mean HPWL. The random schedule achieves the best performance at cg256 , cg512 , and cg1024 , with normalized HPWL values of 1.026, 1.038, and 1.069, respectively. Its advantage becomes more evident on finer grids: at cg512 and cg1024 , it outperforms the best-performing fixed ratio 0.6 (1.038 vs. 1.048 and 1.069 vs. 1.082). For coarse grids, fixed ratios remain slightly competitive, with fixed ratio 0.7 achieving the best result on cg128 and fixed ratio 0.6 on cg224 .Averaged over all coarse-grid sizes, the staged random schedule achieves the lowest normalized HPWL of 1.039, followed by fixed ratio 0.6 with 1.044. These results demonstrate that the staged schedule provides a robust performance across different grid granularities without requiring circuit-specific ratio tuning. While individual fixed ratios may still achieve better results on specific cases, the random schedule offers a strong overall trade-off under a unified optimization strategy. B.3 ANALYSIS OF RATIO SCHEDULING STRATEGY 
+
+The fixed-ratio results show that no single ratio consistently achieves the best HPWL across all benchmark circuits. The optimal fixed ratio varies significantly, ranging from 0.2 on adaptec4 to 1.0 on adaptec1 and bigblue3 , indicating that the preferred perturbation strength depends on circuit characteristics and grid granularity. It should be noted that for all fixed-ratio baselines, the rip-up ratio in Stage 2 Phase 2 is set to half of that used in Stage 2 Phase 1. C2FPlace addresses this sensitivity with a staged random-ratio schedule. The global-exploration stage samples rip-up ratios from [0 .4, 0.7] , while the local-refinement stage uses [0 .1, 0.4] . This design provides stronger perturbations during exploration and more conservative updates during refinement, while avoiding dependence on a manually selected fixed ratio. 16 Preprint 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+5.991 5.999 5.840 5.890 5.727 5.668 5.658 5.666 5.644 5.622 5.702 5.794 5.745 5.723 5.712 5.682 5.626 5.622 5.601 5.607 5.621 5.696 5.754 5.693 5.645 5.607 5.536 5.557 5.568 5.573 5.538 5.566 5.607 5.745 5.668 5.678 5.634 5.622 5.619 5.501 5.498 5.489 5.461 5.601 5.624 5.600 5.512 5.496 5.511 5.462 5.422 5.452 5.473 5.414 5.461 
+
+(a) adaptec1 ( ×10 5)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+3.736 3.482 3.318 3.152 3.072 3.245 3.292 3.533 3.588 3.400 3.164 3.836 3.397 3.076 3.096 3.085 3.094 3.242 3.465 3.432 3.559 3.142 3.191 2.867 2.803 2.653 2.796 2.786 2.819 3.158 3.006 3.181 2.820 3.306 3.070 2.914 2.840 2.893 2.932 3.158 2.922 3.271 3.250 2.906 3.780 3.337 3.106 2.941 2.810 2.902 2.951 3.101 3.295 4.657 2.884 (b) adaptec2 ( ×10 6)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+6.208 5.942 5.717 5.820 5.939 5.892 5.699 5.902 5.866 6.199 5.761 5.854 5.509 5.551 5.515 5.492 5.398 5.331 5.325 5.336 5.998 5.360 5.764 5.597 5.514 5.528 5.428 5.387 5.408 5.206 5.270 5.934 5.332 5.613 5.351 5.286 5.255 5.268 5.069 5.187 5.109 5.042 5.361 5.107 5.686 5.304 5.215 5.230 5.185 5.236 5.190 5.256 5.844 6.443 5.183 
+
+(c) adaptec3 ( ×10 6)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+5.115 4.781 4.837 5.059 5.000 5.038 5.139 5.339 5.299 5.432 4.917 4.760 4.561 4.577 4.656 4.745 4.810 4.833 4.900 4.992 5.072 4.641 4.584 4.390 4.440 4.421 4.557 4.628 4.703 4.712 4.836 4.862 4.477 4.427 4.235 4.320 4.332 4.427 4.494 4.495 4.568 4.663 4.779 4.339 4.291 4.167 4.218 4.507 4.802 4.886 5.056 5.108 5.341 5.725 4.313 (d) adaptec4 ( ×10 6)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+2.187 2.104 2.088 2.085 2.095 2.071 2.079 2.079 2.077 2.094 2.087 2.159 2.120 2.120 2.099 2.082 2.080 2.078 2.081 2.083 2.092 2.078 2.123 2.105 2.120 2.093 2.058 2.058 2.050 2.059 2.056 2.091 2.060 2.126 2.097 2.088 2.048 2.028 2.043 2.034 2.031 2.039 2.037 2.041 2.047 2.014 2.017 2.011 2.008 2.001 1.997 1.993 2.013 2.170 1.992 
+
+(e) bigblue1 ( ×10 5)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+1.077 1.023 0.960 0.957 0.909 0.918 0.934 0.928 0.932 0.983 0.922 0.957 0.905 0.887 0.857 0.868 0.851 0.871 0.859 0.875 0.912 0.860 0.874 0.831 0.832 0.818 0.779 0.793 0.793 0.792 0.820 0.848 0.789 0.873 0.834 0.813 0.774 0.775 0.761 0.772 0.777 0.776 0.834 0.743 0.890 0.844 0.829 0.835 0.889 0.875 0.876 0.902 0.922 1.001 0.776 (f) bigblue2 ( ×10 6)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+7.205 6.681 6.440 6.328 5.521 5.655 4.595 5.189 6.183 7.511 5.475 6.049 5.415 4.711 4.690 4.493 4.473 4.529 4.478 5.454 4.995 4.510 4.832 4.464 4.177 4.034 3.930 3.790 4.008 4.678 5.409 3.625 3.885 5.242 4.930 4.482 4.155 3.835 3.956 4.143 4.531 5.108 3.240 3.790 5.361 5.133 5.023 5.068 4.985 4.111 4.707 5.227 7.152 3.206 4.598 
+
+(g) bigblue3 ( ×10 6)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Random cg128 cg224 cg256 cg512 cg1024 
+
+7.317 6.924 6.690 6.652 6.903 6.446 6.330 6.493 6.475 6.728 6.719 6.719 6.420 6.282 6.299 6.045 6.081 5.840 5.867 6.163 6.081 6.118 6.664 6.301 5.968 5.941 6.004 5.717 5.732 5.862 6.110 6.133 5.705 6.342 6.015 5.876 5.742 5.640 5.401 5.422 5.548 5.567 5.702 5.618 6.039 5.741 5.677 5.602 5.605 5.305 5.199 5.458 5.501 5.880 5.438 (h) bigblue4 ( ×10 6)
+
+Figure 4: Mean final-best HPWL over five seeds for fixed and random ratio settings. Columns in each panel correspond to fixed-ratio settings, followed by the random-ratio strategy after the orange separator; rows correspond to coarse-grid sizes. Overall, the normalized results demonstrate that the staged schedule achieves the best average per-formance across different coarse-grid sizes, particularly on cg256 , cg512 , and cg1024 . Al-though fixed ratios remain competitive on cg128 and cg224 , the proposed schedule provides a robust default across diverse benchmarks without circuit-specific tuning. B.4 VISUALIZATION RESULTS 
+
+Figure 5 presents a visual comparison of macro placements produced by different methods on 
+
+adaptec3 .Figure 6 visualizes the placement refinement process (Stage 3) of C2FPlace on five ICCAD2025 benchmark circuits. It can be observed that a substantial number of critical macros are moved during the refinement process, and these movements are accepted only when they lead to improved solutions. This demonstrates that Stage 3 can effectively further reduce HPWL. 17 Preprint 
+
+(a) DMPlace 
+
+7.239 × 10 6
+
+(b) MaskPlace 
+
+8.151 × 10 6
+
+(c) WireM-EA 
+
+5.864 × 10 6
+
+(d) EffiPlace 
+
+5.551 × 10 6
+
+(e) EGPlace 
+
+5.761 × 10 6
+
+(f) RollPlace 
+
+5.251 × 10 6
+
+(g) C2FPlace 
+
+4.791 × 10 6
+
+Figure 5: Macro placement visualization for adaptec3 circuit comparing C2FPlace with five recent methods. Abbreviations: DMPlace = DREAMPlace, WireM-EA = WireMask-EA, EffiPlace 
+
+= EfficientPlace. Blue rectangles denote macros. The placement quality is evaluated through HPWL value, where lower HPWL values indicate superior performance. 
+
+(a) ac97 top (b) aes (c) aes cipher top (d) des (e) pci bridge32 Unmoved module Moved critical module 
+
+(f) ac97 top Unmoved module Moved critical module (g) aes Unmoved module Moved critical module (h) aes cipher top Unmoved module Moved critical module (i) des Unmoved module Moved critical module (j) pci bridge32 
+
+Figure 6: Placement visualization of five ICCAD2025 benchmark circuits. The first and second rows correspond to Stage 2 and Stage 3 optimization, respectively. Blue modules remain unchanged, while red indicate tuned critical modules. 18

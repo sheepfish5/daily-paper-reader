@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-04</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-06</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 23 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>11</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-04 22:09:37 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-06 01:25:08 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读7篇、速读12篇共19篇论文，聚焦MoE解码与KV Cache卸载的推理效率优化。最值得关注BASE用预测移除误差做批次感知专家选择，以及AVSG加速稀疏注意力下的向量化稀疏收集，两者均获9.0分。普通读者可优先了解KV Cache卸载与稀疏激活交叉方向，理解大模型推理省显存的现实路径。</p>
+<p>今日精选 23 篇论文，精读 11 篇、速读 12 篇，重点锁定循环 Transformer 自推测与多 Token 预测推理优化。最值得看的是《Shallow Queries, Mature Values》（9.0）与《Beneath the Tokens》（9.0），前者提出深度异步自推测加速循环 Transformer，后者系统剖析 GPU 上多 Token 预测的性能工程；速读中 MoE 推理、端侧流式与芯片宏布局也值得顺带一读。普通读者可先读这两篇精读文章了解推理加速思路，再按需延伸速读中的系统与硬件方向。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">11 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="BASE: Batch-Aware Selection of Experts Using Predicted Removal Error for Efficient MoE Decoding">BASE: Batch-Aware Selection of Experts Using Predicted Removal Error for Efficient MoE Decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="AVSG: Accelerated Vectorized Sparse Gather for Efficient KV Cache Offload in Sparse-Attention LLM Serving">AVSG: Accelerated Vectorized Sparse Gather for Efficient KV Cache Offload in Sparse-Attention LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="KV-Kaizen: Learning Context-Adaptive Cache Compression Choices">KV-Kaizen: Learning Context-Adaptive Cache Compression Choices</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Shallow Queries, Mature Values: Depth-Asynchronous Self-Speculation for Looped Transformers">Shallow Queries, Mature Values: Depth-Asynchronous Self-Speculation for Looped Transformers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Beneath the Tokens: A Performance Engineering Study of Multi-Token Prediction in GPU-Accelerated LLM Inference">Beneath the Tokens: A Performance Engineering Study of Multi-Token Prediction in GPU-Accelerated LLM Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="CORE: COverage CAlibration and Evicted-Mass REdistribution for KV Cache">CORE: COverage CAlibration and Evicted-Mass REdistribution for KV Cache</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>6</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>10</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -87,9 +87,9 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Prefill-Free Cross-Family KV Cache Transfer for Heterogeneous Multi-Agent LLMs">Prefill-Free Cross-Family KV Cache Transfer for Heterogeneous Multi-Agent LLMs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Where Activation Sparsity and KV-Cache Sparsity Cross in LLM Decoding">Where Activation Sparsity and KV-Cache Sparsity Cross in LLM Decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="Validating Memory-Optimal Transformer Kernels on Real Hardware: From Formal Derivation to Measured Performance Across Two HPC Clusters">Validating Memory-Optimal Transformer Kernels on Real Hardware: From Formal Derivation to Measured Performance Across Two HPC Clusters</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Coarse-to-Fine Macro Placement via Evolutionary Search and Critical Macro Tuning">Coarse-to-Fine Macro Placement via Evolutionary Search and Critical Macro Tuning</span></li><li><span class="dpr-home-dashboard-paper-title" title="SPIMOE: Exploiting Hybrid Sparsity for Reasoning MoE Inference on Heterogeneous PIM Architectures">SPIMOE: Exploiting Hybrid Sparsity for Reasoning MoE Inference on Heterogeneous PIM Architectures</span></li><li><span class="dpr-home-dashboard-paper-title" title="OmniTide: Co-Designing Algorithms and Systems for Efficient On-Device Omni-LLM Streaming">OmniTide: Co-Designing Algorithms and Systems for Efficient On-Device Omni-LLM Streaming</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>8</strong></span><span class="dpr-home-dashboard-tag">dse <strong>4</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">dse <strong>7</strong></span><span class="dpr-home-dashboard-tag">li <strong>5</strong></span></div>
 </section>
 </div>
 

@@ -1,0 +1,507 @@
+Title: Heddle: Learning Structural Templates for Parallelism Planning on Heterogeneous GPU Clusters
+
+URL Source: https://arxiv.org/pdf/2609.34244v2
+
+Published Time: Wed, 30 Sep 2026 02:16:02 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# Heddle: Learning Structural Templates for Parallelism Planning on Heterogeneous GPU Clusters 
+
+## Taeyoon Kim †, Yonguk Song ‡, Seoyeong Choy ‡, Hexiao Duan §
+
+## Dong Li §, Seo Jin Park ¶, Myeongjae Jeon ‡†UNIST ‡POSTECH §UC Merced ¶USC 
+
+## Abstract 
+
+Training large machine learning models on shared GPU infrastructures faces two challenges: (1) GPU availability shifts dynamically with varying resource demands from ten-ants, and (2) hardware heterogeneity accumulates as datacen-ters continuously adopt new GPU generations. Due to the vast search space induced by heterogeneous GPU types and node sizes, training planners must prune it aggressively to remain tractable, yet must also derive high-throughput plans promptly as cluster configurations change. Heddle achieves this goal through a learning-based planner that reduces the full planning problem to a search over pipeline structures. 
+
+Heddle encapsulates planning decisions in a structural tem-plate and learns to construct plans from templates over di-verse cluster configurations offline. This design is effec-tive because structural decisions constitute the performance-critical core of a parallelism plan, while the rest follows by rule or from a small priced candidate set once the plan struc-ture is fixed. Evaluation shows that Heddle matches or ex-ceeds the best plan found by five existing planners across clusters with varying GPU types and node sizes for three models of different sizes by up to 84.5% in throughput on dense models and 4.6 × on MoE models. 
+
+## 1 Introduction 
+
+Large-scale ML training draws its GPUs from public clouds [10,26,50] or shared institutional clusters [22,31,54]. As each new accelerator generation joins the old ones, these infrastructures accumulate GPU diversity: Google Cloud of-fers 13 NVIDIA GPU types across seven microarchitecture generations [7], and Alibaba’s production AI cluster holds 12 GPU models from multiple vendors across 37K servers [30]. Because tenants share these GPUs and tenant demand is hard to predict, the number of available GPUs of each type also shifts while a job is running [5,38,52,54]. A training system on such a pool therefore needs a planner that derives a high-throughput parallelism plan for whatever GPUs are available now, fast enough that the job does not stall. 1 10 100 1k 0.2 0.4 0.6 0.8 1.0                
+
+> Norm. throughput  128 GPUs
+> 110 100 1k
+> Planning time (s)
+> 256 GPUs
+> 110 100 1k
+> 512 GPUs AMP Metis Espresso HexiScale Sailor AMP Metis Espresso HexiScale Sailor LLaMA-3-8B Qwen3-32B
+> Heddle Heddle
+
+Figure 1: Training throughput achieved by competing plan-ners versus planning time on a heterogeneous cluster (A100-40 + A6000 + H100 in a 1:1:2 ratio) across 128, 256, and 512 GPUs for LLaMA-3-8B (circles) and Qwen3-32B (triangles). Throughput is normalized to Heddle , and the vertical dashed line indicates the 600-sec search budget. Generating plans for distributed training requires joint execution-optimization across multiple parallelism dimen-sions (e.g., data, pipeline, tensor, and expert) under hardware constraints such as GPU memory limits. However, the search space for such plans explodes combinatorially with each axis of heterogeneity, including GPU type, node size, and in-terconnect bandwidth. Early planners like Alpa [59] and AMP [29] sidestep this complexity by restricting supported heterogeneity. More recent systems such as Metis [51], Espresso [60], HexiScale [56], and Sailor [49] broaden cover-age to diverse GPU types and node sizes. Yet they navigate the vast search space via nested decision loops built on dy-namic programming, graph partitioning, or tree search, and apply domain-specific pruning to stay tractable (Table 1). This search paradigm exposes an inherent conflict be-tween planning latency and quality. Because the nested search loops optimize each plan from scratch , they fail to transfer model-to-GPU mapping principles across cluster configurations. Without such reusable knowledge, each re-source shift forces planners to rerun the full combinatorial 1arXiv:2609.34244v2 [cs.DC] 29 Sep 2026 Table 1: Capabilities of heterogeneous 3D parallelism planners. ✓ fully supported, △ supported with restrictions, ✗ not supported. §3 analyzes each planner in detail.                                                           
+
+> AMP [29] Sailor [49] Metis [51] HexiScale [56] Espresso [60] Heddle
+> Adapt TP degree per stage ✗✓✓✓✗✓
+> Plan expert parallelism (MoE) ✗✗✗✗✗✓
+> Utilize partial GPUs △✓✓✓✓✓
+> Joint device-TP search △✓✓△✗✓
+> Non-uniform node sizes ✗✗✓✓✗✓
+> Unequal layer partition △✗✓✓✓✓
+> Scalable planning time ✓△✗✓✓✓
+> Profiled cost estimation △✓△✗△✓
+
+search from an empty state, which can take tens of min-utes or even hours. To reduce this overhead, planners prune the search with rigid constraints, such as uniform tensor parallelism across pipeline stages or discarding partial-node GPUs. These rules, however, routinely discard viable, high-throughput plans, so the plans that survive fall well short of what the cluster can deliver (Figure 1). Planners today are thus caught in a dilemma: thorough search fails to keep pace with frequent resource changes, while aggressive pruning risks converging on highly suboptimal plans. Furthermore, none of these planners explicitly support expert parallelism, despite its critical role in frontier models like DeepSeek [9] and Qwen [57]. Our key insight is that a learned planner need not choose every parallelism parameter. Structural decisions—pipeline depth, per-stage GPU type, and tensor parallelism (TP) degree—determine how heterogeneous resources are orga-nized into a pipeline. These decisions involve coupled trade-offs among compute speed, memory capacity, and commu-nication cost. Once this structure is fixed, the remaining parameters can be resolved efficiently using hardware pro-files: layers are allocated to balance stage times subject to memory limits, replica counts follow from GPU pack-ing, and micro-batch sizes and expert layouts are selected through bounded candidate evaluations. This decomposition lets a policy focus on structural choices. For each proposed structure, profile-based rules and bounded candidate evalua-tions assign the remaining parameters, allowing the resulting plan’s throughput to guide learning. We present Heddle , a reinforcement learning (RL)-based planner that realizes this decomposition through structural templates . Each template specifies a pipeline’s depth and each stage’s GPU type and TP degree. The policy constructs templates sequentially, and a profile-based cost model com-pletes and evaluates each proposal. Offline training amor-tizes structural exploration across GPU compositions, en-abling fast runtime planning for unseen cluster sizes, type mixes, and node sizes of the profiled GPU types without retraining. The same decomposition accommodates expert parallelism through bounded expert-layout evaluations with-out expanding the learned action space, enabling Heddle to plan all four parallelism dimensions jointly. To turn fast re-planning into fast adaptation, Heddle also integrates a peer-to-peer GPU state migration mechanism that transfers model state directly across plan transitions without remote storage. We implement Heddle on top of Megatron-DeepSpeed [42, 48] and compare it against five state-of-the-art planners across diverse heterogeneous setups (Table 1). Each pol-icy is trained offline and evaluated on unseen GPU compo-sitions without retraining. In the main dense-model experi-ments, Heddle plans clusters of up to 512 GPUs in 0.7–8.4 seconds, achieving up to 1.85 × the throughput of the best baseline, while broader-search baselines often exhaust their 600-second budget. On MoE models, its structural choices deliver up to 4.6 × the throughput of the best baseline, and expert parallelism additionally enables feasible plans for a DeepSeek-V3-like model that cannot fit under the baselines’ expert layouts. On real hardware, Heddle sustains 19.9%– 69.1% higher throughput than the best baseline as GPUs join a running job, demonstrating that fast planning trans-lates into effective adaptation. 
+
+## 2 Background 
+
+Distributed training planners typically compose 3D paral-lelism that combines data (DP), tensor (TP), and pipeline parallelism (PP). DP replicates model weights across work-ers, each processing a distinct slice of the global batch, and synchronizes gradients every training step [43]. TP parti-tions weight matrices within a layer across devices, requir-ing high-bandwidth interconnects (e.g., NVLink) due to fre-quent all-reduce collectives [48]. PP partitions model layers into sequential stages hosted on different devices and divides a per-replica batch into micro-batches to overlap execution and mitigate pipeline bubbles [2, 18, 37]. 
+
+Expert parallelism. Frontier models such as Mixtral [25] and Qwen3 [57] replace dense feed-forward blocks with Mixture-of-Experts (MoE) layers, each comprising E ex-perts and a router that dispatches each token to k of them [12, 28]. This design makes the capacity of the model indepen-2DP 3 DP 2 DP 1 Data Model 
+
+23145Figure 2: Decision knobs on 3D parallelism planning. dent of per-token compute by activating only k experts. Thus, modern MoE models scale E into the hundreds, causing ag-gregate expert weights to dominate the overall memory foot-print [9, 41]. Expert parallelism (EP) scales MoE layers by assigning disjoint subsets of experts to different devices. It routes to-kens via two all-to-all collectives (Figure 3(a)): one for dis-patching tokens to experts and another for combining their outputs [27]. Similar to TP’s all-reduce, the cost of these col-lectives remains modest within a node equipped with high-speed links, but can increase significantly when an EP group crosses node boundaries without effective communication-computation overlap. Because an expert block immediately follows an attention block (often parallelized with TP) in each layer, systems commonly co-locate both on the same GPUs within a node to ensure that both intra- and inter-block collectives fully exploit high-speed interconnects. Nonethe-less, we can apply TP and DP on experts to form expert ten-sor parallelism (ETP; Figure 3(c)), which parallelizes indi-vidual expert execution typically over intra-node GPUs, and expert data parallelism (EDP; Figure 3(b)), which replicates experts across data-parallel groups [27,41]. Modern systems like Megatron-Core therefore decouple attention and MoE parallelism, allowing each block to independently adopt its optimal configuration on the allocated GPUs [20, 33]. 
+
+Planning under GPU heterogeneity. Prior work for hetero-geneous clusters [29,49,51,56,60] tackles the planning prob-lem solely within the 3D space (DP, TP, and PP) for dense models, with the primary objective of maximizing through-put (minimizing training step time) subject to per-GPU mem-ory constraints. For a given model and cluster, these planners mainly search across five key knobs, as shown in Figure 2: ❶
+
+PP degree (number of stages), ❷ per-stage GPU type and TP degree, ❸ DP degree (pipeline replica count), ❹ micro-batch size (MBS), and ❺ layer distribution across stages. Heterogeneous GPU compositions introduce significant asymmetries that complicate this planning process [23, 29, 51, 56]. First, TP requires all participating devices to hold equal tensor slices, yet distinct GPU models differ in com-pute power, memory capacity, and interconnect bandwidth. This forces the planner to choose a TP degree tailored to each GPU type. Second, PP relies on balanced stage exe-cution times to minimize pipeline bubbles. In a heteroge-neous cluster, this precludes uniform layer partitioning, forc-ing the planner to explore asymmetric layer assignments that Attn. Router Ep. 1 Ep. 2 Attn. Router Ep. 1 Ep. 2      
+
+> GPU 1 GPU 0
+> Attn. Router Ep. 1 Attn. Router Ep. 2
+> GPU 1 GPU 0
+> Attn. Router Attn. Router
+> GPU 1 GPU 0
+> Ep. 1 Ep. 2 Ep. 1 Ep. 2
+> All-to-All All-Reduce All-to-All All-to-All
+> (a) Expert Parallelism (b) Expert Data Parallelism (c) Expert Tensor Parallelism
+
+Figure 3: Parallelism strategies for MoE architecture. match the compute capacity of the GPUs assigned to each stage. Finally, DP synchronizes gradients across replicas, but replicas spanning different GPU types may finish at dif-ferent rates and create synchronization bottlenecks. As a re-sult, the search space undergoes a combinatorial explosion. For N GPU types with K candidate TP degrees and up to 
+
+D pipeline stages, ❷ alone yields (N × K)D configurations. This exceeds 43 million for a modest setup of N = 3, K = 3, and D = 8, before even accounting for ❸–❺.Despite emerging optimizations for MoE on heteroge-neous GPUs [34, 55], current efforts mostly focus on fixed, hand-crafted parallel layouts (e.g., placing attention and ex-perts across different GPU generations) or local rebalancing (e.g., redistributing tokens or experts to alleviate stragglers). None proposes an automated planner to explore the full 4D configuration space (DP, TP, PP, and EP). 
+
+## 3 Analysis of Existing Planners 
+
+Several systems tackle the problem raised in §2 using dis-tinct search strategies [29, 49, 51, 56, 60]. Table 1 summa-rizes their key structural capabilities. The five planners in Table 1 adopt two design choices. First, they search the five knobs of Figure 2 jointly. Second, they prune the resulting space with planner-specific heuristics. The two choices pull against each other. Broader coverage of the search space costs planning time, and heavier pruning risks discarding the high-throughput plans. This section examines what these two choices cost, through an analysis of the five planners on a concrete running example. 
+
+## 3.1 Limitations of Search-Based Planning 
+
+for pp in {1.. D_max }: 
+
+for g [1.. pp ] in GPU_types : 
+
+for tp [1.. pp ] in TP_degrees : 
+
+for dp in DP_candidates : 
+
+for mbs in MBS_candidates : partition = PartitionLayers (pp , ...) plan = (pp , g [1.. pp ], tp [1.. pp ], dp , mbs , partition ) throughput , oom = Evaluate ( plan ) 
+
+The nested-loop traversal above illustrates the common search backbone shared by existing planners. Each planner 3instantiates this backbone differently, varying both loop or-dering and pruning heuristics to manage search latency: • AMP [29] enumerates TP, DP, and MBS first, partitions layers into stages via dynamic programming based on per-layer costs averaged across all GPU types, and subse-quently completes stage-to-GPU assignments. • Espresso [60] does not search the TP degree, so enforces a uniform TP degree across all pipeline stages and prunes stage-to-GPU mappings via bounded tree search. • HexiScale [56] first partitions the cluster into disjoint data-parallel replicas via bandwidth-based graph partitioning, and then independently searches for TP and PP within each replica strictly constrained by its assigned GPU pool. • Metis [51] jointly searches stage-to-GPU mappings and MBS in the outer loop, while delegating layer allocation to a one-shot heuristic and favoring stage replication (DP) over TP for multi-GPU stages. • Sailor [49] enumerates PP and MBS but not TP. For each MBS it computes one TP degree per stage. The degree is the larger of the smallest that fits the stage in memory and one set by how the stage’s time scales with TP. The layer allocation is uniform across stages. Because these planners prune nested search loops using their own heuristic rules, each confines its search to a distinct sub-space, which produces qualitatively different plans for iden-tical cluster setups. We next empirically demonstrate where each planner falls short due to search-space pruning. 
+
+Setup. We evaluate the five planners on LLaMA-3-8B (32 layers) and Qwen3-32B (64 layers) across three cluster scales: 128, 256, and 512 GPUs with a fixed 1:1:2 ratio of A100-40GB, A6000, and H100 GPUs. Figure 1 compares their planning quality and latency under a 600-sec search budget, and Figure 4 shows where each plan lands within the feasible pipeline search space for the 512-GPU cluster. 
+
+Observation 1. No existing planner consistently wins across models. Evaluating the planners on the 512-GPU cluster reveals that they settle on widely divergent plans in pipeline depth, GPU-type allocation, and stage-wise TP de-grees. No single planner dominates across both models, and all frequently miss search regions that harbor optimal plans (Figure 4). Key issues with each planner include: • AMP spreads the model over all three GPU types in eight stages at TP = 2. Because its layer partitioning ignores hardware speed disparities, stages on slower A6000 and A100-40 GPUs straggle behind those on H100s. • Espresso restricts TP = 1 across all stages, placing a hard ceiling on throughput. It resolves the limitation via a deep PP degree with layer partitioning. On Qwen3-32B, it plans the best plan among baselines. However, the best candi-dates of Figure 4 leverage a TP degree, which Espresso cannot consider. • HexiScale partitions the cluster by bandwidth into around 1 2 4 8 16 32          
+
+> Pipeline depth
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Norm. throughput  LLaMA-3-8B
+> 124816 32
+> Qwen3-32B AMP Metis Espresso HexiScale Sailor
+
+Figure 4: Pipeline structures on the 512-GPU composition of 128 A100-40, 128 A6000, and 256 H100. Gray points are 200,000 samples from the million parallelism plan struc-tures drawn at random, scored by the same cost model with baselines and the colored points are the five planners’ plans. Throughput is relative to the best plan found for that model. HexiScale is marked on the median pipeline depth. 100 asymmetric data-parallel pipelines of varying depths. Here, the slowest pipeline inevitably bottlenecks cluster-wide gradient synchronization. • Metis consistently exhausts its 600-sec search budget due to costly enumeration steps. This premature termination leaves exploration incomplete, compounding the penalties of search-space pruning. • Sailor achieves competitive throughput on LLaMA-3-8B. However, the rigid even-layer partitioning and MBS-TP degree pairing lead to a suboptimal decision. On Qwen3-32B, it adds the A100-40 GPUs to its H100 pipeline but degrades throughput due to its rigid even-layer split. 
+
+Observation 2. Planning overhead escalates with clus-ter scale. As cluster scale and heterogeneity grow, planners exploring broader search spaces incur prohibitive planning overhead. Figure 1 shows that Metis exhausts its 600-sec budget across all evaluated scales (128, 256, and 512 GPUs). Similarly, Sailor’s search time on LLaMA-3-8B climbs from 106 sec at 128 GPUs to the 600-sec cutoff at larger scales. Without a time budget, Sailor’s search time reportedly surges from 0.3 sec to 6.2 sec and 4,900 sec as the cluster expands from one to two and three GPU types (256 GPUs each). Metis takes hours even with two types [49]. While HexiS-cale prunes aggressively to stay fast, its planning time still grows non-trivially without ever finding competitive plans. As in Observation 1, no single planner consistently out-performs the others across cluster scales. For instance, on LLaMA-3-8B, Sailor ranks last among the five at 128 GPUs but first at 512. Meanwhile, although Espresso maintains consistent relative throughput for Qwen3-32B, its plan qual-ity degrades as the GPU count increases on LLaMA-3-8B. Together, these observations reveal that existing planners fail to balance search tractability and plan quality across di-verse models and cluster scales. This limitation is particu-4larly acute in dynamic cloud environments where GPU avail-ability fluctuates over short time windows [5, 38, 52, 54]. In such settings, ML practitioners face an untenable choice: ei-ther settle for highly suboptimal execution under rigid heuris-tics or leave newly provisioned GPUs idle while heavy-weight planners struggle to complete in time. 
+
+## 3.2 Support for Parallelizing Experts 
+
+Modern MoE systems [33] organize the expert layout of a pipeline stage by factorizing it into expert parallelism (EP), expert tensor parallelism (ETP), and expert data parallelism (EDP), as introduced in §2. For a pipeline stage s assigned to Ws GPUs, the product of their degrees is constrained to 
+
+Ws, i.e., |EP | × | ETP | × | EDP | = Ws. Existing planners have yet to treat experts as an independent parallelization knob. Instead, they handle experts identically to dense attention layers, thus enforcing a uniform stage-wise TP degree that restricts experts to |ETP | = Ws and |EP | = |EDP | = 1. This restriction has two consequences. First, planners usu-ally keep a TP group within a node to run all-reduce over high-speed interconnect, which imposes |ETP | = |TP |. This leaves no valid assignment when a layer’s experts exceed a single node’s memory capacity. Second, even if ETP can be extended across nodes, doing so severely compromises train-ing throughput. Slicing experts solely via ETP fragments ma-trix multiplications into low-arithmetic-intensity operations and incurs expensive all-reduce communication. Prior stud-ies report that relying on ETP alone can drive all-reduce communication cost to 34% of MoE layer execution time at 16 GPUs and 57% at 256 GPUs [20]. Rebalancing par-allelism degrees removes much of this overhead. We ob-serve a 71% communication time reduction when merely shifting an eight-GPU stage over two TCP-connected nodes from |ETP | = 8 to |EP | = 8. In practice, the best configu-ration varies with GPU memory capacity and network band-width [55]. A static, uniform layout therefore fails to main-tain optimal efficiency across a wide range of heterogeneous resources (§6.3). 
+
+## 4 Our Approach: Learned Planner 
+
+We first motivate our choice of a reinforcement learning (RL)-based planner and then present key ideas that make it practical in our target scenarios. 
+
+## 4.1 Design Rationale 
+
+With expert parallelism, conventional nested-loop search faces a severe combinatorial explosion. This makes it far more difficult to design a search-based planner that identi-fies optimal plans within practical latency bounds. Heuris-tic pruning cannot rescue nested-loop search amid such com-plexity, as hard-coding manual rules into a rigid search loop is inherently brittle. In particular, planning knobs are tightly intertwined, resource pools cannot be predicted a priori , and hardware shifts quickly invalidate static logic tuned to earlier operating regimes (§3.1). To overcome these limitations, we consider a learning-based planner that learns structural decisions and resolves the remaining parameters through profile-based rules and bounded evaluations. This decomposition lets an RL agent construct pipeline structures autoregressively and receive throughput feedback for each completed proposal. Train-ing the policy offline across diverse GPU compositions amortizes structural exploration, so it can generate high-throughput plans promptly when a cluster reconfigures. The policy learns from simulation without costly trial runs on physical GPUs. 
+
+Prior learned approaches operate at an incompatible granularity. Existing learned frameworks are not suited to our problem: they operate at the operator level rather than the pipeline level. Prior RL approaches map individ-ual graph operators to small homogeneous clusters of 2 to 8 GPUs [1, 11, 36]. At the scale of hundreds of heteroge-neous GPUs, this fine-grained search space explodes with both model graph size and cluster scale and does not explic-itly capture macro-level structures, such as pipeline depth and DP replica counts. We thus need a planner that operates at a structural abstraction beyond individual operators. 
+
+Directly learning the raw plan space is sample-inefficient. 
+
+Training a policy over all planning knobs in Figure 2 faces an expansive action space where invalid configurations are pervasive. This is best illustrated by memory heterogene-ity across GPU types: it causes many sampled knob com-binations to fail with out-of-memory (OOM) errors. Conse-quently, the policy receives virtually no performance feed-back to guide learning while wasting its exploration budget on dead-end configurations. We empirically confirm that training directly over the raw knobs needs 2 × more plan evaluations than our approach to reach the same plan (§6.4). The central design challenge for a practical learned planner is therefore not whether learning is viable, but which decisions genuinely require learning and how the remaining decisions should be resolved. 
+
+## 4.2 Key Ideas 
+
+§3 demonstrates that search-based planners solve each GPU composition from scratch without transferring knowledge across invocations. A learned planner amortizes this combi-natorial search cost during offline training and reuses struc-tural policies at runtime. Realizing such a planner over het-erogeneous clusters introduces three key requirements. 1. The planner must express all four parallelism dimen-sions (DP, PP, TP, and EP). 52. The decision formulation must scale to hundreds of het-erogeneous GPUs rather than a handful of devices. 3. The policy must generalize across diverse GPU compo-sitions without retraining. 
+
+Decomposing monolithic decision spaces. The parallelism knobs influence one another, which is why a planner searches them together. The influence runs both ways, yet the deci-sions can still be resolved in an order. The pipeline structure decides which devices communicate and over which links, and the remaining values are bounded once that structure is fixed. Decisions regarding pipeline stage placement and ten-sor parallelism directly interact with cluster topology, creat-ing discrete and non-linear communication trade-offs across asymmetric interconnects. Conversely, parameters such as batch sizes and replica counts primarily manage local mem-ory budgets and scaling efficiency, which behave more pre-dictably once device assignments are known. The layer share of a stage and the expert layout of an MoE stage fall on the same side. A stage with a fixed GPU type and TP degree bounds both, and the all-to-all of an expert layer stays inside it (§3.2). This distinction suggests a practical decoupling. A planner can direct its optimization effort toward the topology-sensitive placement decisions while resolving the remaining operational parameters through rule-based or bounded evalu-ations. 
+
+Make every construction step informative. The split shrinks what the policy explores, but infeasible choices re-main in it. A depth can exceed the GPUs that remain, a TP degree can exceed its node, and a stage can still run out of memory. Two properties therefore have to hold of the con-struction. The policy must never sample a choice that cannot run, so that exploration spends its budget on plans that return a throughput. Every step must also be judged by a complete plan, so that a partial construction still returns a signal. §5 details how Heddle realizes these ideas and the three require-ments above. 
+
+## 5 Heddle 
+
+Building on the design principles in §4.2, Heddle decou-ples parallelism planning around a central abstraction called the structural template , which encapsulates structural deci-sions into reusable units. To operate atop this abstraction, 
+
+Heddle coordinates three core components: (1) a learned planner (§5.1) for autoregressive search over structural tem-plates, (2) a profile-based cost model (§5.2) for resolving arithmetic dimensions (§5.3) and checking execution feasi-bility, and (3) a reconfiguration module (§5.6) for state mi-gration during plan transitions. Figure 5 illustrates how these components interact end-to-end. Given a target GPU composition ➀, the planner pro-poses candidate structural templates via an offline-trained Heterogeneous Cloud Instances 
+
+> Action Reward
+> Planner (5.1)
+> Learned policy
+> Cost Model (5.2)
+> Profile-based
+> Reconfiguration (5.6)
+> GPU-to-GPU migration
+> Profile Repository
+> Profile data & actions
+> Worker Pool
+> Job configuration 5
+> Environment information 1
+> 2
+> Reconfiguration (Y/N) 3
+> Profiled data 4
+> Resource tracking 6
+> Heddle
+> Heddle Agent
+
+Figure 5: Heddle system overview. policy ➁. For each template, the cost model auto-fills arith-metic parameters (e.g., DP degree, layer distribution, micro-batch size, and expert tiling) and ranks the resulting plans by predicted throughput using offline profiles ➃. If training is starting from scratch ➂, the highest-throughput plan is de-ployed directly to workers ➄. When re-planning is triggered by a resource shift during training ➅, the reconfiguration module instead migrates model state between GPUs to adopt the new plan without remote storage ➄.
+
+## 5.1 Learning-based Planner 
+
+Structural template as the primary unit of planning. Astructural template defines the pipeline topology by assign-ing a GPU type and a TP degree to each pipeline stage ( ❶
+
+to ❷ in Figure 2). All devices within a stage share these attributes, establishing the stage as the unit of resource al-location. Once a template is fixed, arithmetic decisions are resolved post-hoc via rule-based heuristics and bounded pro-file lookups ( ❸ to ❺ in Figure 2), as detailed in §5.3. This template formulation satisfies the three operational requirements outlined in §4.2. First, the template configura-tion, replication factor, and stage-wise expert sizing jointly express all four parallelism dimensions (DP, PP, TP, and EP). Second, the structural action space depends solely on the number of GPU types, TP options, and pipeline depth, so it does not grow with the layer count of the model. Third, the state describes a cluster by the fraction and the device properties of each GPU type, and by the cluster scale. One policy therefore transfers to new sizes and node mixes of the GPU types it trained on, without retraining. To transfer across cluster scales, each GPU type is charac-terized by normalized hardware attributes such as peak com-pute throughput (TFLOPS), memory capacity, and speed at each TP degree. Meanwhile, the cluster state records the relative proportion of each GPU type and the cluster scale in-stead of absolute per-device counts. The cluster’s scale itself is also in the state, so the policy is not bound to that ratio. It can choose a deeper pipeline where a larger cluster favors a different structure. For example, when a cluster scales 6Deterministic Output 
+
+> 1 node:
+
+Structural decisions (RL policy)         
+
+> Depth selection Stage construction
+> Depth head
+> S1
+> 23
+> depth mask
+> d = 2 Stage 0
+> TP
+> 124dev+TP mask
+> Device
+> Stage 1
+> TP
+> dev+TP mask 124
+> Device
+> Template 1
+> DP = 2
+> 24:10 layers MBS = 4
+> TP = 1 TP = 2
+
+Cluster state 
+
+> Arithmetic auto-fill
+> Micro-batch DP degree
+> max(avail / need)
+> Layer dist.
+> speed-proportional
+> Expert tiling
+> best via cost model all factorizations priced
+
+Figure 6: Heddle template building process. At each con-struction step, the planner selects a pipeline depth, then au-toregressively assigns a GPU type and TP degree to each stage. The system auto-fills the layer distribution, DP degree, micro-batch size, and the expert tiling of an MoE model. The process repeats until the planner emits STOP or the GPU com-position is fully mapped. from 8 A100s and 16 H100s to 32 A100s and 64 H100s, the 1:2 A100-to-H100 ratio is preserved while the scale in-creases. Through this representation, learned placement poli-cies transfer directly across cluster scales. 
+
+Planning as autoregressive construction. Heddle con-structs a plan as a sequence of structural templates (Figure 6). Each step adds one template, and the construction ends when the planner emits a STOP signal or reaches the step limit. A plan is the set of templates placed when construction stops, and each of them holds its own GPUs. A step first selects a pipeline depth d ∈ { 1, . . . , Dmax }. It then assigns a GPU type and a TP degree to each of the d stages, one stage at a time. The TP degree comes from K = {1, 2, . . . , 2n},where n follows the maximum number of GPUs in a node, so K = {1, 2, 4} for 4-GPU nodes. Heddle fills the arithmetic dimensions of a template as soon as a step completes it. 
+
+Feasibility masking. A mask removes the choices that can-not run before the planner samples a decision. The depth mask leaves out a depth that the remaining GPUs cannot hold. The device mask leaves out a GPU type with no GPU left. The TP mask leaves out a degree above the node size of the selected type. The expert tiling needs no mask, since the fill prices it rather than the policy choosing it. A mask changes no relative order among the choices it keeps, so the policy ranks the feasible ones as it learned to. Every sampled action therefore completes into a plan the cost model prices, which is what a sparse reward demands of the planner (§4.2). 
+
+Non-uniform GPU composition support. Heddle reads a GPU composition as a node list per GPU type, and a node can hold any number of GPUs [51]. The TP mask therefore limits a TP degree to the largest node of its GPU type. A TP group never crosses a node boundary, where the communi-cation would be much slower. Heddle first looks for a node whose size equals the requested TP degree. If no such node remains, it takes the necessary GPUs from a larger node. 
+
+## 5.2 Profile-based Cost Model 
+
+The cost model reports the iteration time and the per-GPU peak memory of a plan from offline-profiled measurements, so the planner needs no online profiling. 
+
+Throughput estimation. The cost model holds the profiles that Heddle measures offline. One profile entry names a GPU type, a TP degree, and a micro-batch size, and it gives the computation cost and the communication cost of one layer. The profiling cost is low, because Heddle profiles one layer per repeated structure, such as one transformer block, and reuses that cost for every identical layer. A model with L
+
+unique layer types, usually three or four in an LLM, needs each entry L times. A new GPU type or a new TP option needs only the affected entries. The cost model looks up an exact match only, and a configuration the profiles do not hold leaves the search space. 
+
+Memory validation. The cost model computes the per-GPU peak memory footprint by summing model parameters, opti-mizer states, gradients, and activation memory for the given layer partition and micro-batch size. It compares the foot-print against the physical memory of each GPU, so it finds an out-of-memory (OOM) configuration before it estimates the throughput. Heddle applies this check during plan con-struction and during the fill of §5.3. 
+
+## 5.3 Arithmetic Auto-fill 
+
+Heddle resolves the arithmetic dimensions of every candi-date the policy proposes, and none of them enters the ac-tion space. Each dimension either follows from the template or comes from a bounded candidate set that the cost model prices. 
+
+Layer split and DP degree. The layer split follows from the template. Heddle gives each stage layers in proportion to its profiled speed, so the stages of a pipeline take a similar time. If that split exceeds the memory of a stage, Heddle prices a fixed list of alternative splits and keeps the fastest one that fits. The DP degree follows from the remaining nodes. Hed-dle packs the TP group of each stage into the nodes of that stage’s GPU type and takes the largest replication count that the packing admits. 
+
+Micro-batch size. The micro-batch size comes from the pro-filed powers of two. Heddle takes the largest size that fits in memory and every smaller one, and it keeps the size with the shortest iteration time. The cost model scores each candi-date as part of the plan so far, so the choice also reflects the templates that Heddle already placed. 7Table 2: Planner state features. K is the set of TP degrees, the powers of two up to the node size, and G the GPU count.                      
+
+> Feature Description
+> ρi,ηiRemaining GPU and node fractions of type isiFraction of all GPUs that are of type i
+> ¯fi, ¯ miNormalized peak TFLOPS and memory
+> α(k)
+> i,φ(k)
+> iRelative and effective speed at TP k∈Kμ(k)
+> iLayer memory at TP kover GPU memory
+> h(k)
+> iRemaining nodes of size k
+> log GCluster scale
+> t/Tmax Construction step progress
+
+Expert tiling. The expert layout of a stage factorizes into EP, ETP, and EDP, whose product is the number of devices 
+
+Ws mapped to the stage. §3.2 gives the cost of each direc-tion. ETP carries the node bound of TP, since both slice one tensor. EP does not, and Heddle prices a group that leaves a node with the bandwidth measured across nodes rather than the one measured inside. EDP is then what remains, Ws over the product of the other two. Heddle prices every factoriza-tion of Ws that fits in per-GPU memory and keeps the one with the shortest execution time. The node size and the de-vice memory leave 3 to 12 such factorizations in practice. A stage can be tiled on its own, because its choice does not reach its neighbors. The dispatch and combine collectives of an expert layer stay within the devices of the stage, so the tiling of stage s changes ts and the gradient synchroniza-tion gs of that stage alone. An iteration of a 1F1B pipeline takes (M − 1) max s ts + ∑s ts + max s gs for M micro-batches. The first two terms grow with every ts, so the fastest tiling for each stage is also the fastest for them. Heddle therefore takes the per-stage choice as a starting point and re-selects against the whole iteration, over the candidates it has already enumerated. 
+
+## 5.4 Policy Network 
+
+Planner state. The state is a vector of fixed size, so one policy transfers across compositions without retraining. Its entries are fractions and normalized device properties, and the cluster size enters on a log scale. Table 2 lists the per-type features and the cluster-wide features. The composition group tells apart clusters that share every device property but differ in mix. To relate every candidate depth to the current cluster size, the state holds the GPU count over that depth. The count is the most replicas a depth can leave when a stage takes one GPU. The state ends with a short summary of the composition, which gives its size, the share of each type, and how uneven the mix is. A small network turns that summary into a scale and a shift for every layer of the backbone and for every head. Therefore, the same trained weights act dif-ferently on different compositions. 
+
+Decision heads. The policy network emits the decisions of a step through three heads. The depth head selects the PP degree from {STOP , 1, . . . , Dmax }. Selecting STOP ends the construction, and selecting a depth starts to build the pipeline structure. The device head then works through the stages of that depth, one at a time, and gives each stage a GPU type. The TP head gives the same stage a TP degree. Each head reads what the decisions before it have fixed. This order narrows each decision. The depth fixes how many stages the step has to fill. A placed stage takes its GPUs out of what the later stages can use. A GPU type admits only the TP degrees that fit one of its nodes. The depth head and the device head score a candidate together with the features of that candidate, so a logit moves when the cluster changes. 
+
+## 5.5 Training the Planner  
+
+> Heddle
+
+trains one policy per model offline, on generated compositions of the profiled GPU types, and plans compo-sitions it has not seen. Training needs no GPU, because the cost model prices every rollout. 
+
+Reward. The per-step reward is the throughput delta 
+
+rt =
+
+(
+
+Thr (Pt ) − Thr (Pt−1), if at is valid ,
+
+−δ, otherwise (e.g., OOM) , (1) where Thr (Pt ) is the throughput of the plan built so far, after the fill of §5.3 has completed the new template. Every step is therefore judged by a complete plan, which is what §4.2 asks of the signal. The term δ is a fixed penalty for a template that does not fit, and it applies at the first step only. At a later step such a template ends the episode at the plan built so far, with no penalty. The delta also teaches the planner when to emit STOP , since a template that lowers throughput earns a negative reward. 
+
+Training one policy across compositions. Heddle trains one policy for every composition, so a single update has to learn from all of them at once. The reward and the gradient are not comparable across compositions, and Heddle makes each comparable before the update uses it. The reward is a throughput, and throughput differs by an order of magnitude across compositions and models. Heddle therefore keeps the clipped objective of PPO [44] but judges each rollout against the other rollouts of its group [47]. A group is a set of roll-outs on one composition from the same state, so its members differ only in the decisions the policy made. A rollout above the others of its group earns a positive advantage, and one below them a negative one, whatever the scale of that com-position. Heddle therefore needs no learned value baseline, which would first have to learn the scale of every composi-tion. The gradients of two compositions can pull a shared weight in opposite directions when one holds a GPU type the other does not have. When two point against each other,  
+
+> Heddle
+
+removes from each the component that lies along the 8Algorithm 1 Parallelism planning via template construction. 
+
+Require: GPU composition C (N GPU types), model pro-file P , learned planner πθ, max depth Dmax , max steps 
+
+Tmax , TP options K, expert count E (E=1 for dense) 
+
+Ensure: Parallelism plan  
+
+> 1:
+
+s ← RESET (C , P ); done ← FALSE 2: while not done do  
+
+> 3:
+
+md ← DEPTH MASK (s) 
+
+> 4:
+
+d ∼ πθ.DEPTH HEAD (s, md ) ▷ Select depth or STOP  
+
+> 5:
+
+if d = STOP then  
+
+> 6:
+
+done ← TRUE ; continue  
+
+> 7:
+
+end if  
+
+> 8:
+
+for j = 0, . . . , d−1 do ▷ Stage construction  
+
+> 9:
+
+g j ∼ πθ.DEV HEAD (s, d, j, DEV MASK (s))  
+
+> 10:
+
+τ j ∼ πθ.TPH EAD (s, d, j, g j, TPM ASK (s, g j))  
+
+> 11:
+
+end for 
+
+// Arithmetic auto-fill ( §5.3)  
+
+> 12:
+
+ℓ ← DISTRIBUTE (template , P ) 
+
+> 13:
+
+n, b ← COST MODEL .B EST FILL (template , ℓ, s) 
+
+> 14:
+
+e ← COST MODEL .B EST TILING (template , E) 
+
+> 15:
+
+s, done ← STEP (template , ℓ, n, b, e) 
+
+> 16:
+
+end while  
+
+> 17:
+
+return best plan other [58]. What is left still improves its own composition, but no longer at the expense of the other. 
+
+Exploration in training. Two rules keep deep pipelines in every group, because shallow pipelines dominate early train-ing. A shallow pipeline gives positive throughput with most GPU-type and TP-degree combinations, so it can hide a fast deep pipeline. With a probability that decays from 0.8 to 0.25 over training, a rollout is forced to a feasible depth drawn uni-formly. One rollout per group draws its GPU types uniformly instead of from the policy. An entropy bonus keeps the re-maining rollouts from collapsing onto one template. Hed-dle computes it per decision and divides it by the number of decisions in a step, so that depth alone does not earn a larger bonus. Self-Imitation Learning (SIL) [39] with a re-play buffer per depth anchors the planner to the best plan found at each depth. At a fixed interval the planner imitates the best plans in these buffers and those of similar composi-tions. 
+
+## 5.6 Reconfiguration 
+
+When the GPU composition changes during training, the model state has to move to the GPUs of the new plan. Hed-dle moves it GPU to GPU [13, 21,49,52] rather than through remote-storage checkpoints [32, 53]. Its Direct State Mi-gration (DSM) copies state between two device memories with a peer-to-peer transfer of NCCL [17]. The difficulty is that NCCL needs a deterministic synchronization. The two GPUs of a transfer must agree on the data volume and on the peer before the transfer starts. DSM meets this condition in two stages, so transfers run in parallel without a global scheduler. It first computes the difference between the old and the new plan as a set of migration tuples. For each tu-ple, it picks the sender with the highest-bandwidth link to the receiver from the profiled topology. • Stage 1 (intra-pipeline). DSM executes the tuples whose sender and receiver lie in one pipeline. These transfers are pipeline-local, so every pipeline runs them in parallel with-out mismatches. • Stage 2 (inter-pipeline). DSM then executes the tu-ples that cross pipelines as a sequence of point-to-point ex-changes. The two stages together meet the size and identity conditions of NCCL. 
+
+## 6 Evaluation 
+
+The evaluation answers three questions. (1) How does Hed-dle compare with existing planners on diverse heterogeneous GPU compositions? (2) Does Heddle extend to diverse di-mensions? (3) How much does each design component con-tribute to plan quality? 
+
+Models and baselines. The large-scale simulation study uses LLaMA-3-8B [15], Qwen3-32B [57], and Qwen3-64B [57] with 32, 64, and 128 layers, and the hardware vali-dation uses GPT-Neo-2.7B [19] with 34 layers on Megatron-DeepSpeed. All run at sequence length 2048 with FP16 and Adam, at a global batch of 2048 in simulation and 128 on hardware. The baselines are Sailor [49], Espresso [60], Metis [51], HexiScale [56], and AMP [29], each planning with the cost model it was published with, under a 600-sec search budget. HetAuto [40] searches with MCTS and ap-pears only in §6.4, which counts plan evaluations rather than seconds. 
+
+Configurations and training. The simulated compositions use A100 (40 and 80 GB), H100, and A6000, where GPN denotes GPUs per node. The hardware is five machines with nineteen GPUs of three generations, one node of three RTX PRO 6000 (96 GB), three nodes of four A6000 (48 GB), and one node of four A5000 (24 GB), on 100 Gb/s Ethernet.  
+
+> Heddle
+
+trains one policy per model with GRPO. For LLaMA-3-8B and Qwen3-32B, the policy is trained 1,400 episodes over 94 synthetic clusters of two to four GPU types in about two hours. The clusters cover which type holds the most GPUs, how many types a cluster holds, the cluster size, and the node size. None of the 94 appears in the evaluation, and that one checkpoint plans every test composition without re-training. The hardware policy is trained the same way on 32 clusters of the six GPU types in one hour. 932+32 80+80 128+128   
+
+> 0.00 0.08 0.16
+> 4s 7s 12s 600s 600s 600s <1s 2s 2s <1s 3s 12s <1s 3s 6s 3s 4s 6s
+> (a) A100-40 + H100 (1:1)
+> 32+32 +64 64+64 +128 128+128 +256
+> 0.00 0.08 0.16 0.24
+> 7s 14s 22s 600s 600s 600s 22s 35s 59s 2s 12s 88s 106s 600s 600s 2s 3s 8s
+> (b) A100-40 + A6000 + H100
+> LS1 (52 GPUs) LS2 (100 GPUs) LS3 (160 GPUs) LS4 (208 GPUs) LS5 (416 GPUs)
+> 0.00 0.08 0.16
+> 2s 4s 4s 8s 13s 600s 600s 600s 600s 600s 1s 8s 20s 21s 32s <1s 1s 3s 7s 43s <1s 2s 14s 33s 286s <1s 2s 3s 3s 5s
+> (c) Non-uniform LS1 to LS5
+> 32+32 80+80 128+128
+> 0.00 0.03 0.06
+> 5s 11s 19s 600s 600s 600s 2s 8s 14s <1s 2s 9s 2s 26s 86s 2s 3s 6s
+> (d) A100-40 + H100 (1:1)
+> 32+32 +64 64+64 +128 128+128 +256
+> 0.00 0.03 0.06 0.09
+> 14s 27s 40s 600s 600s 600s 123s 216s 371s 1s 10s 67s 122s 600s 600s 3s 6s 8s
+> (e) A100-40 + A6000 + H100
+> LS1 (52 GPUs) LS2 (100 GPUs) LS3 (160 GPUs) LS4 (208 GPUs) LS5 (416 GPUs)
+> 0.00 0.03 0.06
+> 3s 8s 8s 15s 20s 600s 600s 600s 600s 600s 1s 21s 91s 130s 241s <1s <1s 2s 5s 38s 4s 4s 14s 26s 344s 1s 3s 4s 4s 8s
+> (f) Non-uniform LS1 to LS5 Throughput (iters/s)
+> LLaMA-3-8B Qwen3-32B
+
+AMP Metis Espresso HexiScale Sailor Heddle Figure 7: Throughput of the plan each planner returns, for LLaMA-3-8B (top) and Qwen3-32B (bottom). (a,d) and (b,e) are uniform GPN = 4 compositions of 64 to 512 GPUs (x-axis, GPUs per type). (c,f) are the non-uniform compositions LS1 to LS5, which contain a heterogeneous mix of A100-40, A100-80, and H100 GPUs across 1-GPU and 4-GPU nodes. Numbers above bars are search time in seconds. 
+
+## 6.1 Large Scale Simulation 
+
+Uniform GPU composition. Heddle returns the highest-throughput plan on eleven of the twelve cells of Figure 7(a), (b), (d) and (e), and on the twelfth, Qwen3-32B with 32 A100-40 and 32 H100, it is within 0.4% of Sailor. Each model runs on six compositions of 64 to 512 GPUs. On Qwen3-32B it leads the closest baseline by 7.5 to 31.0% on the other two compositions with two GPU types and by 16.5 to 43.5% with three types. On LLaMA-3-8B it leads by 5.1 to 22.9% with two types and by 17.7 to 21.5% with three types. Heddle plans every composition in 1.6 to 8.4 s, where Sailor finishes every two-type composition and then spends its full 600-sec budget on four of the six three-type ones. Metis reaches its 600-sec budget on all twelve. 
+
+Non-uniform GPU composition. Figure 7(c) and (f) repeat the comparison on five non-uniform compositions, LS1 to LS5, which mix 1-GPU and 4-GPU nodes of three GPU types at 52 to 416 GPUs. Metis and HexiScale receive the topology as it is. Sailor, AMP, and Espresso require uniform node sizes, so each receives the reading in which every GPU is its own node. Heddle can leverage the 1-GPU node with respect to the model size. Heddle leads at every size on both models, by 22.4% to 84.5% on LLaMA-3-8B and 21.6% to 72.9% on Qwen3-32B. Against Metis and HexiScale alone the LLaMA-3-8B lead is 71.7% to 102.3%. Heddle plans each composition in 0.7 to 8.4 sec. 
+
+## 6.2 Validation on Real Hardware 
+
+A cluster that grows under the job. Heddle is the only planner whose measured throughput never falls as the cluster grows. Figure 8 starts the job on the three RTX PRO 6000 GPUs and adds a four-GPU node (A6000, A5000, A6000, 0 5 10 15 20 25 
+
+Wall-clock time (min) 
+
+0.0 0.1 0.2          
+
+> Throughput (iter/s)
+> 3711 15 19
+> AMP Metis Espresso HexiScale Sailor Heddle
+
+Figure 8: Measured training throughput of each planner while the cluster grows under a running job. The number above each segment is the total GPU count after that join. A break in a line is the interval for its planning call and for re-configuration. and A6000 in order) every five minutes, up to nineteen GPUs. Every planner replans at each join with no plan carried for-ward, so a plan slower than the one it replaces appears as a drop. Heddle leads at every size by 19.9% to 69.1%, where AMP falls by 27% at the first join, Sailor by 12% at eleven GPUs, and Espresso by 33% at nineteen. Increasing nodes does not always guarantee better performance. Heddle de-cides not to change the parallelism plan on the first join and third join. Also, at the last stage, which has five nodes, Hed-dle drops the A5000, which is a straggler. 
+
+Cost model accuracy. On the testbed the cost model pre-dicts the measured iteration time within 6.1% on average, and within 5.2% for plans that stay inside one machine and 8.8% across machines. Inside a single machine, running one plan on real hardware already varies by 2.5%. 10 8-8 (64 GPUs) 20-20 (160 GPUs) 32-32 (256 GPUs) 0.00 0.01 0.02 0.03     
+
+> 600s 600s 600s 4s 4s 4s 1s 2s 3s <1s 1s 2s
+> (a) Mixtral-8x7B (8 experts x 14336)
+> Metis Metis-MoE Sailor Sailor-MoE
+> 32-32 (64 GPUs) 80-80 (160 GPUs) 128-128 (256 GPUs)
+
+Configuration (Total GPUs)   
+
+> 0.00 0.05 0.10
+> 600s 600s 600s <1s 2s 3s 3s 7s 8s 2s 4s 5s
+> (b) Qwen3-30B-A3B (128 experts x 768)
+> Throughput (iters/s)
+> Heddle Heddle w/o EP
+
+Figure 9: Throughput of the plan each planner returns on two MoE models (x axis, total GPU count) with search time in seconds above each bar. A -MoE bar re-tiles that planner’s own plan by the rule of §5.3. Heddle w/o EP pins every stage to ETP = TP and EP = 1. 
+
+## 6.3 Extension to Diverse Dimensions 
+
+MoE models and the expert parallelism dimension. What the expert dimension is worth depends on the model, and three models cover the range. On Mixtral-8x7B it buys the throughput (Figure 9(a)). Heddle runs 1.21, 1.10, and 1.06 times faster at 64, 160, and 256 GPUs than the same policy with the dimension without tiling. Re-tiling the baselines’ own plans by the same rule lifts them 33 to 49 %, and Hed-dle still leads the best of them by 1.68 to 1.98 times. On Qwen3-30B-A3B it makes no difference (Figure 9(b)). One layer fits on a single GPU whole, so the pricing takes EP = 1on every stage, and the two Heddle bars are the same plan and the same number at all three sizes. Heddle leads Metis and Sailor by 2.2 × to 4.6 × in this panel. The lead comes from the plan structure. On a DeepSeek-V3-like [9] model it buys the plan itself. One layer holds 168 GB of expert state, and spreading it over a whole node still leaves more than one GPU can hold (GPN=4). Sharding experts by the TP degree has nowhere further to go, since a TP group does not leave the node. Metis, Sailor, and Heddle with the dimension with-out tiling therefore return nothing at 160, 256, and 512 GPUs. 
+
+Heddle places it at all three sizes. 
+
+More GPU types. Figure 10(a) evaluates LLaMA-3-8B on five compositions of four GPU types, A6000, A100-40, A100-80, and H100, from a balanced 48-GPU cluster to 192 GPUs, two of which give A6000 57% of the GPUs. Hed-dle returns the highest-throughput plan on all five, ahead of the best baseline by 1.6% to 14.3%. 
+
+Scaling to a larger model. Figure 10(b) scales the model to Qwen3-64B, Qwen3-32B with its transformer stack dou-bled to 128 blocks (62.3 B parameters), trained with activa-tion checkpointing on A100-80 and H100 in equal counts at 128, 256, and 512 GPUs. The policy trained on Qwen3-32B Balanced 48 GPUs A6000-heavy 56 GPUs Balanced 64 GPUs A6000-heavy 112 GPUs Balanced 192 GPUs   
+
+> 0.00 0.04 0.08 0.12
+> 600s 600s 600s 600s 600s 23s 19s 58s 82s 181s 5s 9s 17s 155s 600s 1s 1s 2s 2s 3s
+> (a) LLaMA-3-8B, four GPU types
+> Metis Espresso Sailor 64-64 128 GPUs 128-128 256 GPUs 256-256 512 GPUs
+
+Configuration (Total GPUs) 
+
+> 0.00 0.02 0.04 0.06
+> 600s 600s 600s 35s 86s 132s 16s 88s 131s 6s 10s 19s
+> (b) Qwen3-64B, A100-80 + H100
+> Throughput (iters/s)
+> Heddle
+
+Figure 10: The top panel shows LLaMA-3-8B throughput on four-type compositions (A6000, A100-40, A100-80, H100). The bottom panel shows Qwen3-64B on A100-80 and H100 GPU composition. Numbers above bars are search time in seconds. 10 0 10 1 10 2 10 3 10 4 10 5
+
+Candidate plans scored 
+
+0.00 0.02 0.04 0.06    
+
+> Throughput (iter/s)  random flat-RL HetAuto (MCTS) Heddle
+
+Figure 11: Search efficiency on a 160-GPU composition of four GPU types (16 H100, 32 A100-80, 48 A100-40, 64 A6000) for LLaMA-3-8B, as best-so-far throughput. plans it without retraining and leads Sailor, the best baseline at all three sizes, by 0.2%, 3.7%, and 20.9%. Metis spends its budget rejecting 10,494 plans as out of memory at 128 GPUs and 3,159 at 512, where Heddle plans in 6 sec and 19 sec. 
+
+## 6.4 Design Validation 
+
+Search efficiency. Plan quality has two sources, and each is worth a different thing (Figure 11). The decomposition buys sample efficiency. flat-RL , the same policy over the raw six-dimensional action space, needs twice the plan evalua-tions Heddle needs to reach the same plan, because the three extra dimensions it learns are the arithmetic ones the struc-ture already determines (§4.2), and it stays 5% to 29% below 
+
+Heddle at every budget past the first few dozen evaluations. The offline learning buys direction. At 32,000 evaluations 
+
+random reaches 0.035 iter/s where Heddle reaches 0.053, and 
+
+HetAuto reaches a median of 0.027 iter/s and 0.031 at eight times the budget. Heddle pays these evaluations once in of-fline training, while random and HetAuto pay them again at 11 every reconfiguration. 
+
+Reconfiguration overhead. The measurement adds two A6000 GPUs twice to a node of two RTX PRO 6000 GPUs on the hardware cluster. Each event runs live, with no check-point and no restart, and is repeated four times. Reconfig-uration stops training for 19.2 to 21.5 sec end to end, and migrating state is the largest step of the work. The controller re-invokes the planner in 2.16 sec, the workers release their resources in 0.4 to 0.8 sec, and the process group rebuild takes 2.6 to 3.1 sec. The stage transfer of §5.6 then hands 5.2 GB of model state per rank onto the added node in about 4.0 sec, never leaving GPU memory for storage. Building the engine on the new topology costs a further 2.1 to 2.7 sec. 
+
+## 7 Limitations and Discussion 
+
+Diverse optimization objectives. Sailor [49] pioneers sup-port for various optimization objectives beyond maximum throughput. A notable example is monetary cost per train-ing iteration, which is essential for cost-effective cloud de-ployments. Additionally, the arithmetic auto-fill mechanism should be modified to explore DP degrees in descending or-der. This allows Heddle to account for the increased hourly burn rate of larger clusters and select the most cost-effective replica count that avoids the scaling tax of sub-linear per-formance gains [49]. Heddle then can treat performance-per-dollar as the primary benefit when deciding whether to invest more search effort into a particular subspace. 
+
+Preemptible instances. Preemptible instances [3, 8, 45] of-fer significant discounts on GPU resources, but are subject to frequent revocation by high-priority demands. To miti-gate interruption impacts, cloud providers issue notices with a brief grace period (e.g., 2 mins on AWS [46], 30 secs on Google Cloud [6]). We believe Heddle is well-suited for AWS in all of our evaluated models and clusters, as worst-case planning times remain 10 and 20 secs, respectively. Google Cloud presents a challenge, as memory state migra-tion for the largest evaluated model may exceed the 30-sec window. To handle such cases, Heddle could be augmented with on-demand CPU instances to use fast, iteration-based checkpointing schemes like Checkmate [4]. 
+
+## 8 Related Work 
+
+Parallelism planner. While we have extensively com-pared Heddle with AMP [29], Metis [51], HexiScale [56], Espresso [60], and Sailor [49] throughout this paper, there are a few other planners including Galvatron [35], which applies dynamic programming over a layered search space, and Cephalo [16], which targets heterogeneous clusters us-ing a profile-guided approach. All of these systems solve each search problem in isolation. Heddle instead employs RL to learn from prior optimization experiences and produce optimal plans near-instantaneously via model inference. 
+
+Reconfiguration and resilience. Some prior efforts have established principled mechanisms for state transition dur-ing parallelism reconfiguration. Varuna [2] enables elas-tic training by dynamically scaling pipeline and data par-allelism. ReCycle [13] adaptively reshapes pipeline stages during resource shifts, while Oobleck [21] leverages pre-calculated pipeline templates for rapid recovery from node failures. To accelerate state transition, Tenplex [52] and Uni-versal Checkpointing [32] introduce specialized abstractions that decouple model states from specific hardware topolo-gies. HotSPa [14] further enables runtime switching between hybrid parallelism plans to mitigate load imbalances caused by varying sequence lengths. None of these works, however, focuses on fast searching for an optimal parallelism plan like 
+
+> Heddle
+
+.
+
+Learning-based device placement. RL has been applied to the device placement for computation graphs. Mirhoseini et al. [36] use a hierarchical RL approach that groups opera-tions and assigns groups to devices. Placeto [1] learns place-ment policies that transfer across unseen model graphs. HS-DAG [11] introduces structure-aware graph representations to improve placement decisions. FlexFlow [24] searches per-operator strategies over four dimensions and does express data parallelism, but it targets homogeneous compositions and does not search device type. These methods operate at the granularity of individual operations and fail to express data parallelism or generalize across cluster configurations.  
+
+> Heddle
+
+formulates planning at the template level, where each action selects a PP degree, GPU type, and TP degree, while deriving the remaining arithmetic decisions deterministically. This allows Heddle to capture diverse parallelism dimensions in use and generalize across heterogeneous cluster configura-tions. 
+
+## 9 Conclusion  
+
+> Heddle
+
+is a learning-based planner for heterogeneous 4D par-allelism in distributed model training. Heddle decomposes the planning problem into structural decisions handled by a learned policy and arithmetic decisions that follow by rule or from a small priced candidate set, reducing the effective search space while preserving plan quality. A template-level autoregressive construction policy with feasibility masking explores the full space of valid configurations without heuris-tic pruning. A state of type fractions, device properties and the cluster scale lets one trained policy plan for a compo-sition it has not seen. Evaluation on clusters with up to 4 GPU types shows that Heddle achieves up to 84.5% higher throughput than state-of-the-art planners while robust to dy-namic GPU compositions. 12 References 
+
+[1] Ravichandra Addanki, Shaileshh Bojja Venkatakrishnan, Shreyan Gupta, Hongzi Mao, and Mohammad Alizadeh. Placeto: learning generalizable device placement algorithms for distributed machine learning. In Advances in Neural Information Processing Systems , vol-ume 32, Red Hook, NY, USA, 2019. [2] Sanjith Athlur, Nitika Saran, Muthian Sivathanu, Ramachandran Ram-jee, and Nipun Kwatra. Varuna: scalable, low-cost training of mas-sive deep learning models. In Proceedings of the Seventeenth Euro-pean Conference on Computer Systems , page 472–487. Association for Computing Machinery, 2022. [3] Microsoft Azure. Azure Spot Virtual Machines. https://azure. microsoft.com/en-us/products/virtual-machines/spot/ ,2026. [4] Ankit Bhardwaj, Weiyang Wang, Jeremy Carin, Adam Belay, and Manya Ghobadi. Checkmate: zero performance over head model checkpointing via network gradient replication. In 23rd USENIX Sym-posium on Networked Systems Design and Implementation (NSDI 26) ,USA, 2026. USENIX Association. [5] Shubham Chaudhary, Ramachandran Ramjee, Muthian Sivathanu, Nipun Kwatra, and Srinidhi Viswanatha. Balancing efficiency and fair-ness in heterogeneous gpu clusters for deep learning. In Proceedings of the Fifteenth European Conference on Computer Systems . Associa-tion for Computing Machinery, 2020. [6] Google Cloud. Google cloud, preemption process on Compute Engine. https://cloud.google.com/compute/docs/instances/ preemptible#preemption-process , 2026. [7] Google Cloud. Gpus on compute engine. https://cloud.google. com/compute/docs/gpus , 2026. [8] Google Cloud. Spot VMs on Google Cloud. https://cloud. google.com/spot-vms , 2026. [9] DeepSeek-AI, Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, Damai Dai, Daya Guo, Dejian Yang, Deli Chen, Dongjie Ji, Erhang Li, Fangyun Lin, Fucong Dai, Fuli Luo, and et al. Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 ,2024. [10] Jiangfei Duan, Ziang Song, Xupeng Miao, Xiaoli Xi, Dahua Lin, Harry Xu, Minjia Zhang, and Zhihao Jia. Parcae: Proactive, Liveput-Optimized DNN training on preemptible instances. In 21st USENIX Symposium on Networked Systems Design and Implementation (NSDI 24) , pages 1121–1139, Santa Clara, CA, April 2024. USENIX Associ-ation. [11] Shukai Duan, Heng Ping, Nikos Kanakaris, Xiongye Xiao, Panagi-otis Kyriakis, Nesreen K. Ahmed, Peiyu Zhang, Guixiang Ma, Mi-hai Capot˘ a, Shahin Nazarian, Theodore L. Willke, and Paul Bogdan. A structure-aware framework for learning device placements on com-putation graphs. In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, editors, Advances in Neural In-formation Processing Systems , volume 37, pages 81748–81772, 2024. [12] William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models with simple and efficient sparsity. 
+
+Journal of Machine Learning Research , 23(120):1–39, 2022. [13] Swapnil Gandhi, Mark Zhao, Athinagoras Skiadopoulos, and Christos Kozyrakis. Recycle: Resilient training of large dnns using pipeline adaptation. In Proceedings of the ACM SIGOPS 30th Symposium on Operating Systems Principles , SOSP ’24, page 211–228, New York, NY, USA, 2024. Association for Computing Machinery. [14] Hao Ge, Fangcheng Fu, Haoyang Li, Xuanyu Wang, Sheng Lin, Yujie Wang, Xiaonan Nie, Hailin Zhang, Xupeng Miao, and Bin Cui. En-abling parallelism hot switching for efficient training of large language models. In Proceedings of the ACM SIGOPS 30th Symposium on Op-erating Systems Principles , SOSP ’24, page 178–194, New York, NY, USA, 2024. Association for Computing Machinery. [15] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, et al. The llama 3 herd of mod-els. arXiv preprint arXiv:2407.21783 , 2024. [16] Runsheng Benson Guo, Utkarsh Anand, Arthur Chen, and Khuzaima Daudjee. Cephalo: Harnessing heterogeneous gpu clusters for training transformer models. In Proceedings of the 39th ACM International Conference on Supercomputing , ICS ’25, page 368–383, New York, NY, USA, 2025. Association for Computing Machinery. [17] Zhiyi Hu, Siyuan Shen, Tommaso Bonato, Sylvain Jeaugey, Cedell Alexander, Eric Spada, James Dinan, Jeff Hammond, and Torsten Hoefler. Demystifying NCCL: An in-depth analysis of GPU com-munication protocols and algorithms. In 2025 IEEE Symposium on High-Performance Interconnects , IEEE, pages 48–59. IEEE, 2025. [18] Yanping Huang, Youlong Cheng, Ankur Bapna, Orhan Firat, De-hao Chen, Mia Chen, HyoukJoong Lee, Jiquan Ngiam, Quoc V Le, Yonghui Wu, and zhifeng Chen. GPipe: Efficient Training of Gi-ant Neural Networks using Pipeline Parallelism. In H. Wallach, H. Larochelle, A. Beygelzimer, F. d'Alché-Buc, E. Fox, and R. Gar-nett, editors, Advances in Neural Information Processing Systems , vol-ume 32, 2019. [19] HuggingFace. gpt-neo. https://huggingface.co/docs/ transformers/en/model_doc/gpt_neo , 2021. [20] Changho Hwang, Wei Cui, Yifan Xiong, Ziyue Yang, Ze Liu, Han Hu, Zilong Wang, Rafael Salas, Jithin Jose, Prabhat Ram, Joe Chau, Peng Cheng, Fan Yang, Mao Yang, and Yongqiang Xiong. Tutel: Adaptive mixture-of-experts at scale. In Proceedings of Machine Learning and Systems , volume 5, pages 269–287, 2023. [21] Insu Jang, Zhenning Yang, Zhen Zhang, Xin Jin, and Mosharaf Chowdhury. Oobleck: Resilient Distributed Training of Large Models Using Pipeline Templates. In Proceedings of the 29th Symposium on Operating Systems Principles , SOSP ’23, page 382–395, New York, NY, USA, 2023. Association for Computing Machinery. [22] Myeongjae Jeon, Shivaram Venkataraman, Amar Phanishayee, Jun-jie Qian, Wencong Xiao, and Fan Yang. Analysis of Large-Scale Multi-Tenant GPU clusters for DNN training workloads. In 2019 USENIX Annual Technical Conference (USENIX ATC 19) , pages 947– 960. USENIX Association, 2019. [23] Xianyan Jia, Le Jiang, Ang Wang, Wencong Xiao, Ziji Shi, Jie Zhang, Xinyuan Li, Langshi Chen, Yong Li, Zhen Zheng, Xiaoyong Liu, and Wei Lin. Whale: Efficient Giant Model Training over Heterogeneous GPUs. In 2022 USENIX Annual Technical Conference (USENIX ATC 22) , pages 673–688. USENIX Association, 2022. [24] Zhihao Jia, Matei Zaharia, and Alex Aiken. Beyond data and model parallelism for deep neural networks. In A. Talwalkar, V. Smith, and M. Zaharia, editors, Proceedings of Machine Learning and Systems ,volume 1, pages 1–13, 2019. [25] Albert Q. Jiang, Alexandre Sablayrolles, Antoine Roux, Arthur Men-sch, Blanche Savary, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Emma Bou Hanna, Florian Bressand, Gianna Lengyel, Guillaume Bour, Guillaume Lample, Lélio Renard Lavaud, Lucile Saulnier, Marie-Anne Lachaux, Pierre Stock, Sandeep Subramanian, Sophia Yang, Szymon Antoniak, Teven Le Scao, Théophile Gervet, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and William El Sayed. Mixtral of experts. arXiv preprint arXiv:2401.04088 , 2024. [26] Ziheng Jiang, Haibin Lin, Yinmin Zhong, Qi Huang, Yangrui Chen, Zhi Zhang, Yanghua Peng, Xiang Li, Cong Xie, Shibiao Nong, Yulu Jia, Sun He, Hongmin Chen, Zhihao Bai, Qi Hou, Shipeng Yan, Ding Zhou, Yiyao Sheng, Zhuo Jiang, Haohan Xu, Haoran Wei, Zhang Zhang, Pengfei Nie, Leqi Zou, Sida Zhao, Liang Xiang, Zherui Liu, Zhe Li, Xiaoying Jia, Jianxi Ye, Xin Jin, and Xin Liu. MegaScale: Scaling Large Language Model Training to More Than 10,000 GPUs. In 21st USENIX Symposium on Networked Systems Design and Imple-mentation (NSDI 24) , pages 745–760, Santa Clara, CA, April 2024. USENIX Association. 
+
+13 [27] Chao Jin, Ziheng Jiang, Zhihao Bai, Zheng Zhong, Juncai Liu, Xiang Li, Ningxin Zheng, Xi Wang, Cong Xie, Qi Huang, Wen Heng, Yiyuan Ma, Wenlei Bao, Size Zheng, Xuegui Zheng, Yanghua Peng, Haibin Lin, Xuanzhe Liu, Xin Jin, and Xin Liu. Megascale-moe: Large-scale communication-efficient training of mixture-of-experts models in pro-duction. In Proceedings of the 21st European Conference on Com-puter Systems , page 366–382. Association for Computing Machinery, 2026. [28] Dmitry Lepikhin, HyoukJoong Chung, Ian Fedorov, Younes Souli, Sabira Shukurova, Cheng-An Kan, Ye Zhu, Quoc V. Le, Yonghui Wu, and Zhifeng Chen. GShard: Scaling Giant Models with Conditional Computation and Automatic Sharding. In The 9th International Con-ference on Learning Representations , 2021. [29] Dacheng Li, Hongyi Wang, Eric Xing, and Hao Zhang. Amp: Auto-matically finding model parallel strategies with heterogeneity aware-ness. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh, editors, Advances in Neural Information Processing Sys-tems , volume 35, pages 6630–6639, 2022. [30] Suyi Li, Lingyun Yang, Haoxuan Yu, Sheng Yao, Tianyuan Wu, Xi-aoxiao Jiang, Hanfeng Lu, Kangjin Wang, Chenhao Wang, Shenglin Xu, Lun Wang, Qingyang Duan, Shenghao Liang, Xiu Lin, Meng Zhang, Wenchao Wu, Yinghao Yu, Guodong Yang, Liping Zhang, and Wei Wang. Heterogeneity at hyperscale: Characterization and schedul-ing of large production AI clusters at Alibaba. In 20th USENIX Sym-posium on Operating Systems Design and Implementation (OSDI 26) ,pages 2187–2203, 2026. [31] Yufang Li, Yuanbo Zhang, Hanlong Liao, Deke Guo, and Guoming Tang. Gpunion: Autonomous gpu sharing on campus. In Proceedings of the 24th ACM Workshop on Hot Topics in Networks , HotNets ’25, page 96–103. Association for Computing Machinery, 2025. [32] Xinyu Lian, Sam Ade Jacobs, Lev Kurilenko, Masahiro Tanaka, Stas Bekman, Olatunji Ruwase, and Minjia Zhang. Universal checkpoint-ing: a flexible and efficient distributed checkpointing system for large-scale dnn training with reconfigurable parallelism. In 2025 USENIX Annual Technical Conference (USENIX ATC 25) , pages 1519–1534. USENIX Association, 2025. [33] Dennis Liu, Zijie Yan, Xin Yao, Tong Liu, Vijay Korthikanti, Evan Wu, Shiqing Fan, Gao Deng, Hongxiao Bai, Jianbin Chang, Ashwath Aithal, Michael Andersch, Mohammad Shoeybi, Jiajie Yao, Chandler Zhou, David Wu, Xipeng Li, and June Yang. MoE parallel folding: Heterogeneous parallelism mappings for efficient large-scale MoE model training with megatron core. arXiv preprint arXiv:2504.14960 ,2025. [34] Shuqing Luo, Jie Peng, Pingzhi Li, Hanrui Wang, and Tianlong Chen. Hexa-MoE: Efficient and heterogeneous-aware training for mixture-of-experts. arXiv preprint arXiv:2411.01288 , 2024. [35] Xupeng Miao, Yujie Wang, Youhe Jiang, Chunan Shi, Xiaonan Nie, Hailin Zhang, and Bin Cui. Galvatron: Efficient transformer training over multiple gpus using automatic parallelism. Proc. VLDB Endow. ,16(3):470–479, November 2022. [36] Azalia Mirhoseini, Anna Goldie, Hieu Pham, Benoit Steiner, Quoc V Le, and Jeff Dean. A hierarchical model for device placement. In The 6th International Conference on Learning Representations , 2018. [37] Deepak Narayanan, Aaron Harlap, Amar Phanishayee, Vivek Se-shadri, Nikhil R. Devanur, Gregory R. Ganger, Phillip B. Gibbons, and Matei Zaharia. Pipedream: generalized pipeline parallelism for dnn training. In Proceedings of the 27th ACM Symposium on Operat-ing Systems Principles , SOSP ’19, page 1–15, New York, NY, USA, 2019. Association for Computing Machinery. [38] Deepak Narayanan, Keshav Santhanam, Fiodar Kazhamiaka, Amar Phanishayee, and Matei Zaharia. Heterogeneity-Aware Cluster Scheduling Policies for Deep Learning Workloads. In 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20) , pages 481–498, 2020. [39] Junhyuk Oh, Yijie Guo, Satinder Singh, and Honglak Lee. Self-imitation learning. In Jennifer Dy and Andreas Krause, editors, Pro-ceedings of the 35th International Conference on Machine Learning ,volume 80, pages 3878–3887. PMLR, 2018. [40] Guicheng Qi, Junwei Su, Liqi Yang, Tao Li, Tingwen Xie, Yerui Sun, Yuchen Xie, and Chuan Wu. HetAuto: Cross-Cluster Auto-Parallelism for Heterogeneous Distributed Training. In Proceedings of the 21st European Conference on Computer Systems , page 759–779, Edinburgh, Scotland, UK, 2026. ACM. [41] Samyam Rajbhandari, Conglong Li, Zhewei Yao, Minjia Zhang, Reza Yazdani Aminabadi, Ammar Ahmad Awan, Jeff Rasley, and Yuxiong He. DeepSpeed-MoE: Advancing mixture-of-experts infer-ence and training to power next-generation AI scale. In Proceedings of the 39th International Conference on Machine Learning , volume 162, pages 18332–18346. PMLR, 2022. [42] Jeff Rasley, Samyam Rajbhandari, Olatunji Ruwase, and Yuxiong He. DeepSpeed: System Optimizations Enable Training Deep Learning Models with Over 100 Billion Parameters. In Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining , KDD ’20, page 3505–3506, New York, NY, USA, 2020. Association for Computing Machinery. [43] Amedeo Sapio, Marco Canini, Chen-Yu Ho, Jacob Nelson, Panos Kal-nis, Changhoon Kim, Arvind Krishnamurthy, Masoud Moshref, Dan Ports, and Peter Richtarik. Scaling Distributed Machine Learning with In-Network Aggregation. In 18th USENIX Symposium on Net-worked Systems Design and Implementation (NSDI 21) , pages 785– 808. USENIX Association, April 2021. [44] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. [45] Amazon Web Services. Amazon EC2 Spot Instances. https://aws. amazon.com/ec2/spot/ , 2026. [46] Amazon Web Services. Amazon web services, spot instance inter-ruption notices. https://docs.aws.amazon.com/AWSEC2/latest/ UserGuide/spot-interruptions.html , 2026. [47] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, YK Li, Yang Wu, et al. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 , 2024. [48] Mohammad Shoeybi, Mostofa Patwary, Raul Puri, Patrick LeGresley, Jared Casper, and Bryan Catanzaro. Megatron-lm: Training multi-billion parameter language models using model parallelism. arXiv preprint arXiv:1909.08053 , 2020. [49] Foteini Strati, Zhendong Zhang, George Manos, Ixeia Sánchez Périz, Qinghao Hu, Tiancheng Chen, Berk Buzcu, Song Han, Pamela Del-gado, and Ana Klimovic. Sailor: Automating distributed training over dynamic, heterogeneous, and geo-distributed clusters. In Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Princi-ples , SOSP ’25, page 204–220, New York, NY, USA, 2025. Associa-tion for Computing Machinery. [50] John Thorpe, Pengzhan Zhao, Jonathan Eyolfson, Yifan Qiao, Zhi-hao Jia, Minjia Zhang, Ravi Netravali, and Guoqing Harry Xu. Bam-boo: Making Preemptible Instances Resilient for Affordable Training of Large DNNs. In 20th USENIX Symposium on Networked Systems Design and Implementation (NSDI 23) , pages 497–513. USENIX As-sociation, April 2023. [51] Taegeon Um, Byungsoo Oh, Minyoung Kang, Woo-Yeon Lee, Goeun Kim, Dongseob Kim, Youngtaek Kim, Mohd Muzzammil, and Myeongjae Jeon. Metis: Fast Automatic Distributed Training on Het-erogeneous GPUs. In 2024 USENIX Annual Technical Conference (USENIX ATC 24) , pages 563–578. USENIX Association, 2024. [52] Marcel Wagenländer, Guo Li, Bo Zhao, Luo Mai, and Peter Pietzuch. Tenplex: Dynamic Parallelism for Deep Learning using Parallelizable 
+
+14 Tensor Collections. In Proceedings of the ACM SIGOPS 30th Sympo-sium on Operating Systems Principles , SOSP ’24, page 195–210, New York, NY, USA, 2024. Association for Computing Machinery. [53] Zhuang Wang, Zhen Jia, Shuai Zheng, Zhen Zhang, Xinwei Fu, T. S. Eugene Ng, and Yida Wang. Gemini: Fast failure recovery in dis-tributed training with in-memory checkpoints. In Proceedings of the 29th Symposium on Operating Systems Principles , SOSP ’23, page 364–381, New York, NY, USA, 2023. Association for Computing Ma-chinery. [54] Qizhen Weng, Wencong Xiao, Yinghao Yu, Wei Wang, Cheng Wang, Jian He, Yong Li, Liping Zhang, Wei Lin, and Yu Ding. MLaaS in the wild: Workload analysis and scheduling in Large-Scale heterogeneous GPU clusters. In 19th USENIX Symposium on Networked Systems Design and Implementation (NSDI 22) , pages 945–960, Renton, WA, April 2022. USENIX Association. [55] Yongji Wu, Xueshen Liu, Shuowei Jin, Ceyu Xu, Feng Qian, Z. Mor-ley Mao, Matthew Lentz, Danyang Zhuo, and Ion Stoica. HeterMoE: Efficient training of mixture-of-experts models on heterogeneous gpus. 
+
+arXiv preprint arXiv:2504.03871 , 2025. [56] Ran Yan, YOUHE JIANG, Xiaonan Nie, Fangcheng Fu, Bin CUI, and Binhang Yuan. Hexiscale: Facilitating large language model training over heterogeneous hardware. In A. Chowdhery and Z. Jia, editors, 
+
+Proceedings of Machine Learning and Systems , volume 8, pages 821– 842. MLSys, 2026. [57] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Dayiheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jing Zhou, Jingren Zhou, Junyang Lin, Kai Dang, Keqin Bao, Kexin Yang, Le Yu, Lianghao Deng, Mei Li, Mingfeng Xue, Mingze Li, Pei Zhang, Peng Wang, Qin Zhu, Rui Men, Ruize Gao, Shixuan Liu, Shuang Luo, Tianhao Li, Tianyi Tang, Wenbiao Yin, Xingzhang Ren, Xinyu Wang, Xinyu Zhang, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yinger Zhang, Yu Wan, Yuqiong Liu, Zekun Wang, Zeyu Cui, Zhenru Zhang, Zhipeng Zhou, and Zihan Qiu. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. [58] Tianhe Yu, Saurabh Kumar, Abhishek Gupta, Sergey Levine, Karol Hausman, and Chelsea Finn. Gradient surgery for multi-task learning. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin, ed-itors, Advances in Neural Information Processing Systems , volume 33, pages 5824–5836, 2020. [59] Lianmin Zheng, Zhuohan Li, Hao Zhang, Yonghao Zhuang, Zhifeng Chen, Yanping Huang, Yida Wang, Yuanzhong Xu, Danyang Zhuo, Eric P. Xing, Joseph E. Gonzalez, and Ion Stoica. Alpa: Automat-ing inter- and Intra-Operator parallelism for distributed deep learning. In 16th USENIX Symposium on Operating Systems Design and Imple-mentation (OSDI 22) , pages 559–578, 2022. [60] Qiannan Zhou, Fei Xu, Lingxuan Weng, Ruixing Li, Xudong Wu, Li Chen, Zhi Zhou, and Fangming Liu. Espresso: Cost-efficient large model training by exploiting gpu heterogeneity in the cloud. In IEEE INFOCOM 2025 - IEEE Conference on Computer Communications ,IEEE, pages 1–10, 2025. 
+
+15

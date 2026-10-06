@@ -1,0 +1,213 @@
+Title: Design Space Exploration of Backside Clock Meshes for 2 nm GAAFET BSPDN Technology
+
+URL Source: https://arxiv.org/pdf/2610.02401v1
+
+Published Time: Mon, 05 Oct 2026 00:11:07 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# Design Space Exploration of Backside Clock Meshes for 2 nm GAAFET BSPDN Technology 
+
+Wajid Ali 
+
+UC Santa Cruz 
+
+Santa Cruz, CA, USA wali2@ucsc.edu 
+
+Muhammad Hadir Khan 
+
+UC Santa Cruz 
+
+Santa Cruz, CA, USA mkhan33@ucsc.edu 
+
+Dalton Gaddy 
+
+UC Santa Cruz 
+
+Santa Cruz, CA, USA dgaddy@ucsc.edu 
+
+Matthew Guthaus 
+
+UC Santa Cruz 
+
+Santa Cruz, CA, USA mrg@ucsc.edu 
+
+Abstract —Clock meshes are used in high-performance VLSI designs to minimize skew and tolerate on-chip variation, but they spend scarce routing resources on premium metal layers. Backside power delivery creates a new option: it adds thick, low-resistance metal layers on the back of the wafer, and the power grid does not consume all of them. Flip-flops remain on the frontside; a backside mesh therefore cannot drive them directly, and every connection passes through a through-silicon via. We present the first design-space exploration of backside clock meshes, implemented in OpenROAD on GT2N, a 2 nm nanosheet technology. Four benchmarks (1,938 to 15,311 flip-flops) are explored with multi-objective Bayesian optimization, and every design point is verified by transistor-level SPICE simulation, since the cyclic mesh cannot be evaluated by static timing analysis. Across all four designs, the backside mesh consistently outperforms an identical frontside mesh, with on average 45% lower skew, 25% lower sink slew, 4.5% lower power, and 28% less frontside clock wiring, and its skew spread under 10,000-sample Monte Carlo is a third of the frontside mesh’s. 
+
+I. I NTRODUCTION 
+
+A clock mesh consists of a grid of wires distributed across the die and driven from multiple points. Since thousands of sink paths share the same grid, local delay differences are averaged out instead of accumulating along individual paths. This results in very low skew and good tolerance to process and environmental variations, which is why clock meshes are used in high-performance designs [1]–[4]. There also has been research efforts regarding their fast analysis for optimization [5], [6]. One of the main drawbacks in clock meshes are power and routing overhead: the entire grid capacitance must be charged every cycle, while the grid also occupies routing tracks on the metal layers that are needed for signal routing and the power grid. The power grid is itself a heavy consumer of those metal layers, and backside power delivery (BSPDN) removes it from the frontside entirely. Buried power rails beneath the standard cells are fed from a power grid on the back of the wafer, eliminating the frontside power straps and improving IR drop at the same time [7]–[9]. The approach is now in production at Intel and is on the TSMC and Samsung roadmaps [10]–[12]. More importantly for a clock mesh, BSPDN adds backside metal layers that are wider and thicker than the frontside layers a mesh would normally occupy, and the power grid does not use all of their tracks. In the 2 nm GT2N technology we target, the backside metals have 3.5× lower resistance per Front Back           
+
+> BUF FF BUF FF BUF FF
+> Si
+> CLK
+> BM1/BM2 PDN
+> Frontside clock mesh
+> Front Back
+> BUF LCB FF LCB BUF FF
+> Si
+> CLK
+> drive
+> TSV
+> sink TSVs
+> BM1/BM2 clock mesh
+> BM1/BM2 PDN
+
+Fig. 1: Moving the mesh to the backside forces every mesh-to-sink connection through a TSV and cuts a buried power rail at every landing. micron than the M6–M9 class and 22 × lower than M4/M5 (Section II-A). This low wire resistance is what makes a backside clock mesh worth investigating. Prior work has begun to exploit backside metal for clocking, but majorly for clock trees . Veloso et al. route the global H-tree portion of a high-performance CPU’s clock on the backside metals and report a clear latency reduction from even that partial move [9]; Bethur et al. select which tree nets to flip by fanout or by a GNN-predicted timing criticality [13], [14]; Vanna-iampikul et al. share the backside metals between the power grid and selected clock trunk nets [15]; Jiang et al. synthesize the double-sided tree directly with concurrent buffer and nTSV insertion [16]; and CSCO allocates the limited backside tracks jointly between clock and signal nets [17]. To our knowledge, backside clock meshes have not yet been explored. A mesh cannot simply be relocated (Fig. 1). The backside layers already carry the power grid, so the mesh must fit around it. The flip-flops remain on the frontside, so every mesh-to-sink connection must cross the wafer through athrough-silicon via (TSV). Each TSV passes through a buried power rail, which must be cut around it; and the shorted grid is a cyclic network that static timing analysis cannot evaluate, so every candidate configuration must be simulated at the transistor level. The question is whether the mesh still wins once the cost of reaching it from the frontside is paid. This paper makes the following contributions:  
+
+> •
+
+Upstream OpenROAD support for backside routing, buried-power-rail cutting at TSV landings, and backside IR analysis, which the flow of this paper builds on.  
+
+> •
+
+The first construction flow for backside clock meshes, arXiv:2610.02401v1 [cs.AR] 1 Oct 2026 implemented in OpenROAD on the open-source GT2N 2 nm nanosheet BSPDN technology.  
+
+> •
+
+A multi-objective Bayesian design-space exploration over four mesh parameters, with every design point verified by full-network HSPICE simulation.  
+
+> •
+
+A comparison against two frontside mesh baselines on four benchmarks (1,938 to 15,311 flip-flops), with 10,000-sample Monte Carlo analysis. Across all four designs, the evaluated backside mesh config-urations achieve lower clock skew, lower maximum sink slew, and lower frontside clock wirelength than the corresponding frontside mesh configurations, and are markedly less sensitive to variation. Section II describes the technology and the con-struction flow, Section III the exploration method, Section IV the setup, and Section V the results. II. B ACKSIDE CLOCK MESH SYNTHESIS 
+
+The challenges outlined above affect every step of con-structing a backside clock mesh. This section first describes the target technology and then presents the construction flow: placing the mesh on the backside tracks with constrained resources after power grid construction, crossing between the backside and frontside through TSVs and buried power rails, and connecting the mesh to the frontside sinks through local clock buffers. 
+
+A. Target Technology 
+
+We build on GT2N, an open-source 2 nm nanosheet technol-ogy with buried power rails and backside power delivery [18]. GT2N provides fourteen frontside metal layers (M0–M13), tungsten buried power rails beneath the standard cells, and four backside metals: BM1/BM2 at 56 nm width and ultra-thick BM3/BM4 at 360 nm [18]. The low resistance of the backside metals makes them well suited to clock meshes: based on the PDK’s extracted wire resistances, BM1/BM2 are 
+
+3.5× less resistive per micron than the M6–M9 class (7.5 vs. 26 Ω/μm) and 22 × less resistive than M4/M5. Crossings between the frontside and backside are implemented using TSV cells placed in the standard-cell rows and modeled as a 6 Ω series resistance [13]. The cell library provides two nanosheet widths (13 and 31 nm) and five threshold-voltage options. 
+
+B. Mesh Construction over a Backside PDN 
+
+Power reaches the standard cells through buried power rails beneath each cell row, which are fed by a power grid on BM1 and BM2. We use these same layers for the clock mesh, placing horizontal wires on BM2 and vertical wires on BM1 in the tracks left available by the power grid. The power grid is built first, and mesh wires that overlap or are too close to power straps are shifted to the nearest clear track or removed if no valid track exists. Each remaining intersection receives a via, forming a single electrically shorted mesh net. Clock source Top-level clock tree Backside clock mesh (BM1 / BM2) Sinks Drive TSV Frontside device layer 
+
+> Tree buffer Mesh driver LCB Drive TSV Sink TSV Sink
+
+Fig. 2: The clock passes through three buffering stages (tree, mesh drivers, LCBs) and crosses between frontside and back-side through drive TSVs and sink TSVs. 
+
+C. Clocking Architecture and Buffering 
+
+The mesh itself is passive; the clock reaches it and continues to the sinks through four active stages (Fig. 2). A conventional buffer tree synthesized by TritonCTS [19] distributes the clock from the root to the mesh driver inputs. Each driven grid intersection holds one mesh driver, a standard buffer placed on the frontside directly beneath its grid node and snapped to the nearest cell row, whose output crosses to the backside through a TSV (Section II-D). Drivers occupy every other intersection in a checkerboard, which halves the driver and TSV count without changing the wire grid. Below the mesh, sink connections return to the frontside through per-cluster TSVs and local clock buffers (LCBs, Section II-E). The tree needs no precise balancing: it drives only tens to a few hundred driver inputs, and the shorted mesh averages whatever arrival differences it delivers. All drivers on a mesh use the same buffer cell, whose drive strength is an explored parameter (Table I). The exploration consistently prefers small drivers (x1–x4), even on the largest design. The LCB tier (Section II-E) is sized independently; its role is to regenerate the clock edge for a small group of flip-flops. 
+
+D. TSV Insertion and Buried Power Rail Breaking 
+
+Two kinds of TSV are used: a drive TSV at each mesh driver and a sink TSV at each LCB (on Ibex at a 5 μm pitch, 41 and 382 respectively). A clock TSV uses the same via-stack structure that connects the buried power rails to the backside grid, but carries the clock net through the BPR layer. The rail there would short to it and violate the BPR spacing rule, so the flow cuts the rail at every landing, removing a piece sized by the TSV footprint plus a 0.224 μm clearance on each side, and deletes any rail fragments left floating between nearby cuts; on the largest design this amounts to about 2,500 cuts. Power delivery is unaffected, since each cut is well under a micron and the remaining rail pieces are still fed through their own via stacks. Cells displaced by the cuts are re-legalized. None of this is needed for the frontside meshes compared in Section V. 
+
+E. Local Clock Buffers and Sink Clustering 
+
+Because the flip-flops are frontside cells, giving each its own TSV would require thousands of crossings. Instead, flip-flops are grouped into clusters of at most Ffanout sinks: candidate taps are generated along the mesh wires, and each flip-flop joins the nearest tap whose cluster has not reached the fanout bound Ffanout . Each cluster receives one LCB, legalized with its neighbors, and one sink TSV to the LCB input; the LCB output drives its flip-flops as an ordinary routed net. On Ibex with Ffanout = 6 this yields 382 LCBs for 1,938 flip-flops. The tier also limits the mesh load to a few hundred buffer inputs. For the frontside baselines in Section V, the same tier connects each LCB to the nearest point on the frontside mesh without TSVs, and a second variant omits the tier and attaches flip-flops directly to the mesh wires. III. D ESIGN -S PACE EXPLORATION 
+
+TABLE I: Four parameters interact enough that a per-design joint search is required.       
+
+> Parameter Values Mesh pitch (μm) 1.6–14 (per-design range) Mesh driver size x1, x2, x3, x4, x6, x8, x10, x12 LCB fanout bound Ffanout 6, 8, 16, 24, 40, 80 LCB size x1, x2, x3, x4, x6, x8, x10, x12
+
+The flow leaves four parameters open (Table I), which define a few thousand configurations per design, and each evaluation requires the full flow of Section II plus HSPICE simulation, taking 10–50 minutes per point. Exhaustive search is out of reach, and one-at-a-time sweeps are misleading because the parameters interact: whether a 10 μm pitch is usable depends on the LCB fanout bound, since small clusters keep the sparse mesh’s edges sharp while large ones push them past the slew limit. We therefore search all four parameters jointly with the multi-objective Tree-structured Parzen Estimator (MOTPE) [20], [21] in Optuna [22], minimizing worst-case sink skew and clock network power, following the use of Bayesian tuning in physical design by AutoTuner, FIST, AutoDMP, and BOOM-Explorer [23]–[26]. TPE handles our categorical parameters (buffer cells, discrete pitches) natively, and its multivariate mode learns which combinations work rather than scoring each parameter independently [25]. Because skew and power trade against each other, we retain the full non-dominated set. A trial is reported as infeasible when detailed routing fails, when any flip-flop is missing or fails to toggle, or when the worst sink slew exceeds 10% of the clock period; infeasible outcomes still steer the sampler away from those regions. IV. E XPERIMENTAL SETUP 
+
+All experiments run in OpenROAD with our clock-mesh extensions on the GT2N technology of Section II-A. GT2N provides libraries and device models at a single corner (TT, 0.7 V, 25 ◦C), so nominal results are reported at that corner; every skew, slew, and power number comes from transistor-level HSPICE simulation of the complete clock network. We evaluate four benchmarks (Table III): the Ibex RISC-V core and a JPEG encoder from OpenROAD Flow Scripts [27], and the Minimax bit-serial RISC-V CPU and the FlooNoC network-on-chip from the HighTide suite [28]. Each is syn-thesized and placed with the standard OpenROAD flow before clock construction, so sink locations are identical for every clock network compared on a design. Backside power straps are as wide as the design rules allow and numerous enough to carry each design’s current, verified with OpenROAD’s IR analysis. The exploration of Section III runs 300–500 trials per design, three in parallel, with completed configurations cached; most infeasible trials fail the slew bound at sparse pitches. 
+
+A. Variation Model 
+
+Monte Carlo runs 10,000 HSPICE samples per network on Ibex under the parameters of Table IV. Device σ follow N3 nanosheet projections [29] and wire σ follow [30]; nominal values are GT2N’s, and every device and wire element is drawn independently. V. R ESULTS 
+
+A. Pareto Frontiers 
+
+Fig. 3 shows the skew–power frontier found on each design. All four share the same shape: skew falls steeply as power rises from the sparsest feasible pitch. The representative points in Table II are taken at the knee, and each frontside baseline is built with the identical grid, pitch, and driver configuration. 
+
+B. Backside vs. Frontside 
+
+Against the frontside mesh with the same LCB tier (FS+LCB), the backside mesh lowers worst-case skew on every design, by 20% on JPEG and by 49–57% on the other three, 45% on average, and sharpens the worst sink slew by 16–38%. It does so at 1.5–6.5% lower clock power, thanks to the backside grid’s lower resistance, and with 20–40% less frontside clock wirelength, because the grid itself has left the frontside. Latency rises by 2–10 ps on three designs, the cost of the extra TSV and LCB stage, and falls on Minimax. The direct-attach frontside mesh (FS Direct) draws the least power but pays for it in slew: its worst sink edge is 2.6–4.7 × slower than the backside mesh and exceeds the 10% slew budget on Minimax, so it is not a usable design point at these pitches. 
+
+C. Power Delivery 
+
+Sharing BM1/BM2 with the clock mesh and cutting the buried power rails at the TSV sites keeps the supply within budget. On Ibex, worst-case VDD drop is 30.7 mV for the backside configuration against 32.2 mV for the frontside mesh, 1.0 1.5 2.0 2.5 3.0                   
+
+> Clock power (mW)
+> 010 20 30 40 50
+> Worst-case skew (ps)
+> Ibex
+> valid trials Pareto frontier
+> 246810
+> Clock power (mW)
+> 010 20 30 40
+> JPEG
+> 1.0 1.5 2.0 2.5 3.0 3.5 4.0
+> Clock power (mW)
+> 0510 15 20 25 30 35
+> Minimax
+> 5.0 7.5 10.0 12.5 15.0 17.5 20.0 22.5 25.0
+> Clock power (mW)
+> 010 20 30 40 50
+> FlooNoC
+
+Fig. 3: Skew–power Pareto frontiers of the backside clock mesh. Light points are all feasible trials; dark points form the non-dominated set. TABLE II: The backside mesh wins on skew, slew, power, and frontside wire on every design at a small latency cost. BS+LCB = backside mesh + LCB tier; FS+LCB = frontside mesh + LCB tier; FS Direct = frontside mesh with direct flip-flop attachment. Checkerboard mesh buffers; full-network SPICE. 
+
+Benchmark Ibex JPEG Minimax FlooNoC BS+LCB FS+LCB FS Direct BS+LCB FS+LCB FS Direct BS+LCB FS+LCB FS Direct BS+LCB FS+LCB FS Direct 
+
+> Mesh Config.
+
+Mesh grid 9×9 9×9 9×9 25 ×25 25 ×25 25 ×25 9×9 9×9 9×9 20 ×20 20 ×20 20 ×20 
+
+Pitch (μm) 5 5 5 3.2 3.2 3.2 4 4 4 6 6 6Mesh buffers 41 41 41 313 313 313 41 41 41 200 200 200 Local clock buffers 382 382 N/A 790 790 N/A 135 135 N/A 2,611 2,611 N/A #TSVs 423 N/A N/A 1,103 N/A N/A 176 N/A N/A 2,811 N/A N/A 
+
+> Metric
+
+Clock skew (ps) 6.80 15.28 29.78 9.85 12.34 19.61 20.36 40.00 39.4 11.05 25.76 52.27 Max sink slew (ps) 14.1 19.1 53.2 19.9 23.8 57.8 47.5 76.4 125.6 † 23.6 29.7 111.3 Clock power (mW) 1.179 1.261 0.806 2.961 3.006 2.088 1.153 1.220 1.053 7.804 8.184 5.256 FS clock WL (μm) 2,159 3,055 3,031 6,008 10,025 9,017 1,896 2,476 2,753 17,678 22,214 23,995 Clock latency (ps) 51.5 49.3 57.0 69.5 60.1 70.4 56.8 58.5 88.9 92.0 88.7 112.3 
+
+> †
+
+violates the slew budget (10% of the clock period). 
+
+TABLE III: Benchmark designs: two RISC-V cores, a JPEG encoder, and a network-on-chip, from 1,938 to 15,311 flip-flops. 
+
+Design Insts FFs Core (μm) Tclk (ns) Minimax 25,071 2,251 35 .6 × 35 .6 0.78 Ibex 24,117 1,938 44 .0 × 43 .9 1.00 JPEG 104,562 4,384 80 .6 × 80 .5 1.00 FlooNoC 122,079 15,311 117 .0 × 116 .9 1.15 
+
+TABLE IV: Monte Carlo variation parameters (Gaussian, 1σ
+
+listed). Device σ follow N3 nanosheet projections [29] and wire σ follow [30]; nominal values are GT2N’s [18]. 
+
+Parameter μ σ From 
+
+Vth 177 mV 20 / 15 mV ∗ [29] 
+
+Lg (gate length) 14 nm 0.167 nm [29] 
+
+WN S (sheet width) 31 nm 0.167 nm [29] 
+
+TN S (sheet thickness) 5 nm 0.133 nm [29] 
+
+Vdd 0.7 V 18 mV § IR drop Wire R (FS) extracted 12.5% ¶ [30], [31] Wire R (BS) extracted 6.25% ¶ scaled Wire C extracted 3% [30] 
+
+> ∗
+
+pMOS / nMOS. §Worst-case backside IR drop taken as a 3σ bound. ¶Frontside σ is above the 5.6–9.9% measured at 11 nm [30] because narrower 2 nm wires are more sensitive to surface and grain-boundary scattering [31]; no backside data is published, so the wider 56 nm backside lines are assigned half the frontside value. 
+
+and VSS drop rises from 16.8 to 22.5 mV; both are within the budget used to size the straps in Section IV. 
+
+D. Skew Under Variation 
+
+TABLE V: Monte Carlo clock skew on Ibex (10,000 HSPICE samples per network, parameters from Table IV). 
+
+BS+LCB FS+LCB FS Direct CTS tree Nominal skew (ps) 6.77 15.20 29.82 32.43 
+
+μskew (ps) 7.13 15.44 30.02 34.40 
+
+σskew (ps) 0.34 0.99 0.78 1.79 
+
+μ + 3 σ (ps) 8.14 18.43 32.35 39.77 Max skew (ps) 8.57 19.24 32.82 42.44 
+
+Table V reports Monte Carlo results on Ibex, with a con-ventional TritonCTS [19] tree added as a fourth network. The backside mesh has the smallest mean skew and the smallest spread: its σskew of 0.34 ps is a third of the frontside mesh’s and a fifth of the tree’s. VI. C ONCLUSION 
+
+We have presented a construction flow and design-space exploration for clock meshes on the backside metals of a BSPDN technology. Building the mesh around the backside power grid, reaching it through TSVs that cut the buried power rails, and returning to the frontside sinks through a local clock buffer tier are all workable in OpenROAD on GT2N. With every design point verified in SPICE, the backside mesh beats an identical frontside mesh on all four benchmarks in skew, slew, power, and frontside wiring, and holds that lead under process and supply variation. REFERENCES [1] P. J. Restle, T. G. McNamara, D. A. Webber, P. J. Camporese, K. F. Eng, K. A. Jenkins, D. H. Allen, M. J. Rohn, M. P. Quaranta, D. W. Boerstler, C. J. Alpert, C. A. Carter, R. N. Bailey, J. G. Petrovick, B. L. Krauter, and B. D. McCredie, “A clock distribution network for microprocessors,” 
+
+IEEE J. Solid-State Circuits , vol. 36, no. 5, pp. 792–799, May 2001. [2] A. Rajaram and D. Z. Pan, “MeshWorks: A comprehensive framework for optimized clock mesh network synthesis,” IEEE Trans. Comput.-Aided Design Integr. Circuits Syst. , vol. 29, no. 12, pp. 1945–1958, Dec. 2010. [3] M. R. Guthaus, G. Wilke, and R. Reis, “Non-uniform clock mesh optimization with linear programming buffer insertion,” in Proc. Design Automation Conf. (DAC) , Anaheim, CA, USA, 2010, pp. 74–79. [4] M. R. Guthaus, G. Wilke, and R. Reis, “Revisiting automated physical synthesis of high-performance clock networks,” ACM Trans. Design Autom. Electron. Syst. , vol. 18, no. 2, Art. no. 31, pp. 1–27, Apr. 2013. [5] M. H. Khan and M. R. Guthaus, “GATMesh: Clock Mesh Timing Analysis using Graph Neural Networks”, 2025, arXiv:2507.05681 
+
+[6] M. H. Khan and M. R. Guthaus, “A Fast and Accurate Surrogate Model for Clock-Mesh Timing Analysis” in Proc. Great Lakes Symposium on VLSI , 2026, pp. 24–30. [7] D. Prasad, S. S. T. Nibhanupudi, S. Das, O. Zografos, B. Chehab, S. Sarkar, R. Baert, A. Robinson, A. Gupta, A. Spessot, P. Debacker, D. Verkest, J. Kulkarni, B. Cline, and S. Sinha, “Buried power rails and back-side power grids: Arm CPU power delivery network design beyond 5nm,” in Proc. IEDM , 2019, pp. 19.1.1–19.1.4. [8] R. Chen, G. Sisto, A. Jourdain, G. Hiblot, M. Stucchi, N. Kakarla, B. Chehab, S. M. Salahuddin, F. Schleicher, A. Veloso, et al. , “Design and optimization of SRAM macro and logic using backside interconnects at 2nm node,” in Proc. IEDM , 2021, pp. 22.4.1–22.4.4. [9] A. Veloso et al. , “Backside power delivery: Game changer and key enabler of advanced logic scaling and new STCO opportunities,” in Proc. IEDM , San Francisco, CA, USA, Dec. 2023, pp. 1–4. [10] M. Shamanna et al. , “E-core implementation in Intel 4 with PowerVia (backside power) technology,” in Proc. IEEE Symp. VLSI Technology and Circuits , Kyoto, Japan, Jun. 2023, pp. 1–2. [11] TSMC, “A16 technology,” TSMC, Hsinchu, Taiwan. [Online]. Avail-able: https://www.tsmc.com/english/dedicatedFoundry/technology/logic/ l A16 (accessed Sep. 29, 2026). [12] Samsung Electronics, “Samsung showcases AI-era vision and latest foundry technologies at SFF 2024,” Jun. 12, 2024. [Online]. Available: https://semiconductor.samsung.com/news-events/news/samsung-showcases-ai-era-vision-and-latest-foundry-technologies-at-sff-2024/ (accessed Sep. 29, 2026). [13] N. E. Bethur, “A methodology for back-side clock delivery network design compatible with commercial EDA flows,” M.S. thesis, Georgia Inst. of Technol., Atlanta, GA, USA, 2023. [14] N. E. Bethur et al. , “GNN-assisted back-side clock routing methodology for advance technologies,” in Proc. DAC , San Francisco, CA, USA, 2024, Art. no. 287, pp. 1–6. [15] P. Vanna-iampikul et al. , “Back-side design methodology for power de-livery network and clock routing,” in Proc. IEEE Symp. VLSI Technology and Circuits , Honolulu, HI, USA, Jun. 2024, pp. 1–2. [16] X. Jiang et al. , “A systematic approach for multi-objective double-side clock tree synthesis,” in Proc. DAC , San Francisco, CA, USA, Jun. 2025, pp. 1–7. [17] Z. Wang, L. Jin, Z. Zhuang, R. Chen, and B. Yu, “CSCO: A backside-PDN-aware clock–signal co-optimization framework for improved PPA,” 2026, arXiv:2607.13700 .[18] D. Jang, P. Kumar, M. N. H. Shazon, S. J. Ram, A. Svizhenko, V. Moroz, A. Ceyhan, N. A. Radhakrishna, and A. Naeemi, “GT2N: An open-source 2 nm nanosheet PDK enabling multi-width/VT benchmarking,” in Proc. ISCAS , 2026, pp. 3391–3395. [19] K. Han, A. B. Kahng, and J. Li, “Optimal generalized H-tree topology and buffering for high-performance and low-power clock distribution,” 
+
+IEEE Trans. Comput.-Aided Design Integr. Circuits Syst. , vol. 39, no. 2, pp. 478–491, Feb. 2020. [20] J. Bergstra, R. Bardenet, Y. Bengio, and B. K´ egl, “Algorithms for hyper-parameter optimization,” in Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) , vol. 24, 2011, pp. 2546–2554. [21] Y. Ozaki, Y. Tanigaki, S. Watanabe, and M. Onishi, “Multiobjective tree-structured Parzen estimator for computationally expensive optimization problems,” in Proc. Genetic Evol. Comput. Conf. (GECCO) , Canc´ un, Mexico, 2020, pp. 533–541. [22] T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama, “Optuna: A next-generation hyperparameter optimization framework,” in Proc. ACM SIGKDD Int. Conf. Knowl. Discovery Data Mining (KDD) , Anchorage, AK, USA, 2019, pp. 2623–2631. [23] J. Jung, A. B. Kahng, S. Kim, and R. Varadarajan, “METRICS2.1 and flow tuning in the IEEE CEDA robust design flow and OpenROAD,” in 
+
+Proc. ICCAD , Munich, Germany, 2021, pp. 1–9. [24] Z. Xie et al. , “FIST: A feature-importance sampling and tree-based method for automatic design flow parameter tuning,” in Proc. ASP-DAC ,Beijing, China, 2020, pp. 19–25. [25] A. Agnesina et al. , “AutoDMP: Automated DREAMPlace-based macro placement,” in Proc. Int. Symp. Physical Design (ISPD) , 2023, pp. 149– 157. [26] C. Bai, Q. Sun, J. Zhai, Y. Ma, B. Yu, and M. D. F. Wong, “BOOM-Explorer: RISC-V BOOM microarchitecture design space exploration framework,” in Proc. ICCAD , Munich, Germany, 2021, pp. 1–9. [27] The OpenROAD Project, “OpenROAD-flow-scripts,” 2019. [Online]. Available: https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts [28] B. Goldblatt, P. Pedroso, F. Modaresi, E. Sifferman, and M. R. Guthaus, “HighTide: An agent-curated open-source VLSI benchmark suite,” 2026, 
+
+arXiv:2606.04126 .[29] M. Karner et al. , “Variability-aware DTCO flow: Projections to N3 FinFET and nanosheet 6T SRAM,” in Proc. SISPAD , Dallas, TX, USA, 2021, pp. 15–18. [30] D. Prasad, C. Pan, and A. Naeemi, “Modeling interconnect variability at advanced technology nodes and potential solutions,” IEEE Trans. Electron Devices , vol. 64, no. 3, pp. 1246–1253, Mar. 2017. [31] D. Gall, “The search for the most conductive metal for narrow inter-connect lines,” J. Appl. Phys. , vol. 127, no. 5, Art. no. 050901, Feb. 2020.

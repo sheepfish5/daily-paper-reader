@@ -1,0 +1,538 @@
+Title: MEDEM: Multi-Engine DL Accelerator Design Methodology
+
+URL Source: https://arxiv.org/pdf/2609.37399v1
+
+Published Time: Wed, 30 Sep 2026 01:44:08 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# MEDEM: Multi-Engine DL Accelerator DEsign Methodology 
+
+Fareed Qararyah , Mohammad Ali Maleki , Pedro Trancoso 
+
+Department of Computer Science and Engineering Chalmers University of Technology and University of Gothenburg, Gothenburg, Sweden 
+
+{qarayah, mohammad.ali.maleki, ppedro }@chalmers.se 
+
+Abstract —Multi-engine deep learning (DL) accelerators are becoming increasingly prevalent as they address the hetero-geneity and growing complexity of modern DL workloads. To efficiently process diverse DL workloads, these accelerators must incorporate combinations of engines with complementary capabilities to match the distinct computational characteristics of these workloads’ heterogeneous kernels. However, existing multi-engine DL accelerator design approaches lack a systematic methodology, leaving fundamental questions unresolved. These include how to co-design engines for workloads with diverse computational characteristics and which engine combinations minimize aggregate execution costs (such as time or energy) across such workloads. Addressing these questions requires efficient exploration of exponentially large design spaces. To address these questions systematically, this work proposes Multi-Engine DL accelerator DEsign Methodology (MEDEM). MEDEM defines generic engine abstractions, co-designs candi-date instances (engines), and selects a combination of co-designed engines to minimize aggregate execution cost given diverse DL workloads and a resource budget. MEDEM encompasses a set of design strategies that efficiently navigate the exponentially large design spaces of engine co-design and combination selec-tion, identifying highly optimized multi-engine accelerators. A comprehensive evaluation demonstrates that MEDEM identifies accelerators that outperform state-of-the-art designs, delivering geometric-mean improvements of up to 4.84 × in energy-delay product (EDP) and 1.59 × in throughput. The improvements are achieved using different resource budgets, demonstrating MEDEM’s scalability, and using 51 single- and multi-model DL workloads, demonstrating its generalizability. 
+
+Index Terms —Design Methodology, Accelerators, Co-design, Multi-engine Accelerators, Deep Neural Networks (DNNs), Deep Learning (DL) 
+
+I. I NTRODUCTION 
+
+As monolithic Deep Learning (DL) accelerators face di-minishing returns from further optimization, multi-engine ac-celerators offer a more scalable alternative and open up new design opportunities [20], [22], [43], [73], [82]. Hence, they are increasingly adopted both in research and in industry. Rep-resentative research-driven multi-engine accelerators include 
+
+This work was supported by the Swedish Foundation for Strategic Research (contract number CHI19-0048) under the PRIDE project and the European High-Performance Computing Joint Undertaking (JU) under Framework Part-nership Agreement No 800928 and Specific Grant Agreement No 101036168 (EPI SGA2). The JU is supported by the European Union’s Horizon 2020 research and innovation program and by Croatia, France, Germany, Greece, Italy, Netherlands, Portugal, Spain, Sweden, and Switzerland. This work was also partially funded by the Swedish Foundation for Strategic Research under the SSF-FuSS QuantumStack project (grant number FUS21-0063). Off-chip Memory 
+
+NoC 
+
+> Off-chip Memory
+
+3
+
+1 2Eng?  
+
+> Eng?
+> Eng?
+> Eng?
+> Eng?
+> Eng?
+> Eng?
+> Eng?
+> Eng?
+> Eng?
+> Primitive 1 Primitive 2
+> Co-design
+> Candidate Engine Pool
+> Selection
+> Multi-Engine Accelerator
+> Expert-selected (predefined) Engines
+> Workloads
+
+a
+
+b
+
+> Selected twice
+
+Homogeneous  Heterogeneous 
+
+CMEA 
+
+Fig. 1. Engine design alternatives in multi-engine DL accelerators: 1
+
+homogeneous engines 2 heterogeneous engines and 3 co-designed engines (CMEA). 
+
+Simba [62], Tangram [20], Maelstrom [43], and Gemini [7]. Representative accelerators widely deployed include Meta’s MTIA [12], Tesla’s Dojo [67], and Google’s TPU v4 1 [35]. Multi-engine DL accelerators comprise independently con-trollable computing engines interconnected through a high-bandwidth communication fabric, where each engine mainly consists of an array of Processing Elements (PEs), as well as local and global buffers [6], [7], [14], [20], [43], [62], [82]. These accelerators can be model-specific or flexible . Model-specific ones typically leverage reconfigurable hardware and are optimized for a single or a few very similar workloads (models) [24], [58], [64]. In contrast, flexible accelerators are optimized for diverse DL workloads [7], [20], [43]. We classify existing flexible multi-engine DL accelerators, depending on engine heterogeneity, into the two categories depicted in Figure 1: 1 homogeneous accelerators, which use the same hardware configurations across all engines [7], [62]; and 2
+
+heterogeneous accelerators, in which engines differ at the architectural or microarchitectural level [14], [43], [55]. Existing flexible multi-engine DL accelerator design ap-proaches combine independently optimized expert-selected 
+
+engines such as Eyeriss [9], [10], ShiDiaNao [19], or 
+
+> 1
+
+The TPU architecture evolved from a single systolic array in v1 to multiple TensorCores, each integrating four matrix multiplicative units (MXUs), in v4. 
+
+1arXiv:2609.37399v1 [cs.AR] 29 Sep 2026 NVDLA [54]. These approaches exhibit several limitations. 
+
+First , although expert-driven selection can produce optimized accelerators for particular scenarios, it lacks a robust and reusable methodology . A reusable methodology is needed as the fast pace of DL model evolution requires continu-ous accelerator co-design to sustain performance and effi-ciency [59]. Furthermore, DL workloads span a broad range of deployment environments and resource constraints; designs tailored for edge settings may not translate effectively to cloud-scale systems [43]. Second , due to the exponentially large DL accelerator design space, systematic methodologies consistently outperform expert-driven ones , as demonstrated in single-engine design where improvements range from two times to an order of magnitude [16], [28], [40], [56], [59], [80]. 
+
+Third , independently designed engines may become optimized for the same or substantially overlapping subsets of workloads ,resulting in poor coverage of the overall workload landscape. We define workload coverage as an accelerator’s ability to process a set of workloads with minimal aggregate execution cost (such as execution time or energy consumption). To overcome these limitations, this work proposes Multi-Engine DL accelerator DEsign Methodology (MEDEM). The idea behind MEDEM is to decouple engine co-design and selection as highlighted in Figure 1. MEDEM’s first stage 
+
+( a ) aims to co-design a pool of candidate engines that conceptually achieve a maximal coverage of diverse work-loads, by co-designing an engine for each kernel with distinct computational characteristics. However, in practice, resource constraints often limit the number of engines that can be included. Hence, MEDEM’s second stage ( b ) selects a multiset 2 of engines (from the pool) that maximizes work-load coverage given a practical resource budget. We call accelerators designed using this methodology Co-designed Multi-Engine Accelerators (CMEAs) . On the one hand, co-designing a relatively large pool of engines boosts the chance of identifying a combination of engines with complementary capabilities, hence achieving maximum coverage. On the other hand, it requires very efficient co-design and selection strate-gies to navigate exponentially large design spaces. Engine co-design entails exploring two exponentially large and non-convex subspaces. These are the hardware space and the mapping space [27], [28]. The state-of-the-art hardware-mapping co-design approaches use techniques ranging from simple to sophisticated DL-based ones [16], [27], [28], [31], [40], [59], [76]. However, as important as the techniques themselves, if not more, is effectively navigating the design space [16], [31], [76]. The engine co-design stage of MEDEM proposes a Hierarchical Co-designer (HCo) to navigate the hardware-mapping space effectively. The idea is to prioritize 
+
+certain axes of the space - such as PE arrangements or tiling - based on their impact on the execution cost, regardless of whether they belong to the hardware or mapping space. As prioritized axes have a large impact, they are explored exhaus-tively, whereas lower-priority axes are explored heuristically. 
+
+> 2A multiset is a collection of elements in which repetitions are allowed.
+
+To enable exhaustive exploration, HCo proposes pruning tech-niques that use domain knowledge to eliminate redundant and provably suboptimal regions of the space. Identifying a combination of engines that achieve maxi-mum workload coverage through exhaustive exploration is intractable. For example, selecting a multiset of 64 engines from 100 candidates requires exploring O(10 46 ) possible combinations. To tackle this problem, we propose a strategy that balances two intuitive design principles: (1) designing for the common case by replicating the engine with the best average performance, and (2) maximizing specialization through engine heterogeneity. Rather than committing to either extreme, the strategy explores multiple engine combinations, drawn from the pool generated by MEDEM’s first stage, that span the spectrum from one extreme to the other. Each combination is then incrementally refined, and the combination with the lowest aggregate execution cost is finally selected. We call this strategy Balanced Average and Specialization Search (BASS) .Our contributions are as follows:  
+
+> •
+
+We propose MEDEM, a systematic design methodology for flexible multi-engine DL accelerators. MEDEM is a two-stage methodology that decouples engine co-design and selection.  
+
+> •
+
+We propose HCo, a co-design strategy that efficiently navigates an engine hardware–mapping space by ex-haustively exploring high-impact axes and heuristically exploring the rest.  
+
+> •
+
+We propose BASS, a strategy for selecting engine com-binations that maximizes workload-set coverage by ex-ploring combinations ranging from ones designed for the common case to highly specialized ones.  
+
+> •
+
+We comprehensively evaluate MEDEM and its derived CMEAs against state-of-the-art homogeneous and hetero-geneous multi-engine accelerator designs, demonstrating MEDEM’s scalability and generalizability. Comprehensive evaluation of MEDEM using 51 single- and multi-model workloads shows that it identifies CMEAs that outperform state-of-the-art homogeneous and heterogeneous multi-engine accelerator baselines modeled after Simba [62] and Maelstrom [43], achieving geometric mean improvements up to 4.84 × in energy-delay product (EDP) and 1.59 × in throughput. These improvements hold across various resource budgets ranging from those typical of edge to cloud systems. II. B ACKGROUND AND MOTIVATION 
+
+A. Deep Learning Models and their Unique Layers 
+
+Deep Learning (DL) models, such as Convolutional Neural Networks (CNNs) [47] and Transformers [69], consist of a sequence of layers. Each layer performs a specific tensor operation to transform input data into alternative feature representations. Two core operations of these DL models, which are characterized by their multi-dimensional iteration spaces, are convolution and matrix multiplication [44], [56]. These operations fundamentally combine input activations 2with learned weights to produce output activations. A standard convolutional layer operates within a 6-dimensional space (K, C, H, W, R, S) shown in Figure 2, while a matrix multiplication operation has a 3-dimensional space (M, N, K), assuming no batching. We define a unique layer as a layer that has a specific set of values for all its dimensions. Modern DL models, despite having tens to thousands of layers, are often composed of only a few unique layers that repeat throughout the model. We refer to layers sharing identical dimensional values as instances or repetitions of a single unique layer. K     
+
+> C
+> H
+> W
+> R
+> S
+> M
+> K
+> N
+> Reduction dimensions
+> Convolution: C, R, S
+> Matrix Multiplication: K
+> Output dimensions
+> Convolution: H, W, K
+> Matrix Multiplication: M, N
+> Matrix Multiplication Convolution
+> Fig. 2. Convolution and matrix multiplication dimensions, reduction and output dimensions.
+
+B. DL Computing Engines 
+
+We define an engine as an array of Processing Elements (PEs) with a multilevel memory hierarchy, including private register files (RFs), local and global buffers. Engines can be broadly categorized based on which dimensions of the DL layers can be mapped in parallel (i.e., spatially) across the PE array. Different dimensions of the core deep learning opera-tions have two main forms of parallelism. First, parallelism on the output dimensions: (K, H, W) in convolution (Figure 2) and (M, N) in matrix multiplication. We call parallelism on these dimensions non-reductive (NR) . Second, parallelism on dimensions that require partial-sum accumulation: (C, R, S) in convolution and (K) in matrix multiplication, reductive (R) . Supporting spatial mapping of these dimension types has implications for an accelerator microarchitecture and for data reuse opportunities [34], [41], [56], [77]. For example, when parallelizing on NR dimensions, each PE computes an output element independently and accumulates the result at its local register [19]. Consequently, the hardware primitives in the NR parallelism case do not require spatial reduction logic. By contrast, parallelizing R dimensions requires spatial reduction primitives, typically implemented via inter-PE adder trees or global accumulation registers [34], [62]. 
+
+C. Multi-Engine DL Accelerators 
+
+Multi-engine DL accelerators consist of independently con-trollable engines interconnected via a high-bandwidth com-munication fabric. These accelerators offer several advantages over monolithic ones. First , they offer more specialization opportunities by dedicating the engines to address the het-erogeneity of DL model kernels, improving performance and             
+
+> TABLE I ENGINE TYPES USED IN EXISTING MULTI -ENGINE ACCELERATORS .NVDLA/S IMBA (NV/S I), E YERISS (EYE ), S YSTOLIC ARRAY (SA ), AND
+> SHI DIAN NAO (SHI ). HET .INDICATES HETEROGENEOUS ENGINES . I F AN ACCELERATOR IS HOMOGENEOUS ,MULTIPLE ✓MEAN THAT DIFFERENT ENGINES ARE USED MUTUALLY EXCLUSIVELY ,ONE TYPE AT A TIME ,IN DIFFERENT EXPERIMENTS .
+
+Work NV/Si Eye SA Shi Het. 
+
+Tangram [20] ✓ ✗
+
+AI-MT [1], Planaria [21], SPA [8], TPU v4 [35] 
+
+✓ ✗
+
+Simba [62], NN-baton [68], SET [6], Gemini [7] 
+
+✓ ✗
+
+Atomic [82] ✓ ✓ ✗
+
+Crane [22] ✓ ✓ ✗
+
+ConfuciuX [36] ✓ ✓ ✓ ✗
+
+MAGMA [38] ✓ ✓ ✓
+
+SCAR [55] ✓ ✓ ✓
+
+HDA [43], MOHaM [14] ✓ ✓ ✓ ✓
+
+efficiency [5], [8], [14], [43], [81]. Second , they exploit model-level parallelism by enabling concurrent execution of different model layers [8], [20], [43], [82]. Third , their modular design improves scalability and flexibility for large models [22], [62]. 
+
+Finally , they expose more mapping and scheduling optimiza-tions for multi-model workloads [7], [22], [55], [71], [73]. We define flexible multi-engine accelerator as an accelerator capable of executing a diverse set of DL workloads, to distinguish from model-specific accelerators usually optimized for specific DL models [24], [58]. Designing the engines of flexible multi-engine accelerators is largely expert-driven. As Table I shows, existing flexible multi-engine accelerators use combinations of independently optimized engine architectures. 
+
+D. Motivating a Two-Stage Design Methodology 
+
+To fully exploit the potential of multi-engine DL accelera-tors, systematic design methodologies are needed. A natural extension of single-engine hardware-mapping co-design is to treat engine configurations and engine combinations as dimensions of a single joint design space and explore them si-multaneously. This approach is exemplified by MOSAIC [15], the first framework to comprehensively target the design of flexible multi-engine DL accelerators. However, this approach has multiple shortcomings. 
+
+First , the joint design space is dominated by combina-tions containing inefficient engines. This is because optimized configurations constitute only a small fraction of all feasible designs in the per-engine design space [16], [37], [56], [59]. Moreover, substantial quality variation exists even among top-performing engines; for example, TimeLoop reports up to an 
+
+11 × difference in energy efficiency among 6582 designs that all achieve the minimum number of DRAM accesses [56]. Consequently, sampling the joint space is likely to spend most of its effort evaluating combinations composed of suboptimal engines. Second , jointly exploring engine configurations and engine combinations induces multiplicative growth in the search space, increasing exploration complexity and limiting 
+
+3scalability . The practical impact of this growth can be ob-served in MOSAIC, whose evaluation limits the design space to accelerators with 24 engines or fewer ( 1–3 engine types and 1–8 instances per type [15]). Third , another impact of the space growth is practically limiting per-engine hardware-mapping co-design . For instance, although MOSAIC explores 
+
+12 design knobs, where DAG-aware mapping across heteroge-neous engines is considered, within-engine mapping remains largely unexplored: loop ordering is not considered, and data tiling is restricted to values that fit the working set [15]. However, co-designing architectural and mapping dimensions is crucial for discovering highly efficient accelerator de-signs [16], [28], [40], [52], [59], [76]. These shortcomings motivate decoupling engine co-design and combination selection . First , decoupling enables the identification of high-quality engine candidates, avoiding the expenditure of search effort on combinations involving poor or mediocre engines. Second , it enables a more structured and scalable exploration compared to simply exploring joint space. Third , as the decoupled (isolated) engine design space is smaller, co-designing engines by co-exploring the hardware and mapping spaces becomes more practical. Moreover, as the engine co-design problem is extensively studied in the litera-ture, isolating it (the co-design) enables direct applications of insights from the rich literature. III. MEDEM O VERVIEW 
+
+A. MEDEM Flow and Core Modules 
+
+Figure 3a shows a high-level overview of the MEDEM flow and its core modules. MEDEM takes as input a set of DL models expressed using widely used DL frameworks, such as PyTorch, a hardware resource budget including the number of engines and the resource limit per engine, and an optimization goal. As an output , MEDEM produces hardware configura-tions of engines that form an optimized Co-designed Multi-Engine Accelerator (CMEA) and the number of instances of each engine. MEDEM has two main modules. The first is the candidate engine co-design module(Sections IV), which produces a pool of candidate engines, each optimized for a unique kernel (layer). The second is the engine selection 
+
+module (Section V), which selects a multiset of co-designed candidates that maximizes workload coverage, or minimizes aggregate execution costs with respect to the optimization goal. We quantify coverage using the geometric mean of execution cost across the workload set. Although at runtime the workloads of a CMEA are complete DL models, at design time, MEDEM considers individual 
+
+unique layers (defined in Section II-A). MEDEM is model-topology-agnostic , prioritizing flexibility for a diverse work-load set. Considering model topologies introduces a trade-off between generality and the ability to maximize optimization opportunities for specific models. Since our goal is to design a flexible accelerator for diverse models, MEDEM avoids optimizations tailored to specific model topologies. Instead, it aims to identify CMEAs that optimize aggregate execution cost across any set of models constructed from layers with given characteristics, independent of their topologies. 
+
+B. MEDEM Supported Engine Architectures 
+
+An engine is abstracted as a 2-D array of PEs exemplified in Figure 4. Each PE contains a Multiply–Accumulate (MAC) unit and a small set of local registers. The PEs are grouped into 1-D PE clusters. A PE cluster has three buffers local to the cluster and accessible to all its PEs (L1 buffers). These buffers hold input, weights, and partial sums (accumulation results). The engine has two global buffers accessible by all its PE clusters, one for inputs and one for weights (L2 buffers). We model the buffers as buffets [57]. Buffets decouple fills and accesses through fine-grained synchronization, making them more efficient than the commonly used double-buffered scratchpads. We broadly categorize our engines into two types based on their hardware primitives support for parallelism on R and NR dimensions (Section II-B). We call these two types 
+
+R-engines and NR-engines . In the rest of the paper, we use the term unique engine to refer to an engine that has a specific set of values for the type, PE array shape, and size of all buffers. Note that the R and NR are abstractions rather than two concrete engine configurations. This work explores instances of these abstractions with various PE array shapes, spatial mapping, and dataflow options, and buffer sizes. Moreover, given an engine instance, all valid loop orders and tiling options at each level of the memory hierarchy are explored. IV. C ANDIDATE ENGINE CO-DESIGN 
+
+This section presents MEDEM’s first core module, the candidate engine co-design module, which comprises two components. First, model parser , which extracts unique layers 
+
+(defined in Section II-A) from the input DL models. Second, 
+
+Hierarchical Co-designer (HCo) , which is the key component of this module. HCo co-designs a pool of engines given the unique layers and resource budgets. As the same co-designed engine can be optimal for multiple layers, the engine pool may have fewer engines than the unique layers. 
+
+Hierarchical Co-designer (HCo) 
+
+The size and structure of an engine hardware-mapping co-design space make uniform exploration unlikely to produce consistently high-quality solutions. Hence, HCo uses hierar-chical exploration prioritizing important axes of the space based on their impact on the execution cost. The priori-tized axes are explored exhaustively, and the rest are ex-plored heuristically. Exhaustive exploration is enabled through domain-informed design space pruning. 
+
+1) Importance-based Design Axes Prioritization: HCo’s axes prioritization relies on a four-axis representation of the hardware-mapping space, named TOPS [39]. TOPS stands for tiling (T), loop orders (O), parallelization (P), and PE array shapes (S). However, we separate the tiling and buffer sizes (B), naming this variant TOBPS. An extensive analysis of these axes suggests that optimizing parallelism and PE array shape (PS) yields considerable performance gains [39]. The 4Input 
+
+> - # Engines
+> - Engine Constraints
+> - PEs budgets
+> - Buffer sizes range
+> - ...
+> - EDP
+> - Energy
+> - Time
+
+# K Candidate Engine Co-design 
+
+> Model Parser
+> Hierarchical Co-designer (HCo)
+> Pruned Exhaustive Search
+> Multi-start
+> Simulated Annealing
+> (MSA)
+> Evaluator
+> Pruning
+> DL Models
+> Hardware
+> Optimization Goal
+
+Engine Selection  
+
+> Unique Layers
+> BASS
+> Eng1 Eng2
+> L1
+> L2
+> Layers
+> importance
+> Output
+> Engines' microarchitecturs description
+
+## MEDEM 
+
+> Cross Mapping Search
+> Candidate  (Co-designed)
+> Engine Pool
+> Cost Matrix
+
+(a) MEDEM overview. Simulated Annealing     
+
+> (SA)
+> Multi-start Simulated Annealing (MSA)
+> Simulated Annealing
+> (SA)  OB /
+> TOBPS
+> PS /
+> TOBPS
+> Simulated Annealing
+> (SA)
+> Pruned
+> Exhaustive
+> Search  T/
+> TOBPS
+> Exhaustive
+> Pruned
+> Exhaustive
+> Search
+> Pruned
+> Exhaustive
+> Search
+> Pruning
+> Exhaustive
+> Prio Less Prio Prio
+> Heuristic
+
+(b) Hierarchical Co-designer (HCo) flow. Fig. 3. MEDEM overview and Hierarchical Co-designer flow. L2          
+
+> Regs
+> MAC
+> L1 L1
+> L2
+> PE Array
+> PE PE
+> PE Cluster
+> PE
+> L1
+> PE PE PE
+> PE PE PE PE PE
+> Inp WAcc
+> Inp
+> W
+
+Fig. 4. MEDEM engine abstraction, focusing on compute and memory components. 
+
+same applies for blocking or tiling (T) , [39], [59], [77]. Hence, HCo prioritizes these axes, namely (PS) and (T), and explores them exhaustively, and explores (OB) heuristically. 
+
+2) HCo Components and Flow: Figure 3b shows HCo’s flow and sub-optimizers. The first sub-optimizer is a Multi-Start Simulated Annealing (MSA). The MSA explores paral-lelism and PE array shape together (PS) exhaustively. We ap-ply simple pruning on array shape (S), limiting its dimensions to powers of two; with this, the P and S options are usually tens to hundreds, making an exhaustive exploration practical. Each SA search of the MSA explores the combinations of 
+
+loop orders and buffer sizes (OB) (heuristically). And for each explored combination, HCo starts an exhaustive search for optimal tile sizes and shapes (T) . Unlike the (PS), the remaining axes have huge spaces and require considerable pruning. HCo’s partitioning of the space and grouping of hardware and software axes together may sound counterintu-itive. However, together with the applied pruning, it facilitates selective exploration of promising parts of the design space, leading to the identification of highly optimized design points (as demonstrated in Section VI-C1). 
+
+3) Pruning Redundant, Dominated, and Undesired Design Points: Previous work primarily prunes invalid design points, but the design space also contains valid yet suboptimal points. We classify these as redundant (equivalent), dominated (prov-ably suboptimal), or undesired (excluded due to designer preferences or implementation constraints). Because design-space axes are interdependent, pruning must be applied across all axes to enable exhaustive exploration of important ones. This section skips pruning invalid designs, which is well covered in the literature, and discusses the other three. 
+
+Examples of redundant design points. We define in-terchangeable dimensions as dimensions (Section II-A) with identical values and input-to-output mappings. In the absence of parallelism on such dimensions, tiles ( T) that differ only in the permutation of these dimensions’ values provide equiv-alent PE utilization and reuse and are therefore redundant. Similarly, loop orders ( O) that differ only in the permutations of not parallelized interchangeable dimensions are redundant. Pruning redundant points shrinks the space considerably. For example, as our engines permit any loop order at any memory level (Section III-B), there are (7!) 3 ≈ 12 .8 billion possibilities when considering convolution with batching. Interchangeable dimensions-based pruning can reduce these to just thousands. 
+
+Examples of dominated design points. Orojenesis [33] shows that, for matrix multiplication, the maximum effectual buffer size ( B) is determined by the smallest operand (smallest operand size + its smallest rank + 1). We generalize this to convolution with an extra constraint: the smallest rank must be shared with the other input. Global buffers larger than the maximal effectual size are suboptimal (dominated) as they cost more area and energy per access with no added value. To give another example, we define two tiles ( T) A and B as divisible ,with respect to a buffer size, if both fit in the buffer, A is larger than B, and each dimension of A is an integer multiple of the corresponding dimension of B. Any tile that divides A is pruned as dominated , since it is guaranteed to be suboptimal. This criterion is stricter than the common practice of retaining only the largest fitting tile. Because different dimensions may provide different reuse and PE utilization, a tile B that is smaller than A, but larger in at least one dimension, is not necessarily dominated by A.
+
+Example of pruning undesired points. We define collo-cated dimensions as those that appear consecutively in a loop order ( O). The idea of collocated dimensions is a generaliza-tion of the concept of stationary [9] applied to different levels of the memory hierarchy. For example, any loop order where the dimensions of a layer output at a certain memory level are not collocated as outermost is not ”output stationary” relative to that level. One can enforce stationary loop orders by pruning loop orders that have certain non-collocated dimensions. 5Gradual pruning relaxation. Applying all pruning types may leave the design space with no valid solutions under the specified hardware budget. In this case, pruning is gradually relaxed by reintroducing previously pruned dominated and undesired designs, while redundant designs remain excluded because equivalent counterparts already exist in the pruned space. After each reintroduction, the exploration is repeated. Designs are added back in order of increasing design space expansion, meaning that pruning types with the smallest impact on the design space are relaxed first. V. E NGINE SELECTION 
+
+This section describes MEDEM’s engine selection module, which identifies a multiset of co-designed engines that min-imize an aggregate (measured as geometric mean) execution cost of workloads constructed from layers with given char-acteristics. Permitting multiple selections of the same engine enables the reuse of high-utility engines, which increases the probability that relatively more important layers (Section V-A) are executed on engines that best suit their computational characteristics. The size of the search space of selecting combinations of K engines out of E candidates is shown in Equation 1. The engine selection module (Figure 3a) contains two components. The cross mapping search constructs a cost matrix given the unique layers extracted from the input models and the co-designed engine pool, as described in Section V-A. The second is Balanced Average and Specialization Search (BASS) , which selects the best combination (multiset) of candi-date engines to construct a CMEA as described in Section V-B.            
+
+> E+K−1
+> K
+> 
+> = (E+K−1)!
+> K!( E−1)! (1)
+
+A. cost matrix construction 
+
+Selecting the best K engines from E candidates requires first evaluating the cost of executing every unique layer on every engine. For engines other than the one co-designed for a given layer (Section IV), this cost is not uniquely defined, as it depends on the mapping. This is the task of the 
+
+cross mapping search (Figure 3a), which basically reuses the HCo to search for the mapping parameters, while fixing the hardware parameters. The execution costs of the best mappings are weighted by the importance of the unique layers and recorded in the cost matrix . We define layer importance as the number of times instances of a layer appear across all input models. This definition does not account for the computational complexity of the layers, as the impact of complexity is already reflected in the obtained execution costs. 3
+
+B. Balanced Average and Specialization Search (BASS) 
+
+When designing multi-engine accelerators, two principles can be pursued: optimizing for the common case by replicating an engine with the best average execution cost and maximizing specialization through engine heterogeneity. BASS views these principles as opposing endpoints of a design spectrum and 
+
+> 3MEDEM also allows specifying custom importance values.
+
+explores engine combinations spanning different points along that spectrum. The combinations are drawn from the candidate pool generated in MEDEM’s first stage. The combinations are refined independently, and ultimately the combination with the lowest aggregate execution cost is selected. BASS is outlined in Algorithm 1. The algorithm describes searching for a combination (multiset) of K engines from a pool of E candidates using a multi-start local search. Each local search starts at line 4 with an initial engine combination constructed by uniformly replicating the top h engines ranked by average execution costs across all layers (obtained from the cost matrix in Section V-A). For example, when h is 
+
+4, and K is 64 , each of the top 4 engines is replicated 16 
+
+times. Different initializations represent points on a spectrum from designing for the common case by replicating one engine (h = 1 ) that is best on average, to maximizing specialization or engine heterogeneity ( h = K). Each initial combination is incrementally refined using a greedy hill-climbing search (lines 5–8). At each iteration, the algorithm evaluates all possible engine swaps— i.e. , replacing each of the K engines in the current combination with every candidate engine in 
+
+E—and selects the swap that provides the greatest marginal gain (line 6). The gain is defined as the reduction in aggregate execution cost. The gain is a proxy indicating that the swap results in a combination that comprises engines with better complementary capabilities. If the gain exceeds a predefined threshold 4, the swap is accepted, and the combination is updated (line 7). Marginal gain is computed relative to the best combination found throughout the search. The process repeats until no swap yields an improvement above the threshold, at which point a local optimum is reached (line 8). This local optimum is then added to the set of candidate solutions (line 9). After exploring multiple points on the heterogeneity spectrum, the algorithm compares the best local optimum obtained from each search and returns the one with the best workload coverage, measured by the minimum weighted aggregate cost (line 11). 0 100 200 300 400 500 Architecture-Mapping Index 90% 100% Norm. EDP Mean Absolute Error (MAE): 2%  
+
+> Fig. 5. EDP estimated by our model normalized to Timeloop-Accelergy-Infrastructure using a random sample of 500 architecture-mapping.
+
+C. Evaluator 
+
+Although pruning substantially reduces an engine hardware-mapping space, HCo may still explore billions of candidate configurations per layer, especially under relaxation. Hence,    
+
+> 4In all experiments, the threshold was set to ϵ= 10 −9solely to avoid floating-point round-off errors and did not affect the optimization.
+
+6Algorithm 1 Balanced Average and Specialization Search (BASS)                                                                                                            
+
+> 1: Input: Engine Candidate Pool P, Costs Matrix CL×E, Engine multiset Size K, Seeds Heterogeneity H={1,2,4, . . . , K }
+> 2: engCombs ← ∅ ▷Storage for local optima combinations
+> 3: for h∈Hdo ▷Multiple searches: exploring the specialization spectrum
+> 4: Ch←UniformReplicaInit (P, C L×E, K, h )▷Seed acombination by replicating top-hengines uniformly
+> 5: repeat ▷Greedy Hill-Climbing refinement
+> 6: swapped, δ ←bestOfAllSwaps (Ch,P, C L×E)▷Try swapping every engine in the combination
+> 7: if δ > ϵ then Ch←swapped ▷Commit swap that improves by more than threshold ϵ
+> 8: until δ≤ϵ▷Terminate at local optimum
+> 9: engCombs ←engCombs ∪ { Ch}▷Add result to local optima set
+> 10: end for
+> 11: return C∈engCombs with minimum weighted geometric mean ▷Return best overall combination (multiset)
+
+we develop a fast evaluation method. The core idea of our eval-uator is similar to that of DOSA [28]. Namely, the evaluator is based on decoding Timeloop [56], and converting part of the iterative program into mathematical models. As the evaluator is not a major contribution of this work, we highlight the main differences between our evaluator model and DOSA’s and refer the reader to DOSA for detailed information 5. First , while DOSA supports only Systolic Arrays with square shapes and weight-stationary dataflow, our evaluator supports any engine that satisfies the abstraction described in Section III-B. Second ,unlike DOSA, our modeling is not differentiable, as supporting a wider range of architectures makes it harder to formulate a differentiable model. The evaluator mainly estimates engine execution cycles and memory accesses at all levels of the memory hierarchy. To estimate energy, we collect energy per operation and energy per memory access from Timeloop-Accelergy infrastructure [56], [75]. The values are collected offline for all supported configurations of each hardware component. During co-design, the evaluator performs a lookup in the collected values. Figure 5 shows the EDP estimated by the evaluator compared to Timeloop’s. As depicted, the average error margin is only 2% , and only a few cases have accuracy less than 90% .VI. E VALUATION 
+
+A. Experimental Setup 1) Baselines: To demonstrate the efficiency of MEDEM’s engine co-design stage, we compare HCo to Spotlight [59], a state-of-the-art sample-efficient co-design tool. Spotlight originally uses MAESTRO [42]. However, the authors also present TimeLoop-based evaluation and show considerable differences between the two in some cases. Hence, for fairness, we re-evaluate the top-10 design points suggested by Spotlight using our Timeloop-Accelergy-based evaluator (Section V-C) and use the best among the results as our baseline. We evaluate MEDEM-derived CMEAs against Simba-like [62] (Simba-L), and Maelstrom-like [43] (Maelstrom-L) accelerators. Simba-L represents a homogeneous multi-engine accelerator, and Maelstrom-L represents a heterogeneous one. NVDLA-based multi-engine accelerators like Simba are the most common in related work [6], [7], [22], [55], [62],                   
+
+> 5Moreover, MEDEM code, including the evaluator, will be open-sourced. TABLE II USED WORKLOADS .DT STANDS FOR DESIGN -T IME .
+> CNN Models
+> DT c1: VGG16 [66], c2: VGG19, c3: InceptionV3 [66], c4: Inception-ResNet-v2 [65], c5: ResNet50 [25], c6: ResNet101, c7: MobileNet [29], c8: MobileNetV2 [60], c9: DenseNet121 [30], c10: DenseNet201
+> Unseen c11: ConvNeXt [50], c12: ResNet-RS50 [2]
+> Transformer Models
+> DT t1: BigBird [79], t2: DeBERTa [26], t3: BERT [17], t4: RoBERTa [49], t5: DistilBERT [61], t6: ELEC-TRA [11], t7: ALBERT [46], t8: XLM-R [13], t9: T5, t10: GPT-Neo [3], t11: CamemBERT [51], t12: XLNet [78]
+> Unseen t13: ViT [18], t14: BART [48], t15: Llama-3 (8B) [23]
+> Multi-Model
+> DT 2-model :(c2,t8), (c4,t3), (c10,t11), (c1,t2), (c6,t7), (c3,t12), (c5,t9), (c8,t6), (c7,t5), (c9,t4)
+> 3-model : (c2,c9,t12), (c6,c8,t3), (c1,c5,t2), (c10,c3,t9), (c7,c4,t4)
+> Unseen 2-model :(t13,c12), (t13,c11), (t14,c11), (t14,c12), (t15,c12), (t15,c11)
+> 3-model : (t13,c12,c11), (t14,c11,c12), (t15,c11,c12)
+
+[68], [82]. Maelstrom heterogeneous engines use NVDLA and ShiDiaNao. To evaluate scalability, we evaluate engine counts from 4 ( 2 × 2) to 64 ( 8 × 8), representing a broad spectrum of resource budgets and deployment scenarios, from edge to cloud systems. As MEDEM is a design methodology, the goal is to compare its outcomes with accelerators that capture the key characteristics of Simba and Maelstrom, rather than specific implementations. However, for fairness, we consider two configurations for each baseline and compare with the one that gives the baseline the best results throughout the evaluation. In the first configuration, engines use hardware resources similar to those reported in the original papers. In the second, engine resources are scaled uniformly, up or down, so that the overall area is similar to the corresponding CMEA’s. 
+
+2) System Modeling: The energy and execution time of the engines are modeled and validated against Timeloop [56] and Accelergy [75] (which use Aladdin [63] and CACTI [53] plug-ins under the hood) as described in Section V-C. We use TimeLoop-Accelergy’s 7nm technology node values in all our experiments, except for the comparison with Spotlight (Section VI-C1), where we use TimeLoop-Accelergy’s 28nm values to match Spotlight’s technology node. Regarding the 7TABLE III THE EXPLORED POSSIBILITIES OF KEY HARDWARE AND MAPPING PARAMETERS IN THE EVALUATION (PER ENGINE ).               
+
+> PE Array Regs/PE L1 (I/W )L1 Acc L2 (I/W )Parallelism and dataflow Loop Order Tiling
+> X: 8–128 Y: 8–128 8–128 (B) 2–32 (KiB) 0.25–4 (KiB) 64–1024 (KiB) All possible Convolution ∩Matrix multiplication dimension mappings
+> (3!) 3,(6!) 3Divisors of layer shape ∪Multipliers of PE array shape
+
+inter-engine communication fabric, we model a mesh NoC using a customized implementation of the open-source NoC modeling in SET [6]. The customization adds support for heterogeneous engines, which SET does not support natively. SET NoC modeling is used by previous work on multi-engine accelerators [7], [22]. The NoC bandwidth is set to 32 GB/s per link, and the energy per hop to 0.7 pJ/bit. 
+
+3) Workloads: We evaluate widely used CNN and Trans-former models listed in Table II. The design-time (DT) models in the table are those whose unique layers are used at the de-sign phase. The Unseen models are used to evaluate MEDEM generalization. The unseen models comprise both evolved versions of the DT ones and models exhibiting structural or paradigm shifts. We form multi-model scenarios (2-model and 3-model) by combining a Transformer with one or two CNNs. As Transformers are built from a few repeating unique layers, the goal of combining a Transformer with two CNNs is to create multi-model workloads where heterogeneity, in terms of unique layer counts in a workload, is maximized. As there are numerous combinations of the DT models, the multi-model DT workloads are formed randomly. For unseen models, we consider all possible combinations. The evaluation uses the commonly used batch size of 64 . The weights and activations use int8 quantization, and the accumulators use int32. In this work, we assume that off-chip memory capacity is not a bottleneck, meaning that it can hold the weights of large models like Llama-3 (8B). 
+
+4) Workload Mapping Across Engines: We use two com-mon heuristics to map a workload on the engines of a multi-engine accelerator, namely layer-sequential (LS) and layer-pipeline (LP) [6], [36], [82]. LS processes layers one at a time, potentially using all resources per layer. LP distributes the layers across the engines and pipelines their execution. Both heuristics are applied, and the results of the best among them are adopted both for CMEAs and for the baselines. 
+
+5) Design Space and MEDEM Parameters: Table III sum-marizes the key per-engine parameters explored by the co-design stage of MEDEM. We avoid extremely skewed PE 6
+
+arrays with a dimension smaller than 8 as they do not perform well on average. Regarding parallelism and dataflow, we explore all options common between convolution and matrix multiplication. This is because our accelerator must be flexible, where any layer must be executable on any engine. We explore all loop orders at the three levels of the memory hierarchy. This means up to 6! possibilities (Section II-A) per memory level for convolution and 3! for matrix multiplication. 
+
+> 6The term PE is used differently in the literature. For example, the Simba paper uses it to refer to what corresponds to a PE cluster in our design.
+
+The Simulated Annealing (SA) optimizer, used in HCo, employs 50 main (cooling) steps with 100 iterations per step (temperature). The SA initial temperature T0 is dynamically estimated based on a random walk over 100 samples from the space. An exponential cooling schedule is used with α = 0 .95 .As SA is non-deterministic, we repeated each experiment 10 times using different random seeds. The observed variance on the aggregate results is negligible. 
+
+6) Evaluation Metrics and Granularity: We mainly eval-uate EDP, as is common in related work [6], [22], [27], [28], [31], [43], [55], [59]. We also present representative throughput results. We use the Geometric Mean (GM) to report aggregate performance across various workloads. 
+
+B. End-to-End Evaluation of MEDEM 1) Evaluation of MEDEM-Derived CMEAs: This section evaluates MEDEM-derived CMEAs compared to homoge-neous multi-engine accelerators (Simba-L instances) and het-erogeneous ones (Maelstrom-L instances). Figure 6 shows the EDP and throughput improvements achieved by CMEAs over Simba-L and Maelstrom-L. Com-pared to Simba-L, CMEAs achieve up to 4.84 × lower EDP and 1.59 × higher throughput. Compared to Maelstrom-L, CMEAs achieve up to 2.75 × lower EDP and 1.51 × higher throughput. Improvements in throughput are more modest than those in EDP. This is because optimizing throughput requires only maintaining full PE utilization, which is achievable for many layers by properly mapping a layer’s dimensions on the PE array and by overlapping computation with data movement. In contrast, optimizing energy is more challenging as it requires maximizing spatial and temporal reuse across the memory hierarchy to reduce data movement costs. This makes EDP optimization more challenging; therefore, the remainder of the evaluation focuses on EDP. Comparing results across different engine counts shows that CMEAs consistently outperform baselines at all engine counts. On the one hand, consistent improvements highlight the MEDEM engine selection scalability , as the design space of possible engine combinations grows exponentially with engine count. On the other hand, one would expect CMEAs’ improvements over baselines to grow with engine count as CMEAs can be more heterogeneous. In other words, while Simba-L and Maelstrom-L replicate one or two engine archi-tectures, respectively, MEDEM can specialize to better capture workload heterogeneity. This expected trend does not always materialize due to the interplay of two factors : the limited heterogeneity of some models and the imbalance in layer contributions to the overall model computations. The impact of these factors is described in detail in Section VI-D. Comparing 805
+
+> Simba-L
+> 3.39 3.86 4.84
+
+Single 2-Model 3-Model     
+
+> 4816 32 64
+
+Number of Engines 
+
+> 02
+> Maelstrom-L
+> 2.25 2.75 2.59
+
+Single 2-Model 3-Model GM of Norm. EDP to CMEAs (a) Geometric mean of baselines EDP normalized to CMEAs’. 01
+
+> Simba-L
+> 1.59 1.34 1.43
+
+Single 2-Model 3-Model     
+
+> 4816 32 64
+
+Number of Engines 
+
+> 01
+> Maelstrom-L
+> 1.41 1.51 1.5
+
+Single 2-Model 3-Model GM of CMEAs Norm. Thr to (b) Geometric mean of CMEAs’ throughput normalized to baselines. Fig. 6. EDP and throughput comparison of MDEDEM-derived CMEAs to baselines using DT models using single- and multi-model workloads. Numbers in bars indicate the best case for a workload set. 
+
+improvements for single- and multi-model workloads in Fig-ure 6 shows mixed trends. While improvements over Simba-L increase with the number of models per workload, the largest improvements over Maelstrom-L are observed using 2-model workloads. Again, the two mentioned factors help to explain the trends in these results as detailed in Section VI-D. Overall, the fact that CMEAs improve over baselines across all experiments using representative workloads and at different scales demonstrates that constructing multi-engine accelera-tors using co-designed engines rather than independently op-timized ones achieves better workload coverage, i.e., minimizes aggregate execution cost .02       
+
+> Simba-L
+> 4816 32 64
+> Number of Engines
+> 02
+> Maelstrom-L GM of Norm. EDP to CMEAs DT Unseen
+> Fig. 7. Comparison between improvements using design-time (DT) and unseen models. Each bar is the geometric mean (GM) of all the DT/unseen workloads, i.e. GM(single workloads, 2-model workloads, and 3-model work-loads).
+
+2) Evaluation of MEDEM Generalizability: Figure 7 com-pares EDP improvements over baselines for both DT and un-seen workloads. MEDEM-derived CMEAs outperform base-lines using unseen workloads across all engine counts, sug-gesting that CMEAs remain effective beyond the workloads whose layers were used during design-time. While CMEAs’ improvements over Simba-L decrease for unseen compared to DT workloads, improvements over Maelstrom-L increase. When considering both baselines together, the opposing trends largely balance out. The overall trends indicate that MEDEM generalizes relatively well . As discussed in Section III-A, MEDEM is model-agnostic; it relies solely on the overall distribution of unique layers across a representative set of workloads, rather than a workload topology. Hence, as long as the design-time workloads are representative of the DL work-loads’ landscape, the aggregate results of MEDEM-derived CMEAs should be generalizable. <1x 1x-2x 2x-4x 4x-8x 8x       
+
+> Spotlight engines EDP Norm. to ours 0% 20% 40% Percentage of co-designed engines
+> 5.2% 38.4% 24.1% 13.4% 18.9%
+> Fig. 8. Histogram of EDP achieved by engines co-designed using Spotlight for all unique layers of the DT models, normalized to those co-designed using HCo. For example, 24 .1% of engines co-designed using HCo have 2×–4×
+> EDP improvements over to those co-designed using Spotlight.
+
+C. Evaluation of MEDEM Engine Co-design Stage 1) Evaluation of HCo: This section demonstrates the ef-fectiveness of MEDEM’s HCo by comparing its co-designed engines with those co-designed using the Spotlight frame-work [59]. In this evaluation, we first ran MEDEM’s candidate engine co-design module to co-design engines for the unique layers of all DT models, as described in Section IV. Then we replace HCo with Spotlight, use this modified setup to co-design the engines, and then compare the EDP values achieved by engines co-designed using each approach to the other. Figure 8 shows that HCo co-designed engines outperform Spotlight’s in 94 .8% of the experiments, while Spotlight out-performs HCo only in 5.2% . Moreover, HCo identifies engines with considerable improvements that exceed 8× compared to Spotlight in roughly one-fifth of the experiments. This is despite HCo being simpler than Spotlight, which relies on an expert-formulated sophisticated feature space [59]. These results demonstrate the effectiveness of importance-based pri-oritization of high-impact axes of the design space .
+
+2) The Impact of Engine Co-design: This section focuses on isolating the impact of engine co-design on the efficiency of a multi-engine accelerator by comparing CMEAs with homogeneous engines to Simba-L and Maelstrom-L. These homogeneous CMEAs follow the principle of design for the common case by replicating the engine with the best average execution cost from the engine pool (Section IV). Figure 9 shows improvements over both Simba-L and Maelstrom-L of 9up to 2.64 × and 1.92 ×, respectively. These results emphasize the importance of co-designing the engines of a multi-engine accelerator , even when they are homogeneous. 4 8 16 32 64 
+
+Number of Engines 
+
+> 02
+> 2.64 1.92
+
+Simba-L MAEL GM of Norm. EDP      
+
+> Fig. 9. Comparsion of EDP achieved by CMEAs with homogeneous co-designed engines to the baselines (values are normalized to EDP of CMEAs with homogeneous co-designed engines). Each bar is the geometric mean (GM) of all 51 single- and multi-model DT and unseen workloads. 4816 32 64
+
+Number of Engines 
+
+> 1.00 1.25
+> 1.38 1.19
+
+DCC SPEC GM of Norm. EDP  
+
+> Fig. 10. Comparison of BASS to two design alternatives: designing for common case (DCC), and maximizing specialization (SPEC). The values are normalized to BASS’s. Each bar is the geometric mean (GM) of all 51 single-and multi-model DT and unseen workloads. DCC replicates one engine with the best average execution cost across all DT workloads K times (where K is the number of engines). SPEC comprises top-K unique engines ranked by their execution costs.
+
+D. Evaluation of MEDEM Engine Selection Stage 
+
+This section isolates the impact of MEDEM’s engine selec-tion by comparing BASS with two alternative design princi-ples: designing for the common case (DCC) and maximizing specialization (SPEC). Figure 10 presents this comparison. BASS identifies engine combinations that outperform both alternatives across all engine counts, demonstrating its effec-tiveness. Furthermore, while improvements over DCC remain relatively stable, improvements over SPEC increase with the engine count. From another angle, the performance gap be-tween SPEC and DCC narrows as the engine count increases, suggesting that the benefits of engine heterogeneity exhibit diminishing returns. Explaining these trends requires consid-ering two factors together: the number of unique layers in a workload, which is a proxy of that workload heterogeneity; and the contribution of these unique layers’ instances to the overall workload MAC operations. Figure 11 depicts representative statistics of the two factors mentioned. Using single-model workloads as an example, Figure 11 (a) shows two representative models: one from the first quartile (Q1) and one from the third quartile (Q3) of the models sorted by the number of unique layers. The Q1 model represents relatively homogeneous models with few unique layers. It consists mainly of instances (repetitions) of only four unique core layers. Three of the four layers contribute 
+
+99% to the model’s total MACs. Consequently, using instances Percentage of MACs 4 (Q1) 20 (Q3) # of Unique Layers (a) Single 0% 20% 40% 60% 80% 100%    
+
+> 33% 33% 33% 22% 17% 11% 8% 8% 7% 6%
+> 14 (Q1) 35 (Q3) # of Unique Layers (b) 2-Model
+> 30% 30% 30% 27% 22% 11% 7% 6% 6%
+> 44 (Q1) 77 (Q3) # of Unique Layers (c) 3-Model
+> 33% 15% 14% 14% 5% 34% 34% 7% 7%
+> Fig. 11. Unique layers and their contributions to the total MACs of a workload in single and multi-model workloads. A unique layer’s contribution is calculated by aggregating MACs across all its instances ( i.e. repetitions). A sample of two workloads is shown per workload set, representing the first (Q1) and third (Q3) quartiles of workloads sorted by their unique layer counts. Unlabeled gray slices in a bar represent layers whose overall instances contribute less than 5% .
+
+of more than four heterogeneous engines would exceed the workload’s inherent heterogeneity and provide no additional benefit. In contrast, the Q3 model contains 20 unique layers. Nevertheless, only a small subset of unique layers (more precisely, all instances of these unique layers) accounts for the majority of the workload’s MAC operations. Considering Q1 and Q3 models together suggests a sweet spot in engine heterogeneity, beyond which additional specialization yields diminishing returns or even degradation. Heterogeneous work-loads such as Q3 benefit from specialized engines, but the gains diminish as new engine types target layers contributing fewer MACs. In contrast, Q1-like workloads may be harmed by further specialization. In other words, as the total number of engines is fixed, introducing additional engine types to improve support for the long tail of layers present in Q3-like workloads comes at the cost of reducing the replication of engines that are more optimized for the instances of the few dominant layers in Q1-like workloads. Figures 11 (b) and (c) show that similar trade-offs exist in multi-model workloads; even though there are more heterogeneous layers in a work-load, few of them still dominate the overall computations. Given such trade-offs, maintaining consistent improvements over DCC, across engine counts, indicates that MEDEM’s engine selection avoids the trap of overspecialization . Fig-ure 12 shows the engine combinations selected by BASS across different engine counts. As observed, the number of unique engines is lower than the total engine count, suggesting diminishing returns from further specialization. 
+
+E. Overview of CMEAs Co-designed Engines 
+
+This section presents statistics and key architectural config-urations of the engines selected by MEDEM. Figure 13 shows that 17 unique engines were selected across all experiments, with the most used engine selected 17% of the time. Both R and NR engines have similar overall usage ( 49 .2% : 50 .8% ). Table IV shows some hardware configurations of the most used 
+
+5 engines. Different PE array aspect ratios are used. Various 
+
+L1 and L2 buffer sizes are used with different input-to-weight 10 4 8 16 32 64 Occurrences 4816 32 64 Engine Count                      
+
+> 2 2 2 2 4442 2 555433 2 2 2 8776655443 2 2 2
+> 26510 16 Fig. 12. Engine combinations (multisets) selected by BASS and the contribu-tion of unique engines. The number at the end of each bar indicates the number of unique engines in the selected combination. For example, for an engine count of 8, BASS selects a multiset of 6unique engines, two of which are replicated twice, while the remaining four appear once. Colors encode engine configurations; slices with the same color across different bars correspond to the same engine configurations. 12345678910 11 12 13 14 15 16 17 Unique Engine ID 04812 16 20 Count  R-Engines (Count: 61, 49.2%) NR-Engines (Count: 63, 50.8%) 17% 10% 10% 10% 8% 8% 6% 6% 6%
+> Fig. 13. Occurrences of unique engines used across all CMEAs optimized for EDP. Percentages in bars are normalized to the total number of engines (4 + 8 + 16 + 32 + 64 ).
+
+buffer size ratios. This reflects the varying input-to-weight ratios among layers, which is a feature that must be captured by the buffer distribution to minimize off-chip accesses [58].                                                      
+
+> TABLE IV KEY HARDWARE CONFIGURATIONS OF THE TOP 5MOST USED ENGINES ACROSS ALL THE CEA S OPTIMIZED FOR EDP. Type Percentage (%) PE Array L1Inp L1WL1Acc L2Inp L2W
+> NR 17 32 ×32 2KiB 2KiB 1KiB 128KiB 128KiB NR 10 128 ×88KiB 2KiB 1KiB 1MiB 512KiB R10 64 ×16 8KiB 2KiB 1KiB 128KiB 128KiB NR 10 128 ×84KiB 16KiB 2KiB 64KiB 128KiB R864 ×16 2KiB 2KiB 256B 64KiB 128KiB
+
+VII. R ELATED WORK 
+
+DL engines hardware-mapping co-design. Co-design of DL engines hardware–mapping is a widely explored open problem [16], [28], [32], [37], [39], [40], [59], [72], [76], [77]. Existing work uses a various exploration heuristics in-cluding Genetic Algorithms [37], [40], Bayesian Optimization (BO) [59], [76], Q-learning [76], variational autoencoders (VAEs) [31], and gradient descent [28]. The large size of the hardware and mapping spaces and the complex interactions between them necessitate sample-efficient exploration tech-niques [16], [28], [59]. 
+
+Engines of flexible multi-engine DL accelerators. Ex-isting multi-engine DL accelerators comprise homogeneous engines [7], [20], [35], [62], [80], [82], or heterogeneous ones [14], [43], [55]. For example, Simba [62] and Gemini [7] use NVDLA-like architecture in all their engines. SPA [8] engines are dataflow-hybrid SAs that support Weight Station-ary (WS) and Output Stationary (OS) dataflow. Atomic [82] presents two multi-engine accelerator instances, one using NVDLA-like engines and one using ShiDiaNao-like [19]. Maelstrom [43] engines use NVDLA and ShiDiaNao. MO-Ham [14] engines use NVDLA, Eyeriss, and ShiDiaNao. Another viable option is to use Reconfigurable Dataflow Accelerators (RDA), like MAERI [45]. However, the literature shows that the overheads of RDA outweigh the gains [39], [43], [44]. 
+
+Model-specific multi-engine DL accelerators. Model-specific, multi-engine DL accelerators usually use reconfig-urable platforms. Reconfigurability facilitates dedicating the compute engines for a targeted model [4], [24], [70], [74], [81]. MCExplorer [58] is a comprehensive DSE framework for model-specific multi-engine accelerators. The model-specific accelerator design problem has a smaller and simpler design space as each engine is tailored to one or a few layers, with many mapping parameters fixed in hardware. 
+
+Comprehensive design methodologies of flexible multi-engine DL accelerators. MOSAIC [15] is unique in providing a comprehensive exploration framework for flexible multi-engine DL accelerators, supporting a broad range of both MAC and non-MAC layers. However, MOSAIC jointly explores the engine-configuration and engine-composition spaces in an un-structured manner, limiting both effectiveness and scalability. Unlike existing flexible multi-engine DL accelerator design approaches, MEDEM proposes an efficient and scalable sys-tematic methodology that decouples engine co-design from combination selection. VIII. C ONCLUSION 
+
+As monolithic DL accelerator optimizations reach dimin-ishing returns, researchers are shifting toward multi-engine accelerators. This shift opens new design opportunities, but also introduces new challenges. A key challenge when de-signing a flexible multi-engine accelerator is identifying a combination of engines that maximizes coverage of diverse DL workloads to reduce aggregate execution costs. To tackle this challenge, this work proposes a systematic two-stage Multi-Engine DL accelerator DEsign Methodology (MEDEM). Us-ing generic engine abstractions, MEDEM co-designs candidate instances and selects a combination of the co-designed engines to improve coverage of diverse DL workloads. MEDEM encapsulates optimization strategies that efficiently navigate exponentially large design spaces, identifying flexible multi-engine accelerators that achieve geometric mean gains of up to 
+
+4.84 × in EDP and 1.59 × in throughput compared to the state-of-the-art. These gains are achieved using a representative set of DL workloads and under varying resource budgets. REFERENCES [1] E. Baek, D. Kwon, and J. Kim, “A multi-neural network acceleration architecture,” in 2020 ACM/IEEE 47th Annual International Symposium on Computer Architecture (ISCA) . IEEE, 2020, pp. 940–953. [2] I. Bello, W. Fedus, X. Du, E. D. Cubuk, A. Srinivas, T.-Y. Lin, J. Shlens, and B. Zoph, “Revisiting resnets: Improved training and scaling strategies,” Advances in Neural Information Processing Systems ,vol. 34, pp. 22 614–22 627, 2021. 
+
+11 [3] S. Black, S. Biderman, E. Hallahan, Q. Anthony, L. Gao, L. Golding, H. He, C. Leahy, K. McDonell, J. Phang et al. , “Gpt-neox-20b: An open-source autoregressive language model,” in Proceedings of BigScience Episode# 5–Workshop on Challenges & Perspectives in Creating Large Language Models , 2022, pp. 95–136. [4] M. Blott, T. B. Preußer, N. J. Fraser, G. Gambardella, K. O’brien, Y. Umuroglu, M. Leeser, and K. Vissers, “Finn-r: An end-to-end deep-learning framework for fast exploration of quantized neural networks,” 
+
+ACM Transactions on Reconfigurable Technology and Systems (TRETS) ,vol. 11, no. 3, pp. 1–23, 2018. [5] A. Boroumand, S. Ghose, B. Akin, R. Narayanaswami, G. F. Oliveira, X. Ma, E. Shiu, and O. Mutlu, “Google neural network models for edge devices: Analyzing and mitigating machine learning inference bottle-necks,” in 2021 30th International Conference on Parallel Architectures and Compilation Techniques (PACT) . IEEE, 2021, pp. 159–172. [6] J. Cai, Y. Wei, Z. Wu, S. Peng, and K. Ma, “Inter-layer scheduling space definition and exploration for tiled accelerators,” in Proceedings of the 50th Annual International Symposium on Computer Architecture , 2023, pp. 1–17. [7] J. Cai, Z. Wu, S. Peng, Y. Wei, Z. Tan, G. Shi, M. Gao, and K. Ma, “Gemini: Mapping and architecture co-exploration for large-scale dnn chiplet accelerators,” in 2024 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . IEEE, 2024, pp. 156– 171. [8] X. Cai, Y. Wang, X. Ma, Y. Han, and L. Zhang, “Deepburning-seg: Generating dnn accelerators of segment-grained pipeline architecture,” in 2022 55th IEEE/ACM International Symposium on Microarchitecture (MICRO) . IEEE, 2022, pp. 1396–1413. [9] Y.-H. Chen, J. Emer, and V. Sze, “Eyeriss: A spatial architecture for energy-efficient dataflow for convolutional neural networks,” ACM SIGARCH computer architecture news , vol. 44, no. 3, pp. 367–379, 2016. [10] Y.-H. Chen, T.-J. Yang, J. Emer, and V. Sze, “Eyeriss v2: A flexible accelerator for emerging deep neural networks on mobile devices,” IEEE Journal on Emerging and Selected Topics in Circuits and Systems , vol. 9, no. 2, pp. 292–308, 2019. [11] K. Clark, M.-T. Luong, Q. V. Le, and C. D. Manning, “Electra: Pre-training text encoders as discriminators rather than generators,” arXiv preprint arXiv:2003.10555 , 2020. [12] J. Coburn, C. Tang, S. A. Asal, N. Agrawal, R. Chinta, H. Dixit, B. Dodds, S. Dwarakapuram, A. Firoozshahian, C. Gao et al. , “Meta’s second generation ai chip: Model-chip co-design and productionization experiences,” in Proceedings of the 52nd Annual International Sympo-sium on Computer Architecture , 2025, pp. 1689–1702. [13] A. Conneau, K. Khandelwal, N. Goyal, V. Chaudhary, G. Wenzek, F. Guzm´ an, E. Grave, M. Ott, L. Zettlemoyer, and V. Stoyanov, “Unsu-pervised cross-lingual representation learning at scale,” in Proceedings of the 58th annual meeting of the association for computational linguistics ,2020, pp. 8440–8451. [14] A. Das, E. Russo, and M. Palesi, “Multi-objective hardware-mapping co-optimisation for multi-dnn workloads on chiplet-based accelerators,” 
+
+IEEE Transactions on Computers , vol. 73, no. 8, pp. 1883–1898, 2024. [15] A. Das, H. Kim, S. Lee, A. Raha, D. A. Mathaikutty, and V. Raghunathan, “Mosaic: A workload-driven simulation and design-space exploration framework for heterogeneous npus,” arXiv preprint arXiv:2606.05362 , 2026. [16] S. Dave, T. Nowatzki, and A. Shrivastava, “Explainable-dse: An ag-ile and explainable exploration of efficient hw/sw codesigns of deep learning accelerators using bottleneck analysis,” in Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 4 , 2023, pp. 87–107. [17] J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova, “Bert: Pre-training of deep bidirectional transformers for language understanding,” in Pro-ceedings of the 2019 conference of the North American chapter of the association for computational linguistics: human language technologies, volume 1 (long and short papers) , 2019, pp. 4171–4186. [18] A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai, T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly et al. ,“An image is worth 16x16 words: Transformers for image recognition at scale,” arXiv preprint arXiv:2010.11929 , 2020. [19] Z. Du, R. Fasthuber, T. Chen, P. Ienne, L. Li, T. Luo, X. Feng, Y. Chen, and O. Temam, “Shidiannao: Shifting vision processing closer to the sensor,” in Proceedings of the 42nd annual international symposium on computer architecture , 2015, pp. 92–104. [20] M. Gao, X. Yang, J. Pu, M. Horowitz, and C. Kozyrakis, “Tangram: Optimized coarse-grained dataflow for scalable nn accelerators,” in Pro-ceedings of the Twenty-Fourth International Conference on Architectural Support for Programming Languages and Operating Systems , 2019, pp. 807–820. [21] S. Ghodrati, B. H. Ahn, J. K. Kim, S. Kinzer, B. R. Yatham, N. Alla, H. Sharma, M. Alian, E. Ebrahimi, N. S. Kim et al. , “Planaria: Dynamic architecture fission for spatial multi-tenant acceleration of deep neural networks,” in 2020 53rd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO) . IEEE, 2020, pp. 681–697. [22] Y. Gong, L. Huang, H. Chang, R. Liang, C. Yang, Z. Tang, J. Hu, and B. Yuan, “Crane: Inter-layer scheduling framework for dnn inference and training co-support on tiled architecture,” in Proceedings of the 58th IEEE/ACM International Symposium on Microarchitecture® , 2025, pp. 1250–1263. [23] A. Grattafiori, A. Dubey, A. Jauhri, A. Pandey, A. Kadian, A. Al-Dahle, A. Letman, A. Mathur, A. Schelten, A. Vaughan et al. , “The llama 3 herd of models,” arXiv preprint arXiv:2407.21783 , 2024. [24] C. Hao, X. Zhang, Y. Li, S. Huang, J. Xiong, K. Rupnow, W.-m. Hwu, and D. Chen, “Fpga/dnn co-design: An efficient design methodology for iot intelligence on the edge,” in Proceedings of the 56th Annual Design Automation Conference 2019 , 2019, pp. 1–6. [25] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image recognition,” in Proceedings of the IEEE conference on computer vision and pattern recognition , 2016, pp. 770–778. [26] P. He, X. Liu, J. Gao, and W. Chen, “Deberta: Decoding-enhanced bert with disentangled attention,” arXiv preprint arXiv:2006.03654 , 2020. [27] K. Hegde, P.-A. Tsai, S. Huang, V. Chandra, A. Parashar, and C. W. Fletcher, “Mind mappings: enabling efficient algorithm-accelerator map-ping space search,” in Proceedings of the 26th ACM International Conference on Architectural Support for Programming Languages and Operating Systems , 2021, pp. 943–958. [28] C. Hong, Q. Huang, G. Dinh, M. Subedar, and Y. S. Shao, “Dosa: Differentiable model-based one-loop search for dnn accelerators,” in 
+
+Proceedings of the 56th Annual IEEE/ACM International Symposium on Microarchitecture , 2023, pp. 209–224. [29] A. G. Howard, M. Zhu, B. Chen, D. Kalenichenko, W. Wang, T. Weyand, M. Andreetto, and H. Adam, “Mobilenets: Efficient convo-lutional neural networks for mobile vision applications,” arXiv preprint arXiv:1704.04861 , 2017. [30] G. Huang, Z. Liu, L. Van Der Maaten, and K. Q. Weinberger, “Densely connected convolutional networks,” in Proceedings of the IEEE confer-ence on computer vision and pattern recognition , 2017, pp. 4700–4708. [31] Q. Huang, C. Hong, J. Wawrzynek, M. Subedar, and Y. S. Shao, “Learning a continuous and reconstructible latent space for hardware accelerator design,” in 2022 IEEE International Symposium on Perfor-mance Analysis of Systems and Software (ISPASS) . IEEE, 2022, pp. 277–287. [32] Q. Huang, M. Kang, G. Dinh, T. Norell, A. Kalaiah, J. Demmel, J. Wawrzynek, and Y. S. Shao, “Cosa: Scheduling by constrained optimization for spatial accelerators,” in 2021 ACM/IEEE 48th Annual International Symposium on Computer Architecture (ISCA) . IEEE, 2021, pp. 554–566. [33] Q. Huang, P.-A. Tsai, J. S. Emer, and A. Parashar, “Mind the gap: Attainable data movement and operational intensity bounds for tensor algorithms,” in 2024 ACM/IEEE 51st Annual International Symposium on Computer Architecture (ISCA) . IEEE, 2024, pp. 150–166. [34] J.-W. Jang, S. Lee, D. Kim, H. Park, A. S. Ardestani, Y. Choi, C. Kim, Y. Kim, H. Yu, H. Abdel-Aziz et al. , “Sparsity-aware and re-configurable npu architecture for samsung flagship mobile soc,” in 2021 ACM/IEEE 48th Annual International Symposium on Computer Architecture (ISCA) .IEEE, 2021, pp. 15–28. [35] N. Jouppi, G. Kurian, S. Li, P. Ma, R. Nagarajan, L. Nai, N. Patil, S. Subramanian, A. Swing, B. Towles et al. , “Tpu v4: An optically reconfigurable supercomputer for machine learning with hardware sup-port for embeddings,” in Proceedings of the 50th annual international symposium on computer architecture , 2023, pp. 1–14. [36] S.-C. Kao, G. Jeong, and T. Krishna, “Confuciux: Autonomous hardware resource assignment for dnn accelerators using reinforcement learning,” in 2020 53rd Annual IEEE/ACM International Symposium on Microar-chitecture (MICRO) . IEEE, 2020, pp. 622–636. 
+
+12 [37] S.-C. Kao and T. Krishna, “Gamma: Automating the hw mapping of dnn models on accelerators via genetic algorithm,” in Proceedings of the 39th International Conference on Computer-Aided Design , 2020, pp. 1–9. [38] ——, “Magma: An optimization framework for mapping multiple dnns on multiple accelerator cores,” in 2022 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . IEEE, 2022, pp. 814–830. [39] S.-C. Kao, H. Kwon, M. Pellauer, A. Parashar, and T. Krishna, “A formalism of dnn accelerator flexibility,” Proceedings of the ACM on Measurement and Analysis of Computing Systems , vol. 6, no. 2, pp. 1–23, 2022. [40] S.-C. Kao, M. Pellauer, A. Parashar, and T. Krishna, “Digamma: Domain-aware genetic algorithm for hw–mapping co-optimization for dnn accelerators,” in 2022 Design, Automation & Test in Europe Conference & Exhibition (DATE) . IEEE, 2022, pp. 232–237. [41] H. Kwon, P. Chatarasi, M. Pellauer, A. Parashar, V. Sarkar, and T. Kr-ishna, “Understanding reuse, performance, and hardware cost of dnn dataflow: A data-centric approach,” in Proceedings of the 52nd Annual IEEE/ACM International Symposium on Microarchitecture , 2019, pp. 754–768. [42] H. Kwon, P. Chatarasi, V. Sarkar, T. Krishna, M. Pellauer, and A. Parashar, “Maestro: A data–centric approach to understand reuse, performance, and hardware cost of dnn mappings,” IEEE micro , vol. 40, no. 3, pp. 20–29, 2020. [43] H. Kwon, L. Lai, M. Pellauer, T. Krishna, Y.-H. Chen, and V. Chan-dra, “Heterogeneous dataflow accelerators for multi-dnn workloads,” in 
+
+2021 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . IEEE, 2021, pp. 71–83. [44] H. Kwon, M. Pellauer, A. Parashar, and T. Krishna, “Flexion: Aquantitative metric for flexibility in dnn accelerators,” IEEE Computer Architecture Letters , vol. 20, no. 1, pp. 1–4, 2020. [45] H. Kwon, A. Samajdar, and T. Krishna, “Maeri: Enabling flexible dataflow mapping over dnn accelerators via reconfigurable intercon-nects,” ACM Sigplan Notices , vol. 53, no. 2, pp. 461–475, 2018. [46] Z. Lan, M. Chen, S. Goodman, K. Gimpel, P. Sharma, and R. Soricut, “Albert: A lite bert for self–supervised learning of language representa-tions,” arXiv preprint arXiv:1909.11942 , 2019. [47] Y. LeCun, Y. Bengio, and G. Hinton, “Deep learning,” nature , vol. 521, no. 7553, pp. 436–444, 2015. [48] M. Lewis, Y. Liu, N. Goyal, M. Ghazvininejad, A. Mohamed, O. Levy, V. Stoyanov, and L. Zettlemoyer, “Bart: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehen-sion,” in Proceedings of the 58th annual meeting of the association for computational linguistics , 2020, pp. 7871–7880. [49] Y. Liu, M. Ott, N. Goyal, J. Du, M. Joshi, D. Chen, O. Levy, M. Lewis, L. Zettlemoyer, and V. Stoyanov, “Roberta: A robustly optimized bert pretraining approach,” arXiv preprint arXiv:1907.11692 , 2019. [50] Z. Liu, H. Mao, C.-Y. Wu, C. Feichtenhofer, T. Darrell, and S. Xie, “A convnet for the 2020s,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2022, pp. 11 976–11 986. [51] L. Martin, B. Muller, P. O. Suarez, Y. Dupont, L. Romary, ´E. V. de La Clergerie, D. Seddah, and B. Sagot, “Camembert: a tasty french language model,” in Proceedings of the 58th annual meeting of the association for computational linguistics , 2020, pp. 7203–7219. [52] L. Mei, P. Houshmand, V. Jain, S. Giraldo, and M. Verhelst, “Zigzag: Enlarging joint architecture-mapping design space exploration for dnn accelerators,” IEEE Transactions on Computers , vol. 70, no. 8, pp. 1160– 1174, 2021. [53] N. Muralimanohar, R. Balasubramonian, N. P. Jouppi et al. , “Cacti 6.0: A tool to model large caches,” HP laboratories , vol. 27, p. 28, 2009. [54] NVIDIA, “Nvdla: Nvidia deep learning accelerator,” https://nvdla.org. [55] M. Odema, L. Chen, H. Kwon, and M. A. Al Faruque, “Scar: Schedul-ing multi-model ai workloads on heterogeneous multi-chiplet module accelerators,” in 2024 57th IEEE/ACM International Symposium on Microarchitecture (MICRO) . IEEE, 2024, pp. 565–579. [56] A. Parashar, P. Raina, Y. S. Shao, Y.-H. Chen, V. A. Ying, A. Mukkara, R. Venkatesan, B. Khailany, S. W. Keckler, and J. Emer, “Timeloop: A systematic approach to dnn accelerator evaluation,” in 2019 IEEE inter-national symposium on performance analysis of systems and software (ISPASS) . IEEE, 2019, pp. 304–315. [57] M. Pellauer, Y. S. Shao, J. Clemons, N. Crago, K. Hegde, R. Venkatesan, S. W. Keckler, C. W. Fletcher, and J. Emer, “Buffets: An efficient and composable storage idiom for explicit decoupled data orchestration,” in 
+
+Proceedings of the Twenty-Fourth International Conference on Archi-tectural Support for Programming Languages and Operating Systems ,2019, pp. 137–151. [58] F. Qararyah, M. A. Maleki, and P. Trancoso, “Mcexplorer: Exploring the design space of multiple compute-engine deep learning accelerators,” 
+
+ACM Transactions on Architecture and Code Optimization , vol. 22, no. 4, pp. 1–27, 2025. [59] C. Sakhuja, Z. Shi, and C. Lin, “Leveraging domain information for the efficient automated design of deep learning accelerators,” in 2023 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . IEEE, 2023, pp. 287–301. [60] M. Sandler, A. Howard, M. Zhu, A. Zhmoginov, and L.-C. Chen, “Mobilenetv2: Inverted residuals and linear bottlenecks,” in Proceedings of the IEEE conference on computer vision and pattern recognition ,2018, pp. 4510–4520. [61] V. Sanh, L. Debut, J. Chaumond, and T. Wolf, “Distilbert, a distilled version of bert: smaller, faster, cheaper and lighter,” arXiv preprint arXiv:1910.01108 , 2019. [62] Y. S. Shao, J. Cemons, R. Venkatesan, B. Zimmer, M. Fojtik, N. Jiang, B. Keller, A. Klinefelter, N. Pinckney, P. Raina et al. , “Simba: scaling deep-learning inference with chiplet-based architecture,” Communica-tions of the ACM , vol. 64, no. 6, pp. 107–116, 2021. [63] Y. S. Shao, B. Reagen, G.-Y. Wei, and D. Brooks, “Aladdin: A pre-rtl, power-performance accelerator simulator enabling large design space exploration of customized architectures,” ACM SIGARCH Computer Architecture News , vol. 42, no. 3, pp. 97–108, 2014. [64] G. Shen, J. Zhao, Z. Wang, Z. Lin, W. Ding, C. Wu, Q. Chen, and M. Guo, “Mars: Exploiting multi-level parallelism for dnn workloads on adaptive multi-accelerator systems,” in 2023 60th ACM/IEEE Design Automation Conference (DAC) . IEEE, 2023, pp. 1–6. [65] C. Szegedy, S. Ioffe, V. Vanhoucke, and A. Alemi, “Inception-v4, inception-resnet and the impact of residual connections on learning,” in 
+
+Proceedings of the AAAI conference on artificial intelligence , vol. 31, no. 1, 2017. [66] C. Szegedy, V. Vanhoucke, S. Ioffe, J. Shlens, and Z. Wojna, “Rethinking the inception architecture for computer vision,” in Proceedings of the IEEE conference on computer vision and pattern recognition , 2016, pp. 2818–2826. [67] E. Talpes, D. D. Sarma, D. Williams, S. Arora, T. Kunjan, B. Floering, A. Jalote, C. Hsiong, C. Poorna, V. Samant et al. , “The microarchitecture of dojo, tesla’s exa-scale computer,” IEEE Micro , vol. 43, no. 3, pp. 31– 39, 2023. [68] Z. Tan, H. Cai, R. Dong, and K. Ma, “Nn-baton: Dnn workload orches-tration and chiplet granularity exploration for multichip accelerators,” in 2021 ACM/IEEE 48th Annual International Symposium on Computer Architecture (ISCA) . IEEE, 2021, pp. 1013–1026. [69] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” Advances in neural information processing systems , vol. 30, 2017. [70] S. I. Venieris and C.-S. Bouganis, “fpgaconvnet: Mapping regular and irregular convolutional neural networks on fpgas,” IEEE transactions on neural networks and learning systems , vol. 30, no. 2, pp. 326–342, 2018. [71] S. I. Venieris, C.-S. Bouganis, and N. D. Lane, “Multiple-deep neural network accelerators for next-generation artificial intelligence systems,” 
+
+Computer , vol. 56, no. 3, pp. 70–79, 2023. [72] R. Venkatesan, Y. S. Shao, M. Wang, J. Clemons, S. Dai, M. Fojtik, B. Keller, A. Klinefelter, N. Pinckney, P. Raina et al. , “Magnet: A modular accelerator generator for neural networks,” in 2019 IEEE/ACM International Conference on Computer-Aided Design (ICCAD) . IEEE, 2019, pp. 1–8. [73] M. Verhelst, M. Shi, and L. Mei, “Ml processors are going multi-core: A performance dream or a scheduling nightmare?” IEEE Solid-State Circuits Magazine , vol. 14, no. 4, pp. 18–27, 2022. [74] X. Wei, Y. Liang, X. Li, C. H. Yu, P. Zhang, and J. Cong, “Tgpa: Tile-grained pipeline architecture for low latency cnn inference,” in 
+
+2018 IEEE/ACM International Conference on Computer-Aided Design (ICCAD) . ACM, 2018, pp. 1–8. [75] Y. N. Wu, J. S. Emer, and V. Sze, “Accelergy: An architecture-level energy estimation methodology for accelerator designs,” in 2019 IEEE/ACM International Conference on Computer-Aided Design (IC-CAD) . IEEE, 2019, pp. 1–8. [76] Q. Xiao, S. Zheng, B. Wu, P. Xu, X. Qian, and Y. Liang, “Hasco: Towards agile hardware and software co-design for tensor computation,” 
+
+13 in 2021 ACM/IEEE 48th Annual International Symposium on Computer Architecture (ISCA) . IEEE, 2021, pp. 1055–1068. [77] X. Yang, M. Gao, Q. Liu, J. Setter, J. Pu, A. Nayak, S. Bell, K. Cao, H. Ha, P. Raina et al. , “Interstellar: Using halide’s scheduling language to analyze dnn accelerators,” in Proceedings of the Twenty-Fifth Interna-tional Conference on Architectural Support for Programming Languages and Operating Systems , 2020, pp. 369–383. [78] Z. Yang, Z. Dai, Y. Yang, J. Carbonell, R. R. Salakhutdinov, and Q. V. Le, “Xlnet: Generalized autoregressive pretraining for language understanding,” Advances in neural information processing systems ,vol. 32, 2019. [79] M. Zaheer, G. Guruganesh, K. A. Dubey, J. Ainslie, C. Alberti, S. Ontanon, P. Pham, A. Ravula, Q. Wang, L. Yang et al. , “Big bird: Transformers for longer sequences,” Advances in neural information processing systems , vol. 33, pp. 17 283–17 297, 2020. [80] D. Zhang, S. Huda, E. Songhori, K. Prabhu, Q. Le, A. Goldie, and A. Mirhoseini, “A full-stack search technique for domain optimized deep learning accelerators,” in Proceedings of the 27th ACM International Conference on Architectural Support for Programming Languages and Operating Systems , 2022, pp. 27–42. [81] X. Zhang, J. Wang, C. Zhu, Y. Lin, J. Xiong, W.-m. Hwu, and D. Chen, “Dnnbuilder: An automated tool for building high-performance dnn hardware accelerators for fpgas,” in 2018 IEEE/ACM International Conference on Computer-Aided Design (ICCAD) . IEEE, 2018, pp. 1–8. [82] S. Zheng, X. Zhang, L. Liu, S. Wei, and S. Yin, “Atomic dataflow based graph-level workload orchestration for scalable dnn accelerators,” in 2022 IEEE International Symposium on High-Performance Computer Architecture (HPCA) . IEEE, 2022, pp. 475–489. 
+
+14
