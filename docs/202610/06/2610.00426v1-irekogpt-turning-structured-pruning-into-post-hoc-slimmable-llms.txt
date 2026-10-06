@@ -1,0 +1,357 @@
+Title: IrekoGPT: Turning Structured Pruning into Post-Hoc Slimmable LLMs
+
+URL Source: https://arxiv.org/pdf/2610.00426v1
+
+Published Time: Fri, 02 Oct 2026 00:15:47 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# IREKO GPT: Turning Structured Pruning into Post-Hoc Slimmable LLMs 
+
+Pietro Moriello Pietro Buzzega Angelo Porrello Simone Calderara 
+
+AImageLab, University of Modena and Reggio Emilia, Italy 
+
+{name.surname}@unimore.it 
+
+Abstract 
+
+We introduce I REKO GPT, a post-hoc method for converting pretrained LLMs into slimmable models whose width can be adjusted at inference time. Building on SliceGPT, we retain its projection matrices without pruning them, allowing a single model to expose nested subnetworks at different widths. We improve robustness by calibrating each layer across multiple compression ratios, and correct downstream linear layers through gradient-free ridge regression. Across Llama and Qwen models, preliminary results show improvements over naive PCA-based slimming, with the largest gains at high compression. Code is available at https://github.com/aimagelab/IrekoGPT 
+
+1 Introduction 
+
+Deploying large neural networks on resource-constrained devices, such as mobile phones or embedded systems, requires effective compression techniques – such as weight quantization Frantar et al. [2023] and network pruning Han et al. [2016] – to enable efficient inference and democratize access to AI. Among these, structured pruning Ma et al. [2023], Ashkboos et al. [2024] enables substantial savings without relying on dedicated hardware support, as compressed models can be obtained through simple operations in weight space, such as slicing the original weight matrices. Some structured approaches merge redundant neurons with similar structure Ma et al. [2023], Verma et al. [2026], while others leverage eigenvector decompositions to identify the least important components to remove Wang et al. [2025], Ashkboos et al. [2024]. The resulting networks retain most of their original functionality while being lighter to store and faster. However, these approaches typically optimize the pruned architecture for a predefined target size (e.g., 80% of the original model). In real-world scenarios, resource availability is rarely static or known a priori: it may fluctuate, for instance, depending on the device’s current power-saving mode or on the workload it is required to handle at a given time. In these cases, structured pruning would require maintaining a separate compressed network for each resource budget, incurring additional storage costs and runtime overhead from loading and unloading different models. To overcome these limitations, pioneering works on slimmable neural networks Yu et al. [2019], Yu and Huang [2019] train a single model to operate at multiple widths. However, this capability is typically learned from scratch, which conflicts with the growing reliance on pretrained foundation models. In this paper, we address the problem of converting pretrained large language models into slimmable variants, as recently explored in Wong et al. [2026], Zaccone et al. [2026], Rauba and van der Schaar [2026]. In particular, we revisit the established structured pruning method SliceGPT Ashkboos et al. [2024] and show that its formulation can be naturally extended to support slimmable inference. Building on this connection, we introduce a set of modifications that better align the activations of smaller subnetworks with those of the original full-width model. We show that the resulting approach yields particularly pronounced gains at higher compression levels. 
+
+> 40th Conference on Neural Information Processing Systems (NeurIPS 2026). Workshop: AXIOM: Foundations of Efficient Deep Learning. arXiv:2610.00426v1 [cs.LG] 30 Sep 2026
+
+2 Background 
+
+Let Zℓ ∈ RN ×L×D denote the activations at layer ℓ of a Transformer model, where N is the number of examples, L the sequence length, and D the token dimension. SliceGPT reduces D through a sequence of transformations: specifically, given a calibration dataset X ∈ RN ×L of text examples, SliceGPT extracts the activations at layer ℓ and performs PCA to compute the eigenvector matrix 
+
+Qℓ ∈ RD×D, whose columns are sorted by decreasing eigenvalue. By retaining only the first 
+
+d columns of Qℓ, we obtain a projection Qℓd ∈ RD×d that yields the compressed representation 
+
+Zℓd = ZℓQℓd ∈ RN ×L×d while minimizing the reconstruction error ∥Zℓ − Zℓd(Qℓd)T ∥2 
+
+> F
+
+:
+
+Qℓd = arg min 
+
+> Ud
+
+∥Zℓ − ZℓUdU Td ∥2 
+
+> F
+
+s.t. U Td Ud = Id, d < D. (1) We refer the reader to Ashkboos et al. [2024] for a detailed description of how these projections are absorbed into the model weights and subsequently sliced. For simplicity, throughout this work we identify slicing with retaining the first d columns of each Qℓ matrix. 
+
+Sequential approach. The procedure above is applied sequentially , from the first layer to the last. Indeed, after computing PCA at a given layer, the resulting projection is absorbed into the model weights before moving to the next layer. Hence, the activation of a downstream layer Zℓ′
+
+is affected by the pruning applied at all preceding layers ℓ < ℓ ′. In other words, the principal components computed at each step reflect the distributional shifts induced by earlier pruning operations. 
+
+Unaffected layers. We remark that this procedure is not applied to every layer in the model, but only to either the input or output dimension of linear layers adjacent to LayerNorm. All remaining dimensions are left unchanged and continue to operate at full width. 
+
+3 Method 
+
+3.1 Revisiting SliceGPT: from slicing to slimming 
+
+Our first observation is that SliceGPT can be turned into a slimmable model by absorbing the full eigenvector matrix Qℓ into the model weights (hence, without slicing). Indeed, since the columns of each Qℓ are ordered by decreasing eigenvalue, this induces a nested structure : retaining the first d
+
+columns always preserves the most important principal directions. Different widths can therefore be obtained simply by truncating each projection to a different number of columns, while ensuring that smaller subnetworks are nested within larger ones and retain the highest-variance components. This establishes a direct connection between SliceGPT and slimmable networks: the ordered PCA basis used for structured pruning can instead be retained in full and exploited to support dynamic width selection at inference time. This observation forms the core foundation of our approach. 
+
+3.2 Improving slimmability by expanding the calibration dataset 
+
+To improve slimmability, we revisit the sequential nature of SliceGPT described above. In the original approach, once the transformation at layer ℓ has been computed, its output is propagated to the next layer and therefore determines the activations used to construct the calibration set for layer ℓ + 1 .These activations define the PCA basis and ultimately the compression subspace of the next layer. In a slimmable model, however, the output of layer ℓ is not fixed at inference time: it can be dynamically reduced according to different width ratios. This raises a fundamental question: which width should be propagated when calibrating the next layer? If calibration is performed only at full width, while inference later operates at, e.g., 60% width, the downstream layers are optimized on activations drawn from a different distribution than the one they will actually receive at inference time. We therefore expect a shift in the activations used to compute PCA at subsequent layers. We introduce a simple modification to ensure that PCA captures the distributional shifts induced when the network operates at multiple width configurations. The key idea is to expand the calibration set with activations collected at different widths. In particular, we define a set of compression ratios 
+
+R = {r1, . . . , r K } ⊂ (0 , 1) . Given the original calibration dataset X , we maintain K + 1 parallel activation streams, one for each compression ratio in ¯R = R ∪ { 1}, where 1 denotes the full-width model. After computing the PCA basis at layer ℓ − 1, we truncate it according to each ratio rk ∈ ¯R
+
+2and propagate the corresponding stream independently to layer ℓ. Thus, the k-th stream consistently follows the same compression ratio throughout the network: 
+
+Qndk = Qn[: , : dk], dk = ⌊rkD⌋, Zℓk = ˆfℓ
+
+ X ; Q1 
+
+> dk
+
+, . . . , Q ℓ−1
+
+> dk
+
+ , (2) where ˆfℓ(·; Q1 
+
+> dk
+
+, . . . , Q ℓ−1 
+
+> dk
+
+) denotes the network up to layer ℓ when operated at compression ratio rk.The activations produced by all K +1 streams are then concatenated Zℓ = concat  Zℓ
+
+> 1
+
+, . . . , Z ℓK+1 
+
+ ∈
+
+R(K+1) N L ×D . and jointly used to compute the PCA basis at layer ℓ.The resulting basis is therefore optimized over the activation distributions induced by all considered widths, rather than by the full-width network alone. We refer to this procedure as Expanded Calibra-tion Dataset (ECD). In practice, since compression proceeds iteratively, re-computing activations from the network input is unnecessary. We reduce computational cost by caching the activations collected at layer ℓ − 1 and propagating each stream only through the sub-network between the previous compression point and the current one. 
+
+3.3 Leveraging full-width signals for slim subnetworks 
+
+As discussed in Sec. 2, compression only affects a subset of components in the model. Several linear layers – e.g. , the value projection in self-attention – retain their full output dimension even when their input is compressed; that is, their output width dout remains equal to the original hidden size. We exploit these width-preserving points to introduce a representation-level constraint. Specifically, we adjust the corresponding weight matrices so that, when fed with activations from compressed streams, their outputs remain close in MSE to those produced by the full-width model. In this way, full-width activations serve as reference signals for correcting representations of slim subnetworks. In formal terms, let Ik ∈ RB×dk denote the input activations produced by the k-th compressed stream, where dk is the corresponding compressed width, and let O ∈ RB×dout denote the full-width target outputs, with dout equal to the original hidden size. We seek a residual correction ∆W to the original weight matrix W such that the compressed streams reproduce the full-width outputs as closely as possible. To keep the correction controlled, we regularize its magnitude: 
+
+∆W ⋆ = arg min 
+
+> ∆WK
+
+X
+
+> k=1
+
+O − Ik(W T + ∆ W T ) 2 
+
+> F
+
++ λ∥∆W ∥2 
+
+> F
+
+. (3) The objective jointly accounts for all K compression ratios in the expanded calibration set, while the regularization term encourages the corrected weights to remain close to the original W . Since Eq. (3) is a least-square problem, it admits an efficient closed-form solution. 
+
+4 Experiments 
+
+Setup. We use the original SliceGPT Ashkboos et al. [2024] as our baseline and evaluate three additional variants: a PCA-only configuration, corresponding to SliceGPT without pruning; Ex-panded Calibration Dataset (ECD), which augments SliceGPT with the expanded calibration dataset introduced above; and our full method, I REKO GPT, which combines ECD with the ridge-based correction described in Sec. 3.3. We evaluate four models: Llama-2-7B Touvron et al. [2023], Llama-3.2-1B Meta AI [2024], Llama-3.1-8B Grattafiori et al. [2024], and Qwen3-1.7B Yang et al. [2025]. The calibration set consists of 128 sequences of length 2048 sampled from the WikiText-2 training split Merity et al. [2017]. For ECD, we use the same set of compression ratios across all models, R = {0.1, 0.2, 0.3}. For the ridge-based correction in I REKO GPT, we target the value projection WV , which showed promising performance in preliminary experiments. To reduce VRAM usage, at each layer we randomly sample B = 65 ,536 tokens ( 25% of the calibration tokens) for the regression step, and set λ = 1 in all experiments. All experiments are run on cluster nodes equipped with NVIDIA A100 GPUs with 64 GB of VRAM. 
+
+Evaluation. Following SliceGPT Ashkboos et al. [2024], We evaluate all methods on language modeling by measuring perplexity on WikiText-2 Merity et al. [2017]. We use a maximum sequence length of 2048 , truncating longer examples and concatenating shorter ones to match the target length. Tab. 1 presents the main results. Notably, the 25% and 35% compression ratios are never included in the expanded calibration set, and therefore also assess generalization to unseen widths. We also 3Table 1: WikiText-2 perplexity (lower is better) across models and sparsity levels. L denotes Llama and Q Qwen; subscripts indicate version and size. SliceGPT † is not slimmable and requires a separate model for each sparsity level. Bold indicates the best result among slimmable variants only. 
+
+L2,7B L3.1,8B L3.2,1B Q3,1.7B L2,7B L3.1,8B L3.2,1B Q3,1.7B 
+
+Sparsity Dense Sparsity 25% 
+
+Original 5.47 6.24 9.75 16 .71 SliceGPT † 7.50 13 .73 19 .13 21 .53 
+
+PCA 5.47 6.25 9.76 16 .74 PCA 8.62 18 .69 20 .32 24 .43 
+
+ECD 5.47 6.24 9.76 16 .72 ECD 7.98 15 .09 19 .68 22 .76 
+
+IREKO GPT 5.51 6.41 9.88 17 .03 IREKO GPT 7.92 14 .19 17 .77 24 .06 
+
+Sparsity 10% Sparsity 30% 
+
+SliceGPT † 5.93 8.05 12 .69 18 .51 SliceGPT † 8.52 19 .41 23 .31 23 .39 
+
+PCA 6.26 8.67 13 .26 18 .65 PCA 10 .06 26 .84 24 .99 27 .81 
+
+ECD 6.05 8.09 12 .72 18 .22 ECD 8.98 20 .18 23 .31 25 .12 
+
+IREKO GPT 6.07 8.27 12 .83 18 .82 IREKO GPT 8.80 18 .91 20 .41 26 .68 
+
+Sparsity 20% Sparsity 35% 
+
+SliceGPT † 6.82 11 .29 16 .36 20 .42 SliceGPT † 10 .18 27 .02 29 .20 26 .38 
+
+PCA 7.63 13 .21 17 .43 22 .14 PCA 12 .20 57 .19 32 .27 33 .66 
+
+ECD 7.07 11 .68 16 .77 20 .83 ECD 11 .01 33 .92 29 .91 29 .83 
+
+IREKO GPT 7.06 11 .64 15 .89 21 .81 IREKO GPT 10 .53 29 .05 24 .78 32 .03 24 26 28 30 0.050 0.075 Llama-2-7B  10%                        
+
+> 24 26 28 30 0.10 0.15
+> 20%
+> 24 26 28 30 0.1 0.2
+> 30%
+> 24 26 28 30 0.15 0.20 0.25
+> 40%
+> 24 25 26 27 20 30 Qwen3-1.7B
+> 24 25 26 27 40 60
+> 24 25 26 27 50 75
+> 24 25 26 27 75 100 125
+> Layer PCA ECD IrekoGPT
+
+Figure 1: Layer-wise MSE between compressed and full-width value-projection outputs across increasing sparsity levels. We compare PCA-only, ECD, and I REKO GPT; lower is better. report SliceGPT, although it is not slimmable and requires a separate compression procedure for each target sparsity. In contrast, the PCA-only variant is obtained by slimming a single checkpoint at inference time according to the procedure in Sec. 3.1. Its performance remains reasonably close to SliceGPT, confirming that this construction already provides a viable slimmable model. Building on this baseline, ECD consistently improves performance and substantially reduces the gap with SliceGPT across models and sparsity levels, validating the benefit of calibrating over multiple widths. At higher compression, I REKO GPT further improves performance and, in several cases, matches or outperforms SliceGPT. We hypothesize that stronger compression induces larger shifts in the activation distribution, making both the expanded calibration and the subsequent correction increasingly beneficial. Qwen3-1.7B is the main exception, for which ECD alone remains preferable. Fig. 1 provides a representation-level view of our method. Across sparsity levels and layers, IREKO GPT consistently reduces the MSE between compressed and full-width activations, often by a substantial margin over PCA-only and ECD. The gap becomes especially evident as sparsity increases, supporting our hypothesis that correcting compression-induced representation shifts is key to preserving the original model behavior. 
+
+5 Conclusion 
+
+We introduced I REKO GPT, a post-hoc approach for turning pretrained LLMs into slimmable models by reinterpreting SliceGPT’s PCA structure. By calibrating across multiple widths and leveraging full-width signals, I REKO GPT improves robustness across compression levels while retaining a single dynamically configurable model. 4References 
+
+Saleh Ashkboos, Maximilian L. Croci, Marcelo Gennari do Nascimento, Torsten Hoefler, and James Hensman. SliceGPT: Compress large language models by deleting rows and columns. In 
+
+International Conference on Learning Representations , 2024. URL https://openreview.net/ forum?id=vXxardq6db .Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. GPTQ: Accurate post-training quantization for generative pre-trained transformers. In International Conference on Learning Representations , 2023. URL https://arxiv.org/abs/2210.17323 . Appears in the ICLR 2023 proceedings under the title “OPTQ: Accurate Quantization for Generative Pre-trained Transformers” (https://openreview.net/forum?id=tcbBPnfwxS ). Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, et al. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 , 2024. URL https://arxiv.org/ abs/2407.21783 .Song Han, Huizi Mao, and William J. Dally. Deep compression: Compressing deep neural networks with pruning, trained quantization and Huffman coding. In International Conference on Learning Representations , 2016. URL https://arxiv.org/abs/1510.00149 .Xinyin Ma, Gongfan Fang, and Xinchao Wang. LLM-Pruner: On the structural pruning of large language models. In Advances in Neural Information Processing Systems , vol-ume 36, 2023. URL https://proceedings.neurips.cc/paper_files/paper/2023/ hash/44956951349095f74492a5471128a7e0-Abstract-Conference.html .Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer sentinel mixture models. In International Conference on Learning Representations , 2017. URL https://arxiv. org/abs/1609.07843 .Meta AI. Llama 3.2 model card. https://github.com/meta-llama/llama-models/blob/ main/models/llama3_2/MODEL_CARD.md , 2024. Paulius Rauba and Mihaela van der Schaar. Deep hierarchical learning with nested subspace networks for large language models. In International Conference on Learning Representations , 2026. URL 
+
+https://arxiv.org/abs/2509.17874 .Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 , 2023. URL https: //arxiv.org/abs/2307.09288 .Neha Verma, Kenton Murray, and Kevin Duh. DOTResize: Reducing LLM width via discrete optimal transport-based neuron merging. In Weight-Space Symmetries: from Foundations to Practical Applications Workshop at the International Conference on Machine Learning , 2026. URL https://arxiv.org/abs/2507.04517 .Xin Wang, Yu Zheng, Zhongwei Wan, and Mi Zhang. SVD-LLM: Truncation-aware singular value decomposition for large language model compression. In International Conference on Learning Representations , 2025. URL https://openreview.net/forum?id=LNYIUouhdt .Jeffrey T. H. Wong, Cheng Zhang, Xinye Cao, Pedro Gimenes, Christos-Savvas Bouganis, George A. Constantinides, Wayne Luk, and Yiren Zhao. A3: An analytical low-rank approximation framework for attention. In International Conference on Machine Learning , 2026. URL https://arxiv. org/abs/2505.12942 .An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. URL https://arxiv.org/abs/2505.09388 .Jiahui Yu and Thomas S. Huang. Universally slimmable networks and improved training techniques. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 1803–1811, 2019. doi: 10.1109/ICCV.2019.00189. URL 
+
+https://openaccess.thecvf.com/content_ICCV_2019/html/Yu_Universally_ Slimmable_Networks_and_Improved_Training_Techniques_ICCV_2019_paper.html .5Jiahui Yu, Linjie Yang, Ning Xu, Jianchao Yang, and Thomas S. Huang. Slimmable neural networks. In International Conference on Learning Representations , 2019. URL https://openreview. net/forum?id=H1gMCsAqY7 .Riccardo Zaccone, Stefanos Laskaridis, Marco Ciccone, and Samuel Horváth. FlexRank: Nested low-rank knowledge decomposition for adaptive model deployment. In International Conference on Machine Learning , 2026. URL https://arxiv.org/abs/2602.02680 .
+
+A Additional metrics plots. 
+
+We present some additional plots to assess the behaviour of our method across a wider range of models and layers. 0 5 10 15 20 25 30 0.975 1.000 Llama-2-7B  10%                                                            
+
+> 0510 15 20 25 30 0.95 1.00 20%
+> 0510 15 20 25 30 0.9 1.0 30%
+> 0510 15 20 25 30 0.9 1.0 40%
+> 0510 15 20 25 30 0.9 1.0 Llama-3.1-8B
+> 0510 15 20 25 30 0.8 1.0
+> 0510 15 20 25 30 0.8 1.0
+> 0510 15 20 25 30 0.5 1.0
+> 036912 15 0.95 1.00 Llama-3.2-1B
+> 036912 15 0.9 1.0
+> 036912 15 0.9 1.0
+> 036912 15 0.8 0.9
+> 0510 15 20 25 0.9 1.0 Qwen3-1.7B
+> 0510 15 20 25 0.8 1.0
+> 0510 15 20 25 0.8 1.0
+> 0510 15 20 25 0.75 1.00
+> Layer PCA ECD IrekoGPT
+
+Figure 2: Layer-wise CKA between compressed and full-width value-projection outputs across increasing sparsity levels. All models and all layers shown. We compare PCA-only, ECD, and IREKO GPT; higher is better. 60 5 10 15 20 25 30 0.00 0.05 Llama-2-7B  10% 
+
+0 5 10 15 20 25 30 0.0 0.1 
+
+> 20%
+
+0 5 10 15 20 25 30 0.0 0.2 
+
+> 30%
+
+0 5 10 15 20 25 30 0.0 0.2 
+
+> 40%
+
+0 5 10 15 20 25 30 0.00 0.05 Llama-3.1-8B 
+
+0 5 10 15 20 25 30 0.0 0.1 
+
+0 5 10 15 20 25 30 0.0 0.1 
+
+0 5 10 15 20 25 30 0.0 0.2 
+
+0 3 6 9 12 15 0.00 0.02 Llama-3.2-1B 
+
+0 3 6 9 12 15 0.00 0.05 
+
+0 3 6 9 12 15 0.00 0.05 
+
+0 3 6 9 12 15 0.0 0.1 
+
+0 5 10 15 20 25 020 Qwen3-1.7B 
+
+0 5 10 15 20 25 050 
+
+0 5 10 15 20 25 050 
+
+0 5 10 15 20 25 0100 
+
+Layer PCA ECD IrekoGPT Figure 3: Layer-wise MSE between compressed and full-width value-projection outputs across increasing sparsity levels. All models and all layers shown. We compare PCA-only, ECD, and IREKO GPT; lower is better. 0 5 10 15 20 25 30 0.0025 
+
+0.0000 0.0025 Llama-2-7B  10% 
+
+0 5 10 15 20 25 30 0.000 0.005 
+
+> 20%
+
+0 5 10 15 20 25 30 0.00 0.01 
+
+> 30%
+
+0 5 10 15 20 25 30 0.000 0.025 
+
+> 40%
+
+0 5 10 15 20 25 30 0.00 0.01 Llama-3.1-8B 
+
+0 5 10 15 20 25 30 0.00 0.02 
+
+0 5 10 15 20 25 30 0.00 0.05 
+
+0 5 10 15 20 25 30 0.0 0.1 
+
+0 3 6 9 12 15 0.000 0.005 Llama-3.2-1B 
+
+0 3 6 9 12 15 0.00 0.01 
+
+0 3 6 9 12 15 0.00 0.02 
+
+0 3 6 9 12 15 0.00 0.05 
+
+0 5 10 15 20 25 0.01 
+
+0.00 Qwen3-1.7B 
+
+0 5 10 15 20 25 0.00 0.01 
+
+0 5 10 15 20 25 0.00 0.01 
+
+0 5 10 15 20 25 0.00 0.01 
+
+Layer ECD IrekoGPT 
+
+Figure 4: Layer-wise difference in CKA between ECD and I REKO GPT w.r.t PCA-only. CKA is still computed between compressed and full-width value-projection outputs. 70 5 10 15 20 25 30 0.01 
+
+0.00 Llama-2-7B  10% 
+
+0 5 10 15 20 25 30 0.02 
+
+0.00 20% 
+
+0 5 10 15 20 25 30 0.02 
+
+0.00 30% 
+
+0 5 10 15 20 25 30 0.02 
+
+0.00 
+
+> 40%
+
+0 5 10 15 20 25 30 0.01 
+
+0.00 Llama-3.1-8B 
+
+0 5 10 15 20 25 30 0.02 
+
+0.00 
+
+0 5 10 15 20 25 30 0.025 
+
+0.000 
+
+0 5 10 15 20 25 30 0.05 
+
+0.00 
+
+0 3 6 9 12 15 0.002 
+
+0.000 Llama-3.2-1B 
+
+0 3 6 9 12 15 0.005 
+
+0.000 
+
+0 3 6 9 12 15 0.01 
+
+0.00 
+
+0 3 6 9 12 15 0.02 
+
+0.00 
+
+0 5 10 15 20 25 2.5 
+
+0.0 Qwen3-1.7B 
+
+0 5 10 15 20 25 5
+
+0
+
+0 5 10 15 20 25 5
+
+0
+
+0 5 10 15 20 25 10 
+
+0
+
+Layer ECD IrekoGPT Figure 5: Layer-wise difference in MSE between ECD and I REKO GPT w.r.t PCA-only. MSE is still computed between compressed and full-width value-projection outputs. 8

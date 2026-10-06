@@ -44,14 +44,14 @@
       <span class="dpr-home-dashboard-kicker">2026-10-06</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 23 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 32 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
-    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>11</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>2 次</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>17</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>15</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-06 01:25:08 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-06 23:31:38 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,10 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精选 23 篇论文，精读 11 篇、速读 12 篇，重点锁定循环 Transformer 自推测与多 Token 预测推理优化。最值得看的是《Shallow Queries, Mature Values》（9.0）与《Beneath the Tokens》（9.0），前者提出深度异步自推测加速循环 Transformer，后者系统剖析 GPU 上多 Token 预测的性能工程；速读中 MoE 推理、端侧流式与芯片宏布局也值得顺带一读。普通读者可先读这两篇精读文章了解推理加速思路，再按需延伸速读中的系统与硬件方向。</p>
+<p>今日共生成 32 篇推荐（精读 17 篇，速读 15 篇）</p>
+<p>精读：《Shallow Queries, Mature Values: Depth-Asynchronous Self-Speculation for Looped Transformers》（9.0/10）, 《Dynamic Flow, Static Graph: KV Cache Reuse for Efficient LLM Serving on Mobile NPUs》（9.0/10）</p>
+<p>速读：《Coarse-to-Fine Macro Placement via Evolutionary Search and Critical Macro Tuning》（8.0/10）, 《SPIMOE: Exploiting Hybrid Sparsity for Reasoning MoE Inference on Heterogeneous PIM Architectures》（8.0/10）, 《OmniTide: Co-Designing Algorithms and Systems for Efficient On-Device Omni-LLM Streaming》（8.0/10）</p>
+<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +74,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">11 篇</strong>
+    <strong class="dpr-home-dashboard-count">17 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Shallow Queries, Mature Values: Depth-Asynchronous Self-Speculation for Looped Transformers">Shallow Queries, Mature Values: Depth-Asynchronous Self-Speculation for Looped Transformers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Beneath the Tokens: A Performance Engineering Study of Multi-Token Prediction in GPU-Accelerated LLM Inference">Beneath the Tokens: A Performance Engineering Study of Multi-Token Prediction in GPU-Accelerated LLM Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="CORE: COverage CAlibration and Evicted-Mass REdistribution for KV Cache">CORE: COverage CAlibration and Evicted-Mass REdistribution for KV Cache</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Shallow Queries, Mature Values: Depth-Asynchronous Self-Speculation for Looped Transformers">Shallow Queries, Mature Values: Depth-Asynchronous Self-Speculation for Looped Transformers</span></li><li><span class="dpr-home-dashboard-paper-title" title="Dynamic Flow, Static Graph: KV Cache Reuse for Efficient LLM Serving on Mobile NPUs">Dynamic Flow, Static Graph: KV Cache Reuse for Efficient LLM Serving on Mobile NPUs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Hardware-Aware Features for CUTLASS Kernel Selection">Hardware-Aware Features for CUTLASS Kernel Selection</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>10</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>16</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +87,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">12 篇</strong>
+    <strong class="dpr-home-dashboard-count">15 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
 <ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Coarse-to-Fine Macro Placement via Evolutionary Search and Critical Macro Tuning">Coarse-to-Fine Macro Placement via Evolutionary Search and Critical Macro Tuning</span></li><li><span class="dpr-home-dashboard-paper-title" title="SPIMOE: Exploiting Hybrid Sparsity for Reasoning MoE Inference on Heterogeneous PIM Architectures">SPIMOE: Exploiting Hybrid Sparsity for Reasoning MoE Inference on Heterogeneous PIM Architectures</span></li><li><span class="dpr-home-dashboard-paper-title" title="OmniTide: Co-Designing Algorithms and Systems for Efficient On-Device Omni-LLM Streaming">OmniTide: Co-Designing Algorithms and Systems for Efficient On-Device Omni-LLM Streaming</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">dse <strong>7</strong></span><span class="dpr-home-dashboard-tag">li <strong>5</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>8</strong></span><span class="dpr-home-dashboard-tag">dse <strong>7</strong></span></div>
 </section>
 </div>
 

@@ -1,13 +1,13 @@
 {
   "mode": "standard",
-  "generated_at": "2026-10-06T01:06:46.280758+00:00",
+  "generated_at": "2026-10-06T23:23:19.108999+00:00",
   "stats": {
     "mode": "standard",
     "tag_count": 2,
-    "deep_divecandidates": 30,
+    "deep_divecandidates": 40,
     "deep_cap": 7,
-    "deep_selected": 11,
-    "quick_candidates": 39,
+    "deep_selected": 13,
+    "quick_candidates": 48,
     "quick_skim_target": 12,
     "quick_selected": 12
   },
@@ -42,13 +42,13 @@
         "query:li"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "Depth-asynchronous self-speculative decoding for looped transformers",
-      "llm_evidence_cn": "面向循环Transformer的深度异步自投机解码",
-      "llm_evidence": "面向循环Transformer的深度异步自投机解码",
-      "canonical_evidence": "面向循环Transformer的深度异步自投机解码",
-      "llm_tldr_en": "DAS decouples draft depth from verification depth in looped transformers by exploiting that queries and keys mature earlier than values, using mature values to improve shallow draft predictions and cut sequential recurrent decoding passes.",
-      "llm_tldr_cn": "循环Transformer复用共享块，导致自回归解码需多次顺序递归而代价高昂，现有自投机解码常将草稿计算绑定到同一递归深度的前缀表示。本文发现查询与键比值更早接近最终深度表示，据此提出深度异步自投机方法DAS，将草稿计算深度与验证深度解耦，并利用成熟的值提升浅层草稿预测质量。该方法有效减少顺序递归次数，加速循环Transformer的解码。",
-      "llm_tldr": "循环Transformer复用共享块，导致自回归解码需多次顺序递归而代价高昂，现有自投机解码常将草稿计算绑定到同一递归深度的前缀表示。本文发现查询与键比值更早接近最终深度表示，据此提出深度异步自投机方法DAS，将草稿计算深度与验证深度解耦，并利用成熟的值提升浅层草稿预测质量。该方法有效减少顺序递归次数，加速循环Transformer的解码。",
+      "llm_evidence_en": "self-speculative decoding with decoupled draft and verification depth",
+      "llm_evidence_cn": "草稿与验证深度解耦的自投机解码",
+      "llm_evidence": "草稿与验证深度解耦的自投机解码",
+      "canonical_evidence": "草稿与验证深度解耦的自投机解码",
+      "llm_tldr_en": "DAS observes queries and keys reach final-depth representations earlier than values, so it decouples draft depth from verification depth in self-speculative decoding of looped Transformers, accelerating autoregressive decoding.",
+      "llm_tldr_cn": "循环Transformer复用共享块，每个生成token都需多次顺序递归，自回归解码成本高昂，而现有自投机解码器常把草稿计算绑定在同一递归深度的前缀表示上。本文发现查询与键比值更早接近最终深度表示，并通过受控前缀通道干预证明成熟的值能显著改善浅层草稿预测。据此提出深度异步自投机DAS，将草稿计算深度与验证深度解耦。该方法改善了浅层草稿质量，加速循环Transformer解码，降低解码延迟。",
+      "llm_tldr": "循环Transformer复用共享块，每个生成token都需多次顺序递归，自回归解码成本高昂，而现有自投机解码器常把草稿计算绑定在同一递归深度的前缀表示上。本文发现查询与键比值更早接近最终深度表示，并通过受控前缀通道干预证明成熟的值能显著改善浅层草稿预测。据此提出深度异步自投机DAS，将草稿计算深度与验证深度解耦。该方法改善了浅层草稿质量，加速循环Transformer解码，降低解码延迟。",
       "llm_tags": [
         "query:li"
       ],
@@ -58,20 +58,29 @@
       "selection_source": "fresh_fetch"
     },
     {
-      "id": "2609.35188v1",
+      "id": "2609.34727v1",
       "source": "arxiv",
-      "title": "Beneath the Tokens: A Performance Engineering Study of Multi-Token Prediction in GPU-Accelerated LLM Inference",
-      "abstract": "Autoregressive large language model inference repeatedly invokes the target model to generate one token at a time, making generation sensitive to GPU memory movement and sequential execution. This study evaluates two-token multi-token prediction (MTP) against autoregressive decoding in a controlled single-request deployment on an NVIDIA A10G GPU. A 360-request benchmark covered plain-text, reasoning-intensive, and tool-calling workloads, while runtime telemetry, Nsight Systems, PyTorch Profiler, and selected Nsight Compute measurements were used to explain the observed performance. MTP increased output throughput by \\(1.91\\times\\) to \\(2.19\\times\\) across all prompts and reduced time to first output by 10.0--14.2\\%. Median mean acceptance length ranged from 2.370 to 2.595 tokens per verification iteration. Profiling showed that MTP introduced a longer and more complex execution path, including proposal, sampling, attention, gathering, and reduction operations. However, it required 56.4--78.1\\% fewer executions of the selected repeating CUDA Graph per generated token. The dominant MTP GEMM kernel was not faster than the dominant autoregressive GEMV kernel, and selected instances of both approached the A10G memory-bandwidth limit. These results show that MTP improved inference through amortization: greater token progress reduced repeated GPU execution sufficiently to outweigh the additional speculative-execution cost.",
+      "title": "Dynamic Flow, Static Graph: KV Cache Reuse for Efficient LLM Serving on Mobile NPUs",
+      "abstract": "On-device large language model (LLM) serving is a cornerstone of local-first personal intelligence, offering users data sovereignty, strong privacy guarantees, and freedom from cloud API latency and cost. Although KV caching is widely used to reduce latency in long-context inference, existing designs were primarily optimized for cloud GPUs with dynamic execution environments and abundant memory bandwidth. These architectural assumptions do not hold on mobile NPUs, where computation graphs must be statically compiled and both memory capacity and I/O bandwidth are severely constrained. In this work, we present a compute-storage co-design for mobile-centric prefix and non-prefix KV reuse. We first propose an intra-graph mechanism that maps selective KV recomputation onto static NPU graphs, reconciling algorithmic dynamicity with NPU staticity. We further develop an inter-graph scheduler to optimize chunk merging and minimize padding with dynamic programming. To address mobile bandwidth limitations, we introduce a hierarchical KV manager featuring a tree-hash-semantic hybrid structure, along with cost-aware prefetching and eviction policies. We also build a two-dimensional pipeline that overlaps KV loading, rerotation, and storage with NPU execution, hiding data-movement latency. Experiments across representative on-device workloads and LLMs show that our design reduces time-to-first-token (TTFT) by $40-60\\%$ compared with no reuse and prefix-only caching.",
       "authors": [
-        "Suwesh Prasad Sah"
+        "Zhengxiang Huang",
+        "Shengheng Chen",
+        "Chaoyue Niu",
+        "Yujie Sun",
+        "Zhaode Wang",
+        "Zeyu Zhao",
+        "Chengfei Lv",
+        "Fan Wu",
+        "Guihai Chen"
       ],
-      "primary_category": "cs.AI",
+      "primary_category": "cs.OS",
       "categories": [
+        "cs.OS",
         "cs.AI",
-        "cs.PF"
+        "cs.DB"
       ],
-      "published": "2026-09-28T13:49:34+00:00",
-      "link": "https://arxiv.org/pdf/2609.35188v1",
+      "published": "2026-09-28T09:29:25+00:00",
+      "link": "https://arxiv.org/pdf/2609.34727v1",
       "tags": [
         "keyword:dse",
         "keyword:li",
@@ -79,53 +88,13 @@
         "query:li"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "multi-token prediction reducing decoding latency and raising throughput in GPU LLM inference",
-      "llm_evidence_cn": "多token预测降低解码延迟并提升GPU推理吞吐",
-      "llm_evidence": "多token预测降低解码延迟并提升GPU推理吞吐",
-      "canonical_evidence": "多token预测降低解码延迟并提升GPU推理吞吐",
-      "llm_tldr_en": "Autoregressive LLM decoding is sensitive to GPU memory movement and sequential execution. This study compares two-token multi-token prediction against autoregressive decoding on an A10G GPU across text, reasoning, and tool-calling workloads, showing 1.91x-2.19x throughput gains and 10-14% lower time to first output.",
-      "llm_tldr_cn": "自回归LLM推理逐token生成，对GPU显存搬运和顺序执行高度敏感，导致生成延迟偏高。本文在NVIDIA A10G上以单请求部署对比双token多token预测与自回归解码，覆盖纯文本、推理密集与工具调用三类负载，并用Nsight等工具剖析性能来源。结果显示MTP使输出吞吐提升1.91至2.19倍，首token时间下降约10%至14%，为降低解码延迟提供了实证依据。",
-      "llm_tldr": "自回归LLM推理逐token生成，对GPU显存搬运和顺序执行高度敏感，导致生成延迟偏高。本文在NVIDIA A10G上以单请求部署对比双token多token预测与自回归解码，覆盖纯文本、推理密集与工具调用三类负载，并用Nsight等工具剖析性能来源。结果显示MTP使输出吞吐提升1.91至2.19倍，首token时间下降约10%至14%，为降低解码延迟提供了实证依据。",
-      "llm_tags": [
-        "query:li"
-      ],
-      "matched_query_tag": "query:li",
-      "matched_query_text": "Speculative decoding and other techniques that reduce LLM decoding latency or increase serving throughput.",
-      "matched_requirement_id": "req-8",
-      "selection_source": "fresh_fetch"
-    },
-    {
-      "id": "2610.02235v1",
-      "source": "arxiv",
-      "title": "CORE: COverage CAlibration and Evicted-Mass REdistribution for KV Cache",
-      "abstract": "Long-context decoding is increasingly constrained by key--value (KV) cache memory and bandwidth. Existing fixed-budget compression methods typically separate retention from compensation, while a retention ranking specifies neither discarded attention mass nor the direction of induced output error. We start from an exact factorization: eviction error equals evicted attention mass times the directional gap between the evicted centroid and retained output, highlighting the importance of set-level coverage in retention and mass-preserving memory writing. We introduce CORE COverage Calibration and Evicted-Mass REdistribution for KV Cache, which distills an offline allocation combining query utility and log-determinant coverage into a lightweight cache-aware indexer. At inference, one calibrated distribution drives both channels: its Top-$B$ ordering retains complementary KV states, while its excluded allocation mass and conditional weights parameterize latent-memory writes without a separate write-weight predictor or online log-determinant evaluation. Our analysis provides a four-term pre-compensation error certificate, characterizes non-additive coverage interactions, and establishes mass-independent write stability with hierarchical bounds through recurrent and query-adaptive normalization. Across three backbones, CORE exceeds the strongest RULER baseline by up to 3.78 points at 90\\% compression; LongBench and repeated-eviction evaluations further demonstrate strong effectiveness and decoding efficiency.",
-      "authors": [
-        "Shuxin Liu",
-        "Qing Liu",
-        "Yi Du",
-        "Ou Wu"
-      ],
-      "primary_category": "cs.AR",
-      "categories": [
-        "cs.AR",
-        "cs.AI"
-      ],
-      "published": "2026-09-28T08:31:48+00:00",
-      "link": "https://arxiv.org/pdf/2610.02235v1",
-      "tags": [
-        "keyword:dse",
-        "keyword:li",
-        "query:dse",
-        "query:li"
-      ],
-      "llm_score": 9.0,
-      "llm_evidence_en": "Coverage calibration and evicted-mass redistribution for KV cache",
-      "llm_evidence_cn": "面向KV缓存的覆盖校准与驱逐质量重分配",
-      "llm_evidence": "面向KV缓存的覆盖校准与驱逐质量重分配",
-      "canonical_evidence": "面向KV缓存的覆盖校准与驱逐质量重分配",
-      "llm_tldr_en": "Long-context decoding is bottlenecked by KV-cache memory, and fixed-budget eviction ignores discarded attention mass. CORE factorizes eviction error and distills an offline allocation of query utility and log-determinant coverage into a lightweight cache-aware policy.",
-      "llm_tldr_cn": "长上下文解码日益受KV缓存内存与带宽限制，现有固定预算压缩方法将保留与补偿割裂，忽略被驱逐的注意力质量。论文从驱逐误差的精确分解出发，指出集合级覆盖的重要性，提出CORE方法，将结合查询效用与对数行列式覆盖的离线分配蒸馏为轻量缓存感知策略。该方法实现质量守恒的缓存写入，有效降低压缩导致的输出误差。",
-      "llm_tldr": "长上下文解码日益受KV缓存内存与带宽限制，现有固定预算压缩方法将保留与补偿割裂，忽略被驱逐的注意力质量。论文从驱逐误差的精确分解出发，指出集合级覆盖的重要性，提出CORE方法，将结合查询效用与对数行列式覆盖的离线分配蒸馏为轻量缓存感知策略。该方法实现质量守恒的缓存写入，有效降低压缩导致的输出误差。",
+      "llm_evidence_en": "KV cache reuse and compute-storage co-design for LLM serving on mobile NPUs",
+      "llm_evidence_cn": "面向移动NPU大模型服务的KV缓存复用与计算存储协同设计",
+      "llm_evidence": "面向移动NPU大模型服务的KV缓存复用与计算存储协同设计",
+      "canonical_evidence": "面向移动NPU大模型服务的KV缓存复用与计算存储协同设计",
+      "llm_tldr_en": "On-device LLM serving is limited by mobile NPUs that require statically compiled graphs and have tight memory and I/O bandwidth. This paper proposes a compute-storage co-design for prefix and non-prefix KV reuse, adding an intra-graph mapping to fit dynamic KV caching into static graphs, cutting long-context latency and memory cost for private local inference.",
+      "llm_tldr_cn": "端侧大模型服务是本地优先智能的关键，但现有KV缓存设计面向云端GPU的动态执行环境与充裕带宽，无法适应需静态编译且内存与I/O带宽受限的移动NPU。本文提出面向移动端的计算-存储协同设计，支持前缀与非前缀KV复用，并设计图内映射机制将动态流适配到静态图。实验表明该方案能在静态图约束下显著降低长上下文推理的延迟与内存开销，为隐私优先的本地推理提供高效服务基础。",
+      "llm_tldr": "端侧大模型服务是本地优先智能的关键，但现有KV缓存设计面向云端GPU的动态执行环境与充裕带宽，无法适应需静态编译且内存与I/O带宽受限的移动NPU。本文提出面向移动端的计算-存储协同设计，支持前缀与非前缀KV复用，并设计图内映射机制将动态流适配到静态图。实验表明该方案能在静态图约束下显著降低长上下文推理的延迟与内存开销，为隐私优先的本地推理提供高效服务基础。",
       "llm_tags": [
         "query:li"
       ],
@@ -135,40 +104,86 @@
       "selection_source": "fresh_fetch"
     },
     {
-      "id": "2610.02401v1",
+      "id": "2609.35587v1",
       "source": "arxiv",
-      "title": "Design Space Exploration of Backside Clock Meshes for 2 nm GAAFET BSPDN Technology",
-      "abstract": "Clock meshes are used in high-performance VLSI designs to minimize skew and tolerate on-chip variation, but they spend scarce routing resources on premium metal layers. Backside power delivery creates a new option: it adds thick, low-resistance metal layers on the back of the wafer, and the power grid does not consume all of them. Flip-flops remain on the frontside; a backside mesh therefore cannot drive them directly, and every connection passes through a through-silicon via. We present the first design-space exploration of backside clock meshes, implemented in OpenROAD on GT2N, a 2 nm nanosheet technology. Four benchmarks (1,938 to 15,311 flip-flops) are explored with multi-objective Bayesian optimization, and every design point is verified by transistor-level SPICE simulation, since the cyclic mesh cannot be evaluated by static timing analysis. Across all four designs, the backside mesh consistently outperforms an identical frontside mesh, with on average 45% lower skew, 25% lower sink slew, 4.5% lower power, and 28% less frontside clock wiring, and its skew spread under 10,000-sample Monte Carlo is a third of the frontside mesh's.",
+      "title": "Hardware-Aware Features for CUTLASS Kernel Selection",
+      "abstract": "GPU libraries such as CUTLASS expose tens of thousands of semantically equivalent kernels for a single operation, making exhaustive autotuning expensive and execution-free selection difficult. Existing analytical selectors require hand-designed performance rules, while learned selectors operate on raw configuration parameters and must infer hardware consequences from data. We introduce a hardware-aware representation for CUTLASS kernel selection that augments candidate configurations with statically computable estimates of induced hardware behavior. We construct a dataset of 4.9 million CUTLASS kernels and train gradient-boosted and neural learning-to-rank models to rank candidates within each problem. On held-out exhaustive evaluation problems, hardware-aware representations reduce selection regret by up to 40\\% relative to structural baselines and 64.2\\% relative to NVIDIA's matrix-multiply heuristics. We further evaluate data-efficient cross-precision and epilogue-fusion transfer within CUTLASS GEMM, showing that explicitly representing candidate-induced hardware behavior provides a useful inductive bias for learned kernel selection.",
       "authors": [
-        "Wajid Ali",
-        "Muhammad Hadir Khan",
-        "Dalton Gaddy",
-        "Matthew Guthaus"
+        "Shriram Chandran",
+        "Dominic Rinderer",
+        "Yakup Budanaz",
+        "Alexandru Calotoiu",
+        "Marcin Copik",
+        "Torsten Hoefler"
       ],
-      "primary_category": "cs.AR",
+      "primary_category": "cs.LG",
       "categories": [
-        "cs.AR"
+        "cs.LG",
+        "cs.PF"
       ],
-      "published": "2026-10-01T19:28:42+00:00",
-      "link": "https://arxiv.org/pdf/2610.02401v1",
+      "published": "2026-09-28T16:39:31+00:00",
+      "link": "https://arxiv.org/pdf/2609.35587v1",
       "tags": [
         "keyword:dse",
-        "query:dse"
+        "keyword:li",
+        "query:dse",
+        "query:li"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "Design-space exploration of backside clock meshes with Bayesian optimization",
-      "llm_evidence_cn": "基于贝叶斯优化的背面时钟网格设计空间探索",
-      "llm_evidence": "基于贝叶斯优化的背面时钟网格设计空间探索",
-      "canonical_evidence": "基于贝叶斯优化的背面时钟网格设计空间探索",
-      "llm_tldr_en": "Backside power delivery offers spare metal layers for clock meshes, but connections must pass through TSVs. This work performs the first DSE of backside clock meshes in OpenROAD on a 2nm technology, using multi-objective Bayesian optimization across four benchmarks.",
-      "llm_tldr_cn": "背面供电为时钟网格提供了新的布线资源，但触发器仍在正面，每条连接都需经硅通孔，设计空间复杂。论文在OpenROAD上针对2nm纳米片工艺，首次对背面时钟网格开展设计空间探索，并采用多目标贝叶斯优化在四个基准上求解。研究验证了各设计点的可行性，为先进工艺下时钟网格设计提供了自动化的优化探索方法。",
-      "llm_tldr": "背面供电为时钟网格提供了新的布线资源，但触发器仍在正面，每条连接都需经硅通孔，设计空间复杂。论文在OpenROAD上针对2nm纳米片工艺，首次对背面时钟网格开展设计空间探索，并采用多目标贝叶斯优化在四个基准上求解。研究验证了各设计点的可行性，为先进工艺下时钟网格设计提供了自动化的优化探索方法。",
+      "llm_evidence_en": "hardware-aware features for CUTLASS GPU kernel selection and autotuning",
+      "llm_evidence_cn": "面向CUTLASS GPU内核选择的硬件感知特征与自动调优",
+      "llm_evidence": "面向CUTLASS GPU内核选择的硬件感知特征与自动调优",
+      "canonical_evidence": "面向CUTLASS GPU内核选择的硬件感知特征与自动调优",
+      "llm_tldr_en": "This work addresses CUTLASS kernel selection among tens of thousands of equivalent kernels by introducing hardware-aware features that augment candidate configurations with statically computable estimates of induced hardware behavior, trained on 4.9M kernels.",
+      "llm_tldr_cn": "CUTLASS等GPU库对单一算子暴露数万个语义等价的内核，使穷举自动调优代价高昂、免执行选择困难；已有解析选择器依赖手工性能规则，学习型选择器又只能从原始配置参数中隐式推断硬件影响。本文提出硬件感知表示，用可静态计算的硬件行为估计增强候选配置，并基于490万个CUTLASS内核训练梯度提升与神经学习排序模型。实验表明该表示提升了内核选择质量，为GPU算子优化与自动调优提供可迁移方法。",
+      "llm_tldr": "CUTLASS等GPU库对单一算子暴露数万个语义等价的内核，使穷举自动调优代价高昂、免执行选择困难；已有解析选择器依赖手工性能规则，学习型选择器又只能从原始配置参数中隐式推断硬件影响。本文提出硬件感知表示，用可静态计算的硬件行为估计增强候选配置，并基于490万个CUTLASS内核训练梯度提升与神经学习排序模型。实验表明该表示提升了内核选择质量，为GPU算子优化与自动调优提供可迁移方法。",
       "llm_tags": [
-        "query:dse"
+        "query:li"
       ],
-      "matched_query_tag": "query:dse",
-      "matched_query_text": "Design space exploration for hardware, HLS, compiler, or EDA flows using Bayesian optimization, surrogate models, evolutionary search, or active learning.",
-      "matched_requirement_id": "req-20",
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2609.38981v1",
+      "source": "arxiv",
+      "title": "Vosti: Specifying, Implementing, and Verifying Deterministic LLM Inference",
+      "abstract": "LLM inference systems may vary batch composition, prompt chunking, prefill/decode execution, and KV-cache reuse, eviction, or recomputation. These optimizations should not affect system outputs. Production systems, including vLLM's batch-invariant mode and SGLang's deterministic mode, target this goal but lack a formal system-level specification.   We formalize deterministic LLM inference: under a fixed model and deployment configuration, requests with the same prompt and initial sampler state produce bitwise-identical logits at corresponding output positions across executions. Our tests find that these production modes produce different logits under some execution variations. To address this limitation, we present Vosti, an inference engine designed and verified against this specification. Vosti chooses kernels independently of runtime engine state and ties cached KV values to their logical token prefixes. Its proof decomposes at the engine/GPU kernel boundary: a Verus inductive proof establishes that scheduling and the paged, prefix-sharing KV-cache preserve output logits, while a Triton analyzer proves bitwise-equal selected kernel outputs across batches, query lengths, and paged KV-cache layouts. Vosti produces bitwise-identical logits across every tested execution variation and achieves performance comparable to vLLM's batch-invariant mode on decode-heavy workloads, while providing a stronger, formally verified determinism guarantee.",
+      "authors": [
+        "Jianxing Qin",
+        "Alexander Du",
+        "Danfeng Zhang",
+        "Matthew Lentz",
+        "Danyang Zhuo"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC",
+        "cs.PL"
+      ],
+      "published": "2026-09-30T04:58:09+00:00",
+      "link": "https://arxiv.org/pdf/2609.38981v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "Formalizes deterministic LLM inference across prefill/decode and KV-cache reuse",
+      "llm_evidence_cn": "面向LLM推理系统的确定性形式化与KV缓存复用",
+      "llm_evidence": "面向LLM推理系统的确定性形式化与KV缓存复用",
+      "canonical_evidence": "面向LLM推理系统的确定性形式化与KV缓存复用",
+      "llm_tldr_en": "Production LLM serving modes like vLLM batch-invariant and SGLang deterministic lack formal specification. Vosti formalizes bitwise-identical logits under fixed model and sampler state, showing existing modes still diverge, and designs an engine that verifies determinism.",
+      "llm_tldr_cn": "大模型推理系统会变化批组成、prompt分块、prefill/decode执行以及KV缓存的复用、驱逐与重算，这些优化本不应改变输出，但现有生产模式（如vLLM的批不变模式、SGLang的确定性模式）缺乏系统级形式化规范，实测在某些执行变化下仍产生不同logits。本文形式化定义了确定性LLM推理，即固定模型与部署配置下相同prompt与采样器状态应产生逐位一致的logits，并据此提出Vosti推理引擎设计以保障并验证确定性。",
+      "llm_tldr": "大模型推理系统会变化批组成、prompt分块、prefill/decode执行以及KV缓存的复用、驱逐与重算，这些优化本不应改变输出，但现有生产模式（如vLLM的批不变模式、SGLang的确定性模式）缺乏系统级形式化规范，实测在某些执行变化下仍产生不同logits。本文形式化定义了确定性LLM推理，即固定模型与部署配置下相同prompt与采样器状态应产生逐位一致的logits，并据此提出Vosti推理引擎设计以保障并验证确定性。",
+      "llm_tags": [
+        "query:li:composite"
+      ],
+      "matched_query_tag": "query:li:composite",
+      "matched_query_text": "Papers central to 大模型推理系统、Serving、调度、KV Cache、投机解码、PD 分离、量化及 GPU 算子优化。, especially work that connects or combines: GPU kernel optimization; disaggregated inference; speculative decoding; KV cache; LLM serving; LLM inference; GPU kernels, low precision quantization, communication, and systems optimizations for high performance LLM inference.; Speculative decoding and other techniques that reduce LLM decoding latency or increase serving throughput.; KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.; Efficient LLM inference and serving systems with scheduling, continuous batching, and memory management..",
+      "matched_requirement_id": "req-composite-li",
       "selection_source": "fresh_fetch"
     },
     {
@@ -199,13 +214,13 @@
         "query:li"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "closed-loop simulator for LLM serving with PD disaggregation and KV cache",
-      "llm_evidence_cn": "支持PD分离与KV缓存的LLM服务闭环模拟器",
-      "llm_evidence": "支持PD分离与KV缓存的LLM服务闭环模拟器",
-      "canonical_evidence": "支持PD分离与KV缓存的LLM服务闭环模拟器",
-      "llm_tldr_en": "ServeTwin is a closed-loop simulator coupling analytical timing with a stateful serving loop, capturing scheduling, queueing, KV-cache evolution and prefill-decode disaggregation without target-hardware profiling, enabling cheap distributed LLM architecture exploration.",
-      "llm_tldr_cn": "在真实集群上评估分布式LLM服务设计代价高昂，而现有模拟器缺乏有状态闭环执行、免剖析时序预测与直接运行未修改服务基准等能力。本文提出ServeTwin闭环模拟器，将规格驱动的解析时序与有状态服务循环耦合，并借助iSTAGE解析式轨迹生成器避免目标硬件算子剖析。该模拟器能刻画请求完成、调度、队列状态与KV缓存演化之间的反馈，支持预填充-解码分离与多轮智能体负载，为服务架构探索提供低成本高保真评估。",
-      "llm_tldr": "在真实集群上评估分布式LLM服务设计代价高昂，而现有模拟器缺乏有状态闭环执行、免剖析时序预测与直接运行未修改服务基准等能力。本文提出ServeTwin闭环模拟器，将规格驱动的解析时序与有状态服务循环耦合，并借助iSTAGE解析式轨迹生成器避免目标硬件算子剖析。该模拟器能刻画请求完成、调度、队列状态与KV缓存演化之间的反馈，支持预填充-解码分离与多轮智能体负载，为服务架构探索提供低成本高保真评估。",
+      "llm_evidence_en": "Closed-loop simulator capturing scheduling, KV-cache evolution and prefill-decode disaggregation",
+      "llm_evidence_cn": "刻画调度、KV缓存演化与预填充解码分离的闭环模拟器",
+      "llm_evidence": "刻画调度、KV缓存演化与预填充解码分离的闭环模拟器",
+      "canonical_evidence": "刻画调度、KV缓存演化与预填充解码分离的闭环模拟器",
+      "llm_tldr_en": "Evaluating distributed LLM serving designs on real clusters is costly, and existing simulators cover only part of the needed behavior. ServeTwin is a closed-loop simulator coupling analytical timing with a stateful serving loop, capturing scheduling, queueing, KV-cache evolution and prefill-decode disaggregation without target-hardware profiling, enabling cheap architecture exploration.",
+      "llm_tldr_cn": "在真实集群上评估分布式大模型服务设计成本高昂，而现有模拟器仅覆盖部分能力，难以支撑真实的设计空间探索。本文提出闭环模拟器ServeTwin，将规范驱动的分析式时序模型与有状态服务循环耦合，并借助iSTAGE生成逐迭代分析轨迹，无需目标硬件算子剖析。该模拟器能够刻画请求完成、调度、队列状态与KV缓存演化之间的反馈，覆盖预填充-解码分离与多轮智能体负载，为分布式大模型服务架构的低成本高保真探索提供工具。",
+      "llm_tldr": "在真实集群上评估分布式大模型服务设计成本高昂，而现有模拟器仅覆盖部分能力，难以支撑真实的设计空间探索。本文提出闭环模拟器ServeTwin，将规范驱动的分析式时序模型与有状态服务循环耦合，并借助iSTAGE生成逐迭代分析轨迹，无需目标硬件算子剖析。该模拟器能够刻画请求完成、调度、队列状态与KV缓存演化之间的反馈，覆盖预填充-解码分离与多轮智能体负载，为分布式大模型服务架构的低成本高保真探索提供工具。",
       "llm_tags": [
         "query:li"
       ],
@@ -250,55 +265,15 @@
       "llm_evidence_cn": "面向内存高效LLM推理加速的比特嵌套投机解码",
       "llm_evidence": "面向内存高效LLM推理加速的比特嵌套投机解码",
       "canonical_evidence": "面向内存高效LLM推理加速的比特嵌套投机解码",
-      "llm_tldr_en": "BitNest embeds a low-precision draft directly into the higher-precision target weights, enabling speculative decoding acceleration without the memory overhead of an extra draft model.",
-      "llm_tldr_cn": "针对投机解码在资源受限设备上因需额外草稿模型或权重而带来内存开销的问题，论文提出BitNest，一种比特嵌套的投机解码框架，将低精度草稿直接嵌入高精度目标表示中，先构造强低精度基座再恢复高精度权重。该方法在草稿质量、目标质量与存储效率之间取得更好权衡，降低内存占用并加速自回归生成，为内存高效LLM推理提供新思路。",
-      "llm_tldr": "针对投机解码在资源受限设备上因需额外草稿模型或权重而带来内存开销的问题，论文提出BitNest，一种比特嵌套的投机解码框架，将低精度草稿直接嵌入高精度目标表示中，先构造强低精度基座再恢复高精度权重。该方法在草稿质量、目标质量与存储效率之间取得更好权衡，降低内存占用并加速自回归生成，为内存高效LLM推理提供新思路。",
+      "llm_tldr_en": "BitNest is a speculative decoding framework that embeds a low-precision draft directly into the higher-precision target representation, avoiding the extra draft model or weight representation that causes memory overhead on resource-constrained devices.",
+      "llm_tldr_cn": "投机解码通过轻量草稿模型并行提出多个token再由目标模型验证来加速自回归生成，但现有方法常需额外草稿模型或权重表示，在资源受限设备上带来不可忽视的内存开销，自投机方案又在草稿质量、目标质量与存储效率间权衡。BitNest提出比特嵌套投机解码框架，先将低精度草稿直接嵌入高精度目标表示中，而非从既定目标推导草稿。该方法在降低内存开销的同时保持解码加速效果，为资源受限设备提供内存高效的自投机解码方案。",
+      "llm_tldr": "投机解码通过轻量草稿模型并行提出多个token再由目标模型验证来加速自回归生成，但现有方法常需额外草稿模型或权重表示，在资源受限设备上带来不可忽视的内存开销，自投机方案又在草稿质量、目标质量与存储效率间权衡。BitNest提出比特嵌套投机解码框架，先将低精度草稿直接嵌入高精度目标表示中，而非从既定目标推导草稿。该方法在降低内存开销的同时保持解码加速效果，为资源受限设备提供内存高效的自投机解码方案。",
       "llm_tags": [
         "query:li"
       ],
       "matched_query_tag": "query:li",
       "matched_query_text": "speculative decoding",
       "matched_requirement_id": "req-3",
-      "selection_source": "fresh_fetch"
-    },
-    {
-      "id": "2610.02815v1",
-      "source": "arxiv",
-      "title": "iS-KV: Online Low-Rank KV Cache Compression via Block-Incremental SVD",
-      "abstract": "Long chain-of-thought reasoning substantially increases KV-cache memory during autoregressive decoding, as every generated token introduces new key and value states and causes the cache to grow linearly with decoding length. Existing KV-cache compression methods typically control this growth through token eviction, but irreversible deletion can remove historical states that later reasoning may need to revisit. SVD-based low-rank compression provides an alternative by retaining all positions with a more compact representation. However, extending it from a fixed prompt cache to online decoding is non-trivial. Through our investigation, we find that if the basis is updated for new tokens while old tokens keep their coordinates in the old basis, the stored history drifts substantially. Based on this observation, we propose iS-KV, an online low-rank KV-cache compression method for long-horizon reasoning. iS-KV keeps a recent window exact while incrementally folding older states into bounded-rank representations. As the low-rank basis evolves, it synchronizes historical coordinates with the updated basis to maintain representation consistency. On DeepSeek-R1-Distill-Llama-8B, iS-KV achieves 82.6% accuracy at 4.06-fold persistent-KV compression, close to the original model's 83.6%. On Qwen3-8B, it achieves 89.2% accuracy at 5.64-fold compression. Under matched memory budgets, iS-KV consistently outperforms token-eviction baselines.",
-      "authors": [
-        "Yiren Zhao",
-        "Guanghui Song",
-        "Tianrui Qin",
-        "Kejiang Ye",
-        "Cheng-zhong Xu",
-        "Xitong Gao"
-      ],
-      "primary_category": "cs.AI",
-      "categories": [
-        "cs.AI"
-      ],
-      "published": "2026-10-02T05:03:12+00:00",
-      "link": "https://arxiv.org/pdf/2610.02815v1",
-      "tags": [
-        "keyword:dse",
-        "keyword:li",
-        "query:li"
-      ],
-      "llm_score": 9.0,
-      "llm_evidence_en": "online low-rank KV cache compression via incremental SVD",
-      "llm_evidence_cn": "基于增量SVD的在线低秩KV缓存压缩",
-      "llm_evidence": "基于增量SVD的在线低秩KV缓存压缩",
-      "canonical_evidence": "基于增量SVD的在线低秩KV缓存压缩",
-      "llm_tldr_en": "Long chain-of-thought decoding grows the KV cache linearly. iS-KV applies block-incremental SVD to compress the cache online at low rank, retaining all positions, and analyzes basis-update inconsistency for old tokens, reducing memory while preserving accuracy.",
-      "llm_tldr_cn": "论文针对长链式思维推理中KV缓存随解码长度线性增长、显存受限的问题，指出主流token驱逐方法会不可逆地删除后续推理可能需要的状态。作者提出iS-KV，通过块增量SVD对KV缓存进行在线低秩压缩，在保留全部位置的同时用更紧凑表示存储键值状态。研究发现基更新与旧token坐标不一致会带来误差，并据此设计增量更新机制。实验表明该方法在长推理场景下有效压缩缓存并保持精度，为在线KV缓存管理提供新途径。",
-      "llm_tldr": "论文针对长链式思维推理中KV缓存随解码长度线性增长、显存受限的问题，指出主流token驱逐方法会不可逆地删除后续推理可能需要的状态。作者提出iS-KV，通过块增量SVD对KV缓存进行在线低秩压缩，在保留全部位置的同时用更紧凑表示存储键值状态。研究发现基更新与旧token坐标不一致会带来误差，并据此设计增量更新机制。实验表明该方法在长推理场景下有效压缩缓存并保持精度，为在线KV缓存管理提供新途径。",
-      "llm_tags": [
-        "query:li"
-      ],
-      "matched_query_tag": "query:li",
-      "matched_query_text": "KV cache",
-      "matched_requirement_id": "req-4",
       "selection_source": "fresh_fetch"
     },
     {
@@ -332,9 +307,9 @@
       "llm_evidence_cn": "面向长上下文服务的联合Token-特征KV缓存压缩",
       "llm_evidence": "面向长上下文服务的联合Token-特征KV缓存压缩",
       "canonical_evidence": "面向长上下文服务的联合Token-特征KV缓存压缩",
-      "llm_tldr_en": "SlimKV compresses KV caches jointly over tokens and features, using low-rank-aware training and beacon memory states to avoid reconstruction and enable faster long-context decoding.",
-      "llm_tldr_cn": "长上下文服务受KV缓存显存瓶颈制约，token级压缩易丢失信息，特征级压缩又需全维重建才能施加位置编码，限制了解码加速。SlimKV提出与问题无关的联合token-特征KV缓存压缩方法，用低秩感知训练将长上下文压成带潜在KV表示的信标记忆状态，并进行层自适应秩分配。作者还发现位置不对称性，实现了免重建的信标注意力。",
-      "llm_tldr": "长上下文服务受KV缓存显存瓶颈制约，token级压缩易丢失信息，特征级压缩又需全维重建才能施加位置编码，限制了解码加速。SlimKV提出与问题无关的联合token-特征KV缓存压缩方法，用低秩感知训练将长上下文压成带潜在KV表示的信标记忆状态，并进行层自适应秩分配。作者还发现位置不对称性，实现了免重建的信标注意力。",
+      "llm_tldr_en": "SlimKV tackles KV-cache memory bottlenecks in long-context LLM serving with a joint token-feature compression method using low-rank-aware training, beacon memory states, and layer-adaptive rank allocation.",
+      "llm_tldr_cn": "该论文针对长上下文大模型服务受KV缓存内存瓶颈限制、现有token级压缩易丢失信息、特征级压缩需全维重建而拖慢解码的问题，提出SlimKV。它采用低秩感知训练把长上下文压缩为带潜在KV表示的beacon记忆状态，并做层自适应秩分配，同时揭示位置不对称性以避免重建。实验在资源受限场景下降低了KV缓存开销并保持效果。该工作为长上下文服务提供了免重建的联合压缩思路。",
+      "llm_tldr": "该论文针对长上下文大模型服务受KV缓存内存瓶颈限制、现有token级压缩易丢失信息、特征级压缩需全维重建而拖慢解码的问题，提出SlimKV。它采用低秩感知训练把长上下文压缩为带潜在KV表示的beacon记忆状态，并做层自适应秩分配，同时揭示位置不对称性以避免重建。实验在资源受限场景下降低了KV缓存开销并保持效果。该工作为长上下文服务提供了免重建的联合压缩思路。",
       "llm_tags": [
         "query:li"
       ],
@@ -368,13 +343,13 @@
         "query:li"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "1-bit vector quantization for KV cache compression in long-context inference",
-      "llm_evidence_cn": "面向长上下文推理的1比特KV缓存向量量化压缩",
-      "llm_evidence": "面向长上下文推理的1比特KV缓存向量量化压缩",
-      "canonical_evidence": "面向长上下文推理的1比特KV缓存向量量化压缩",
-      "llm_tldr_en": "The KV cache is a memory bottleneck in long-context LLM inference, but vector quantization degrades sharply at 1-bit compression. TaSQ tailors the quantization target space with query-guided channel weighting, cross-head normalization, and covariance-aware channel grouping to improve extreme-compression KV cache quality.",
-      "llm_tldr_cn": "长上下文LLM推理中KV缓存成为主要内存瓶颈，向量量化是激进压缩的有力手段，但现有方法在1比特极端压缩下严重退化，因有限质心需覆盖过多通道。本文提出TaSQ，通过查询引导通道加权、跨头归一化和协方差感知通道分组来定制量化目标空间，更好反映误差敏感性与结构。实验表明其在极端压缩比下显著改善KV缓存量化效果。",
-      "llm_tldr": "长上下文LLM推理中KV缓存成为主要内存瓶颈，向量量化是激进压缩的有力手段，但现有方法在1比特极端压缩下严重退化，因有限质心需覆盖过多通道。本文提出TaSQ，通过查询引导通道加权、跨头归一化和协方差感知通道分组来定制量化目标空间，更好反映误差敏感性与结构。实验表明其在极端压缩比下显著改善KV缓存量化效果。",
+      "llm_evidence_en": "1-bit KV cache compression via tailored vector quantization",
+      "llm_evidence_cn": "定制向量量化的1比特KV缓存压缩",
+      "llm_evidence": "定制向量量化的1比特KV缓存压缩",
+      "canonical_evidence": "定制向量量化的1比特KV缓存压缩",
+      "llm_tldr_en": "TaSQ tailors the vector-quantization target space with query-guided channel weighting, cross-head normalization and covariance-aware grouping to improve 1-bit KV cache compression for long-context inference.",
+      "llm_tldr_cn": "长上下文LLM推理中KV缓存造成严重的内存容量与带宽压力，向量量化是实现激进压缩的有前景方案，但现有方法在1比特极端压缩下退化明显，因码本需用有限质心表示更多通道。本文提出TaSQ，通过查询引导通道加权、跨头归一化与协方差感知通道分组来定制量化目标空间，更好地反映误差敏感度。实验表明其在1比特KV缓存压缩下提升了压缩质量，缓解内存瓶颈。",
+      "llm_tldr": "长上下文LLM推理中KV缓存造成严重的内存容量与带宽压力，向量量化是实现激进压缩的有前景方案，但现有方法在1比特极端压缩下退化明显，因码本需用有限质心表示更多通道。本文提出TaSQ，通过查询引导通道加权、跨头归一化与协方差感知通道分组来定制量化目标空间，更好地反映误差敏感度。实验表明其在1比特KV缓存压缩下提升了压缩质量，缓解内存瓶颈。",
       "llm_tags": [
         "query:li"
       ],
@@ -404,13 +379,51 @@
         "query:li"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "KV-cache eviction aligned with GQA serving allocation",
-      "llm_evidence_cn": "与GQA服务分配对齐的KV缓存驱逐",
-      "llm_evidence": "与GQA服务分配对齐的KV缓存驱逐",
-      "canonical_evidence": "与GQA服务分配对齐的KV缓存驱逐",
-      "llm_tldr_en": "Long-context serving is bounded by the KV cache, but per-head eviction fits poorly with grouped-query attention where heads share one physical buffer. Page-EntroKV performs entropy-weighted eviction at the page granularity GQA allocates, with weighted pooling within groups.",
-      "llm_tldr_cn": "论文针对长上下文自回归模型服务中KV缓存受限的问题，指出多数动态驱逐方法按查询头独立打分，与分组查询注意力中多个查询头共享同一物理KV缓冲的分配方式不匹配，导致缓存膨胀或重要检索头被稀释。作者提出Page-EntroKV，在GQA实际分配的页粒度上进行熵加权驱逐，并对组内头进行加权池化。实验表明该方法在保持事实召回的同时降低缓存占用，提升了长上下文服务的效率。",
-      "llm_tldr": "论文针对长上下文自回归模型服务中KV缓存受限的问题，指出多数动态驱逐方法按查询头独立打分，与分组查询注意力中多个查询头共享同一物理KV缓冲的分配方式不匹配，导致缓存膨胀或重要检索头被稀释。作者提出Page-EntroKV，在GQA实际分配的页粒度上进行熵加权驱逐，并对组内头进行加权池化。实验表明该方法在保持事实召回的同时降低缓存占用，提升了长上下文服务的效率。",
+      "llm_evidence_en": "Entropy-weighted KV cache eviction under grouped-query attention",
+      "llm_evidence_cn": "分组查询注意力下的熵加权KV缓存淘汰",
+      "llm_evidence": "分组查询注意力下的熵加权KV缓存淘汰",
+      "canonical_evidence": "分组查询注意力下的熵加权KV缓存淘汰",
+      "llm_tldr_en": "Page-EntroKV performs KV-cache eviction at the granularity GQA actually allocates, entropy-weighting heads within each physical group to avoid cache inflation and preserve factual-recall heads.",
+      "llm_tldr_cn": "长上下文自回归模型服务受限于KV缓存，多数动态淘汰方法按查询头独立评估token重要性，这与分组查询注意力中多个头共享同一物理KV缓冲的实际情况不符，会导致缓存膨胀或稀释关键检索头。本文提出Page-EntroKV，在GQA实际分配的粒度上以熵加权方式池化组内头并淘汰token。该框架避免了逐头选择造成的缓存膨胀，同时保留承载事实召回的关键头，为GQA下的KV缓存管理提供了硬件对齐方案。",
+      "llm_tldr": "长上下文自回归模型服务受限于KV缓存，多数动态淘汰方法按查询头独立评估token重要性，这与分组查询注意力中多个头共享同一物理KV缓冲的实际情况不符，会导致缓存膨胀或稀释关键检索头。本文提出Page-EntroKV，在GQA实际分配的粒度上以熵加权方式池化组内头并淘汰token。该框架避免了逐头选择造成的缓存膨胀，同时保留承载事实召回的关键头，为GQA下的KV缓存管理提供了硬件对齐方案。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2610.03198v1",
+      "source": "arxiv",
+      "title": "KV$^2$: A Self-Refining KV Cache",
+      "abstract": "The memory footprint of the key-value (KV) cache constrains the practical use of long-context models, and it dominates cost when one prefilled context must later serve many different queries. In this reusable setting, query-agnostic compression trades cost against quality: lightweight estimators are cheap but less accurate, whereas full-context reconstruction scoring is more accurate yet reprocesses the entire prompt. We introduce KV$^2$, a query-agnostic KV-cache compression method based on selective reconstruction. KV$^2$ first uses a lightweight proxy scorer to identify informative in-context tokens, then reprocesses only this subset to compute final eviction scores. On RULER, Needle-in-a-Haystack, and LongBench, KV$^2$'s margin over baselines widens as the budget tightens: on RULER 16K at a 2% KV-cache budget it improves the average score over the next-best baseline by more than 40 percentage points, and on LongBench it attains the highest average across 2%-10% budgets at lower compression-stage runtime and peak memory than full-context reconstruction. Reusable KV-cache compression thus does not require reprocessing the full context. Our code is available at https://anonymous.4open.science/r/KVsquared-0B97.",
+      "authors": [
+        "Johannes Wesch",
+        "Danni Liu",
+        "Jan Niehues"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI",
+        "cs.CL"
+      ],
+      "published": "2026-10-02T12:11:35+00:00",
+      "link": "https://arxiv.org/pdf/2610.03198v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "query-agnostic KV cache compression via selective reconstruction and eviction scoring",
+      "llm_evidence_cn": "通过选择性重建与驱逐打分实现查询无关的KV缓存压缩",
+      "llm_evidence": "通过选择性重建与驱逐打分实现查询无关的KV缓存压缩",
+      "canonical_evidence": "通过选择性重建与驱逐打分实现查询无关的KV缓存压缩",
+      "llm_tldr_en": "KV^2 is a query-agnostic KV-cache compression method that uses a lightweight proxy scorer to select informative tokens, then reprocesses only that subset to compute accurate eviction scores.",
+      "llm_tldr_cn": "键值缓存的内存占用限制了长上下文模型的应用，且在一个上下文服务多个查询时成本尤为突出，而查询无关压缩在低成本估算与高精度重建评分间难以兼顾。本文提出KV^2，先用轻量代理打分器筛选信息量大的上下文token，再仅对该子集重算最终驱逐分数。在RULER、大海捞针和LongBench上，KV^2相对基线的优势随预算收紧而扩大，为长上下文LLM推理的KV缓存管理提供了高效方案。",
+      "llm_tldr": "键值缓存的内存占用限制了长上下文模型的应用，且在一个上下文服务多个查询时成本尤为突出，而查询无关压缩在低成本估算与高精度重建评分间难以兼顾。本文提出KV^2，先用轻量代理打分器筛选信息量大的上下文token，再仅对该子集重算最终驱逐分数。在RULER、大海捞针和LongBench上，KV^2相对基线的优势随预算收紧而扩大，为长上下文LLM推理的KV缓存管理提供了高效方案。",
       "llm_tags": [
         "query:li"
       ],
@@ -444,13 +457,13 @@
         "query:li"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "attention-FFN disaggregation for MoE serving",
-      "llm_evidence_cn": "面向MoE服务的注意力-FFN解耦",
-      "llm_evidence": "面向MoE服务的注意力-FFN解耦",
-      "canonical_evidence": "面向MoE服务的注意力-FFN解耦",
-      "llm_tldr_en": "AFORE targets MoE serving where attention-FFN disaggregation worsens expert load imbalance; it overlaps expert reconfiguration to keep the FFN stage timely and improve end-to-end throughput.",
-      "llm_tldr_cn": "MoE模型服务面临专家参数庞大、激活依赖输入与负载动态等挑战，注意力-FFN解耦（AFD）虽将注意力和前馈计算分到独立工作池，却可能加剧专家负载不均。AFORE利用AFD的架构特性，提出及时的专家重配置系统，将过载专家的重配置与计算重叠执行。实验表明该方法缓解了FFN阶段瓶颈，提升了端到端MoE服务性能。",
-      "llm_tldr": "MoE模型服务面临专家参数庞大、激活依赖输入与负载动态等挑战，注意力-FFN解耦（AFD）虽将注意力和前馈计算分到独立工作池，却可能加剧专家负载不均。AFORE利用AFD的架构特性，提出及时的专家重配置系统，将过载专家的重配置与计算重叠执行。实验表明该方法缓解了FFN阶段瓶颈，提升了端到端MoE服务性能。",
+      "llm_evidence_en": "attention-FFN disaggregation for MoE serving with expert reconfiguration",
+      "llm_evidence_cn": "面向 MoE 服务的注意力-FFN 分离与专家重配置",
+      "llm_evidence": "面向 MoE 服务的注意力-FFN 分离与专家重配置",
+      "canonical_evidence": "面向 MoE 服务的注意力-FFN 分离与专家重配置",
+      "llm_tldr_en": "AFORE tackles expert load imbalance in attention-FFN disaggregated MoE serving, introducing a timely expert reconfiguration system that overlaps reconfiguration with computation to improve end-to-end serving performance.",
+      "llm_tldr_cn": "面向混合专家（MoE）模型的服务面临专家参数庞大、激活动态变化与负载不均等挑战。本文提出 AFORE，在注意力-FFN 分离（AFD）架构下实现及时的专家重配置，利用 AFD 的架构特性将重配置与计算重叠，缓解过载专家对 FFN 阶段的拖累。实验表明该方法能改善端到端服务性能，为 AFD 式 MoE 服务提供了负载均衡新思路。",
+      "llm_tldr": "面向混合专家（MoE）模型的服务面临专家参数庞大、激活动态变化与负载不均等挑战。本文提出 AFORE，在注意力-FFN 分离（AFD）架构下实现及时的专家重配置，利用 AFD 的架构特性将重配置与计算重叠，缓解过载专家对 FFN 阶段的拖累。实验表明该方法能改善端到端服务性能，为 AFD 式 MoE 服务提供了负载均衡新思路。",
       "llm_tags": [
         "query:li"
       ],
@@ -458,9 +471,129 @@
       "matched_query_text": "disaggregated inference",
       "matched_requirement_id": "req-2",
       "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2610.05106v1",
+      "source": "arxiv",
+      "title": "SharpDraft: Accelerating Long-Context Speculative Decoding with Cardinality-Aware Query Scaling",
+      "abstract": "Long-form reasoning makes inference expensive, and speculative decoding mitigates this cost by verifying multiple draft tokens in parallel. Its speedup, however, can fade as context grows and draft acceptance declines. We focus on attention-mass dilution: as softmax normalizes over more visible Keys, the mass concentrated on the highest-scoring Keys can decrease. We introduce SharpDraft, a training-free method that counteracts this effect through cardinality-aware Query scaling, without the computational overhead of online adaptation. Under explicit assumptions, we derive an exact top-$k$ mass correction and deploy a closed-form fixed-slope approximation. Across AIME-26, GPQA-Diamond, and LongGenBench Diary, SharpDraft achieves $2.59$-$3.19\\times$ geometric-mean end-to-end speedups over target-only autoregressive decoding when applied to DFlash, PARD, and EAGLE 3.1. With DFlash, it improves decoding speed and outperforms full-parameter and LoRA-based online adaptation in end-to-end speedup, while matching the unmodified drafter's reported peak allocated GPU memory.",
+      "authors": [
+        "Jeonghoon Park",
+        "Seongwoon Jo",
+        "Jongwon Lee",
+        "Taesik Gong"
+      ],
+      "primary_category": "cs.AI",
+      "categories": [
+        "cs.AI"
+      ],
+      "published": "2026-10-04T10:26:35+00:00",
+      "link": "https://arxiv.org/pdf/2610.05106v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "Long-context speculative decoding via query scaling",
+      "llm_evidence_cn": "通过Query缩放加速长上下文投机解码",
+      "llm_evidence": "通过Query缩放加速长上下文投机解码",
+      "canonical_evidence": "通过Query缩放加速长上下文投机解码",
+      "llm_tldr_en": "SharpDraft is a training-free fix for attention-mass dilution in long-context speculative decoding, using cardinality-aware query scaling with a closed-form top-k mass correction to preserve speedup.",
+      "llm_tldr_cn": "长文本推理开销高昂，投机解码通过并行验证多个草稿token来降低延迟，但随着上下文增长、草稿接受率下降，其加速效果会衰减，作者将其归因于注意力质量稀释。本文提出免训练方法SharpDraft，通过基数感知的Query缩放对抗该效应，并推导出精确的top-k质量修正与闭式固定斜率近似，无需在线自适应开销。在AIME-26、GPQA-Diamond等长上下文任务上取得加速。",
+      "llm_tldr": "长文本推理开销高昂，投机解码通过并行验证多个草稿token来降低延迟，但随着上下文增长、草稿接受率下降，其加速效果会衰减，作者将其归因于注意力质量稀释。本文提出免训练方法SharpDraft，通过基数感知的Query缩放对抗该效应，并推导出精确的top-k质量修正与闭式固定斜率近似，无需在线自适应开销。在AIME-26、GPQA-Diamond等长上下文任务上取得加速。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "speculative decoding",
+      "matched_requirement_id": "req-3",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2610.06286v1",
+      "source": "arxiv",
+      "title": "DeferKV: Rethinking Eviction Timing for One-Shot KV Cache Compression",
+      "abstract": "Long-context large language models (LLMs) have demonstrated strong capabilities across a wide range of tasks, but the growing KV cache introduces substantial memory and inference overhead. Existing one-shot KV cache compression methods typically commit to irreversible eviction immediately after prefill, before any signal from actual generation becomes available. Our quantitative analysis shows that early queries from the actual generation stage provide attention signals that are more consistent with subsequent decode attention, with the largest single-step gain occurring at the prefill-decode boundary. Based on this observation, we propose DeferKV, which moves the eviction decision from the end of prefill to the first real decoding step and temporally combines prompt-side and decode-side observations, thereby better aligning KV importance estimation with subsequent generation requirements. DeferKV requires no additional training, draft model, or future-query prediction module, making it simple and easy to deploy. Experiments on LongBench, RULER, and Needle-in-a-Haystack demonstrate that DeferKV consistently improves model performance under KV cache compression while maintaining low inference latency.",
+      "authors": [
+        "Zhe Wang",
+        "Jiakai Li",
+        "Yujia Sun",
+        "Rongzheng Wang",
+        "Shuang Liang"
+      ],
+      "primary_category": "cs.CL",
+      "categories": [
+        "cs.CL"
+      ],
+      "published": "2026-10-05T13:13:14+00:00",
+      "link": "https://arxiv.org/pdf/2610.06286v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:li"
+      ],
+      "llm_score": 9.0,
+      "llm_evidence_en": "KV cache compression by deferring eviction to first decode step",
+      "llm_evidence_cn": "将KV缓存驱逐推迟至首个解码步的压缩方法",
+      "llm_evidence": "将KV缓存驱逐推迟至首个解码步的压缩方法",
+      "canonical_evidence": "将KV缓存驱逐推迟至首个解码步的压缩方法",
+      "llm_tldr_en": "DeferKV observes that generation-stage early queries give attention signals more consistent with decode attention, and defers one-shot KV cache eviction from the end of prefill to the first decoding step, improving compression quality.",
+      "llm_tldr_cn": "长上下文LLM的KV缓存带来显著内存与推理开销，而现有一次性压缩方法在预填充后立即执行不可逆驱逐，未能利用生成阶段的信息。作者通过分析发现，生成阶段早期查询的注意力信号与后续解码更一致，据此提出DeferKV，将驱逐决策从预填充末尾推迟到首个真实解码步。该时序调整在保持压缩效果的同时提升了压缩质量，为长上下文推理的KV缓存管理提供了新视角。",
+      "llm_tldr": "长上下文LLM的KV缓存带来显著内存与推理开销，而现有一次性压缩方法在预填充后立即执行不可逆驱逐，未能利用生成阶段的信息。作者通过分析发现，生成阶段早期查询的注意力信号与后续解码更一致，据此提出DeferKV，将驱逐决策从预填充末尾推迟到首个真实解码步。该时序调整在保持压缩效果的同时提升了压缩质量，为长上下文推理的KV缓存管理提供了新视角。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch"
     }
   ],
   "quick_skim": [
+    {
+      "id": "2609.34612v1",
+      "source": "arxiv",
+      "title": "SPIMOE: Exploiting Hybrid Sparsity for Reasoning MoE Inference on Heterogeneous PIM Architectures",
+      "abstract": "Long-reasoning Mixture-of-Experts (MoE) models expose two coupled inference bottlenecks: growing KV caches shift the critical path toward attention, while sparse expert activation causes load imbalance and low hardware utilization. Although Processing-in-Memory (PIM) offers a promising way to mitigate data movement overhead, existing PIM-based accelerators typically optimize attention or FFNs in isolation. We propose SPIMOE, the first co-design framework that exploits hybrid sparsity for efficient MoE inference on heterogeneous PIM architectures. SPIMOE combines adaptive expert routing with block-sparse attention and physical KV-cache eviction, and disaggregates attention and FFNs across SRAM-PIM and HBM-PIM. Static expert mapping and dynamic sub-batch scheduling further balance channel loads and overlap the two paths. Evaluations show that SPIMOE achieves up to $8.35\\times$ end-to-end speedup over an NVIDIA A100 GPU and $3.33\\times$ speedup in MoE FFN execution over PIMoE, while preserving reasoning accuracy comparable to full-attention baselines.",
+      "authors": [
+        "Rubing Yang",
+        "Cenlin Duan",
+        "Yingjie Qi",
+        "Xiaolin He",
+        "Xiao Ma",
+        "Jianlei Yang"
+      ],
+      "primary_category": "cs.AR",
+      "categories": [
+        "cs.AR"
+      ],
+      "published": "2026-09-28T08:40:10+00:00",
+      "link": "https://arxiv.org/pdf/2609.34612v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "KV-cache eviction and disaggregated attention/FFN execution for MoE inference on PIM",
+      "llm_evidence_cn": "KV缓存驱逐与注意力/FFN分离执行的PIM上MoE推理",
+      "llm_evidence": "KV缓存驱逐与注意力/FFN分离执行的PIM上MoE推理",
+      "canonical_evidence": "KV缓存驱逐与注意力/FFN分离执行的PIM上MoE推理",
+      "llm_tldr_en": "SPIMOE co-designs hybrid sparsity for MoE inference on heterogeneous PIM, combining adaptive expert routing, block-sparse attention, physical KV-cache eviction, and disaggregating attention and FFNs across SRAM-PIM and HBM-PIM.",
+      "llm_tldr_cn": "长推理MoE模型同时受KV缓存膨胀与专家稀疏激活导致的负载不均制约，现有PIM加速器往往只单独优化注意力或FFN。本文提出SPIMOE，首个在异构PIM上利用混合稀疏性的协同设计框架，结合自适应专家路由、块稀疏注意力与KV缓存物理驱逐，并把注意力与FFN分离到SRAM-PIM和HBM-PIM。该框架缓解了数据搬运与负载失衡，提升MoE推理的硬件利用率。",
+      "llm_tldr": "长推理MoE模型同时受KV缓存膨胀与专家稀疏激活导致的负载不均制约，现有PIM加速器往往只单独优化注意力或FFN。本文提出SPIMOE，首个在异构PIM上利用混合稀疏性的协同设计框架，结合自适应专家路由、块稀疏注意力与KV缓存物理驱逐，并把注意力与FFN分离到SRAM-PIM和HBM-PIM。该框架缓解了数据搬运与负载失衡，提升MoE推理的硬件利用率。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "KV cache",
+      "matched_requirement_id": "req-4",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
     {
       "id": "2609.34452v1",
       "source": "arxiv",
@@ -485,62 +618,20 @@
         "keyword:li",
         "query:dse"
       ],
-      "llm_score": 8.0,
-      "llm_evidence_en": "evolutionary search based macro placement for chip physical design",
-      "llm_evidence_cn": "基于进化搜索的芯片物理设计宏单元布局",
-      "llm_evidence": "基于进化搜索的芯片物理设计宏单元布局",
-      "canonical_evidence": "基于进化搜索的芯片物理设计宏单元布局",
-      "llm_tldr_en": "C2FPlace tackles macro placement in chip physical design with a coarse-to-fine framework combining population-based evolutionary search and fine-grained refinement to escape local optima.",
-      "llm_tldr_cn": "宏单元布局是芯片物理设计的关键阶段，直接影响下游实现质量，但现有搜索方法因质量偏置或空间受限的宏选择而限制重建多样性，且粗网格表示精度不足。C2FPlace提出粗到细的宏布局框架，将基于种群的进化搜索与细粒度精修结合。粗粒度阶段用锦标赛选择从随机采样组中挑选优良父代，从而提升布局质量。",
-      "llm_tldr": "宏单元布局是芯片物理设计的关键阶段，直接影响下游实现质量，但现有搜索方法因质量偏置或空间受限的宏选择而限制重建多样性，且粗网格表示精度不足。C2FPlace提出粗到细的宏布局框架，将基于种群的进化搜索与细粒度精修结合。粗粒度阶段用锦标赛选择从随机采样组中挑选优良父代，从而提升布局质量。",
+      "llm_score": 7.0,
+      "llm_evidence_en": "macro placement via evolutionary search for physical design flows",
+      "llm_evidence_cn": "面向物理设计流程的进化搜索宏单元布局",
+      "llm_evidence": "面向物理设计流程的进化搜索宏单元布局",
+      "canonical_evidence": "面向物理设计流程的进化搜索宏单元布局",
+      "llm_tldr_en": "C2FPlace is a coarse-to-fine macro placement framework combining population-based evolutionary search with fine-grained refinement, improving placement diversity and precision for chip physical design.",
+      "llm_tldr_cn": "宏单元布局是芯片物理设计的关键阶段，显著影响后续实现质量，但现有搜索方法因质量偏置或空间受限的选择而降低重建多样性，易陷入局部最优且粗网格限制精度。本文提出C2FPlace，将种群进化搜索与细粒度精修相结合的由粗到细宏布局框架。粗阶段用锦标赛选择从随机采样组中挑选优良父代。该框架提升了布局多样性与精度，为物理设计自动化提供了新方法。",
+      "llm_tldr": "宏单元布局是芯片物理设计的关键阶段，显著影响后续实现质量，但现有搜索方法因质量偏置或空间受限的选择而降低重建多样性，易陷入局部最优且粗网格限制精度。本文提出C2FPlace，将种群进化搜索与细粒度精修相结合的由粗到细宏布局框架。粗阶段用锦标赛选择从随机采样组中挑选优良父代。该框架提升了布局多样性与精度，为物理设计自动化提供了新方法。",
       "llm_tags": [
         "query:dse"
       ],
       "matched_query_tag": "query:dse",
       "matched_query_text": "Automated parameter tuning and search for physical design flows such as OpenROAD/ORFS, synthesis, placement, routing, or compiler optimization.",
       "matched_requirement_id": "req-17",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "8plus"
-    },
-    {
-      "id": "2609.35167v1",
-      "source": "arxiv",
-      "title": "EdgeCraft: Automated Model Crafting for Edge IoT",
-      "abstract": "Machine learning (ML) increasingly powers Internet of Things (IoT) applications at the edge. Yet producing a deployable edge ML artifact for a specific scenario requires navigating a huge search space spanning data representation, model design, training on domain-specific data, and runtime customization. This workflow is fragmented and difficult to scale across diverse edge applications.   We present EdgeCraft, an LLM-driven system that turns high-level intent into deployable edge ML artifacts. Building such a system raises two challenges: (1) How can an LLM be guided to find high-quality solutions that meet dynamic SLOs for task quality, latency, and energy? (2) How can trustworthy target-device verification be obtained at low cost? EdgeCraft addresses these challenges with two designs. (1) A constraint-aware synthesis tree explores alternative candidates and uses measured SLO gaps to guide each improvement. (2) A multi-fidelity verifier progressively combines low-cost checks with full target-device verification to reduce verification cost while preserving reliable verification results. It also records verified failures for reuse, avoiding repeated device work. To support concurrency, EdgeCraft provides a multi-tenant runtime that runs cloud training and target-device verification in parallel while isolating requests. Across 50 public tasks, EdgeCraft exceeds the task-specific Reference in best-observed quality on 40 tasks and finds an SLO-feasible artifact on 45, with the two outcomes overlapping on 38 tasks. Moreover, EdgeCraft achieves competitive performance on our self-collected SEN dataset, suggesting its generalizability to real-world IoT sensing tasks.",
-      "authors": [
-        "Genglin Wang",
-        "Kaiwei Liu",
-        "Liekang Zeng",
-        "Wangsong Yin",
-        "Shangcheng Jin",
-        "Guoliang Xing",
-        "Zhenyu Yan"
-      ],
-      "primary_category": "cs.LG",
-      "categories": [
-        "cs.LG",
-        "cs.DC"
-      ],
-      "published": "2026-09-28T13:39:03+00:00",
-      "link": "https://arxiv.org/pdf/2609.35167v1",
-      "tags": [
-        "keyword:dse",
-        "query:dse"
-      ],
-      "llm_score": 7.0,
-      "llm_evidence_en": "LLM-driven system that navigates a large design space to craft edge ML artifacts",
-      "llm_evidence_cn": "LLM 驱动系统在巨大设计空间中自动构建边缘 ML 制品",
-      "llm_evidence": "LLM 驱动系统在巨大设计空间中自动构建边缘 ML 制品",
-      "canonical_evidence": "LLM 驱动系统在巨大设计空间中自动构建边缘 ML 制品",
-      "llm_tldr_en": "EdgeCraft is an LLM-driven system that turns high-level intent into deployable edge ML artifacts, guiding the LLM to meet dynamic quality, latency and energy SLOs while enabling low-cost target-device verification.",
-      "llm_tldr_cn": "在边缘物联网场景中，产出可部署的机器学习制品需要跨越数据表示、模型设计、训练与运行时定制的巨大搜索空间，流程割裂且难以扩展。本文提出 EdgeCraft，一个由 LLM 驱动的系统，将高层意图转化为可部署的边缘 ML 制品，并引导 LLM 在动态 SLO 下寻找高质量方案、低成本地完成目标设备验证。实验表明其能自动生成满足质量、时延与能耗约束的制品。该工作为 LLM 驱动的设计空间探索与自动化建模提供了实例。",
-      "llm_tldr": "在边缘物联网场景中，产出可部署的机器学习制品需要跨越数据表示、模型设计、训练与运行时定制的巨大搜索空间，流程割裂且难以扩展。本文提出 EdgeCraft，一个由 LLM 驱动的系统，将高层意图转化为可部署的边缘 ML 制品，并引导 LLM 在动态 SLO 下寻找高质量方案、低成本地完成目标设备验证。实验表明其能自动生成满足质量、时延与能耗约束的制品。该工作为 LLM 驱动的设计空间探索与自动化建模提供了实例。",
-      "llm_tags": [
-        "query:dse"
-      ],
-      "matched_query_tag": "query:dse",
-      "matched_query_text": "LLM-driven design space exploration",
-      "matched_requirement_id": "req-11",
       "selection_source": "fresh_fetch",
       "quick_tier": "7"
     },
@@ -571,145 +662,19 @@
         "query:li"
       ],
       "llm_score": 6.0,
-      "llm_evidence_en": "Learning-based planner searching pipeline structures over heterogeneous GPU cluster space",
-      "llm_evidence_cn": "在异构GPU集群空间中搜索流水线结构的学习型规划器",
-      "llm_evidence": "在异构GPU集群空间中搜索流水线结构的学习型规划器",
-      "canonical_evidence": "在异构GPU集群空间中搜索流水线结构的学习型规划器",
-      "llm_tldr_en": "Heddle reduces large-scale parallelism planning to a search over pipeline structures, learning structural templates to quickly derive high-throughput plans as cluster configurations and GPU availability change.",
-      "llm_tldr_cn": "在共享GPU基础设施上训练大模型面临GPU可用性动态变化与硬件异构累积的挑战，异构GPU类型与节点规模带来巨大搜索空间，规划器必须激进剪枝又需快速产出高吞吐方案。本文提出Heddle，将完整规划问题归约为流水线结构搜索，用结构模板封装规划决策并学习构造方案。该方法在集群配置变化时快速给出高吞吐并行计划，体现学习驱动的设计空间搜索思路。",
-      "llm_tldr": "在共享GPU基础设施上训练大模型面临GPU可用性动态变化与硬件异构累积的挑战，异构GPU类型与节点规模带来巨大搜索空间，规划器必须激进剪枝又需快速产出高吞吐方案。本文提出Heddle，将完整规划问题归约为流水线结构搜索，用结构模板封装规划决策并学习构造方案。该方法在集群配置变化时快速给出高吞吐并行计划，体现学习驱动的设计空间搜索思路。",
+      "llm_evidence_en": "learning-based search over pipeline structures for planning under heterogeneity",
+      "llm_evidence_cn": "面向异构集群的流水线结构学习式搜索规划",
+      "llm_evidence": "面向异构集群的流水线结构学习式搜索规划",
+      "canonical_evidence": "面向异构集群的流水线结构学习式搜索规划",
+      "llm_tldr_en": "Heddle targets parallelism planning on heterogeneous, dynamically changing GPU clusters by learning structural templates that reduce the planning problem to a tractable search over pipeline structures.",
+      "llm_tldr_cn": "该论文针对共享GPU基础设施上大模型训练面临GPU可用性动态变化与硬件异构、规划搜索空间巨大难以快速求解的问题，提出Heddle学习式规划器。它把完整规划问题归约为流水线结构搜索，用结构模板封装规划决策并学习快速构造高吞吐方案。方法在集群配置变化时仍能及时给出高质量计划。其贡献在于为异构集群的并行规划提供可扩展的学习式搜索框架。",
+      "llm_tldr": "该论文针对共享GPU基础设施上大模型训练面临GPU可用性动态变化与硬件异构、规划搜索空间巨大难以快速求解的问题，提出Heddle学习式规划器。它把完整规划问题归约为流水线结构搜索，用结构模板封装规划决策并学习快速构造高吞吐方案。方法在集群配置变化时仍能及时给出高质量计划。其贡献在于为异构集群的并行规划提供可扩展的学习式搜索框架。",
       "llm_tags": [
         "query:dse"
       ],
       "matched_query_tag": "query:dse",
       "matched_query_text": "design space exploration",
       "matched_requirement_id": "req-16",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "6"
-    },
-    {
-      "id": "2609.34612v1",
-      "source": "arxiv",
-      "title": "SPIMOE: Exploiting Hybrid Sparsity for Reasoning MoE Inference on Heterogeneous PIM Architectures",
-      "abstract": "Long-reasoning Mixture-of-Experts (MoE) models expose two coupled inference bottlenecks: growing KV caches shift the critical path toward attention, while sparse expert activation causes load imbalance and low hardware utilization. Although Processing-in-Memory (PIM) offers a promising way to mitigate data movement overhead, existing PIM-based accelerators typically optimize attention or FFNs in isolation. We propose SPIMOE, the first co-design framework that exploits hybrid sparsity for efficient MoE inference on heterogeneous PIM architectures. SPIMOE combines adaptive expert routing with block-sparse attention and physical KV-cache eviction, and disaggregates attention and FFNs across SRAM-PIM and HBM-PIM. Static expert mapping and dynamic sub-batch scheduling further balance channel loads and overlap the two paths. Evaluations show that SPIMOE achieves up to $8.35\\times$ end-to-end speedup over an NVIDIA A100 GPU and $3.33\\times$ speedup in MoE FFN execution over PIMoE, while preserving reasoning accuracy comparable to full-attention baselines.",
-      "authors": [
-        "Rubing Yang",
-        "Cenlin Duan",
-        "Yingjie Qi",
-        "Xiaolin He",
-        "Xiao Ma",
-        "Jianlei Yang"
-      ],
-      "primary_category": "cs.AR",
-      "categories": [
-        "cs.AR"
-      ],
-      "published": "2026-09-28T08:40:10+00:00",
-      "link": "https://arxiv.org/pdf/2609.34612v1",
-      "tags": [
-        "keyword:dse",
-        "keyword:li",
-        "query:dse",
-        "query:li"
-      ],
-      "llm_score": 8.0,
-      "llm_evidence_en": "KV cache eviction and attention/FFN disaggregation for MoE inference",
-      "llm_evidence_cn": "面向MoE推理的KV缓存驱逐与注意力/FFN分离",
-      "llm_evidence": "面向MoE推理的KV缓存驱逐与注意力/FFN分离",
-      "canonical_evidence": "面向MoE推理的KV缓存驱逐与注意力/FFN分离",
-      "llm_tldr_en": "SPIMOE co-designs adaptive expert routing, block-sparse attention and physical KV-cache eviction, disaggregating attention and FFNs across SRAM-PIM and HBM-PIM for efficient long-reasoning MoE inference.",
-      "llm_tldr_cn": "长推理MoE模型受KV缓存膨胀与专家稀疏激活拖累，现有PIM加速器只孤立优化注意力或FFN。SPIMOE提出首个混合稀疏协同设计框架，结合自适应专家路由、块稀疏注意力与物理KV缓存驱逐，并把注意力与FFN分离到SRAM-PIM与HBM-PIM上执行。该方案缓解数据搬运瓶颈并提升异构硬件利用率，为长推理MoE推理提供新的软硬件协同范式。",
-      "llm_tldr": "长推理MoE模型受KV缓存膨胀与专家稀疏激活拖累，现有PIM加速器只孤立优化注意力或FFN。SPIMOE提出首个混合稀疏协同设计框架，结合自适应专家路由、块稀疏注意力与物理KV缓存驱逐，并把注意力与FFN分离到SRAM-PIM与HBM-PIM上执行。该方案缓解数据搬运瓶颈并提升异构硬件利用率，为长推理MoE推理提供新的软硬件协同范式。",
-      "llm_tags": [
-        "query:li"
-      ],
-      "matched_query_tag": "query:li",
-      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
-      "matched_requirement_id": "req-9",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "8plus"
-    },
-    {
-      "id": "2609.36472v1",
-      "source": "arxiv",
-      "title": "DisCoMBO: Steering Expert-in-the-Loop Black Box Optimization via Distributional Conformance",
-      "abstract": "Sequential Model-Based Optimization (SMBO) traditionally relies on Bayesian or ensembling surrogates for uncertainty quantification. While historically treated as fully data-driven, SMBO increasingly integrates external domain expertise to accelerate discovery. To overcome the opaque guidance and diminished integration fidelity of standard acquisition re-weighting, Probabilistic Circuits (PCs) have emerged as a generative surrogate alternative, enabling direct knowledge injection via conditional sampling. However, these generative routines lack the formal exploration-exploitation semantics required for rigorous optimization. We introduce the Distributional Conformance Score (DisCo), a novel metric that unifies the flexibility and efficiency of PCs with a formal uncertainty framework. DisCo provides a bounded, $[0, 1]$-normalized measure of model \"surprise\" that (1) recovers properties comparable to kernel-based uncertainty known from, e.g., Gaussian Processes, while maintaining linear-time inference, and (2) enables accurate assessment of conformance of external knowledge w.r.t. model evidence. We then present DisCoMBO, a framework leveraging these properties for robust, knowledge-aware optimization. We prove that DisCoMBO is a zero-regret algorithm and demonstrate its effectiveness across diverse benchmarks from AutoML, material optimization, and wind park optimization.",
-      "authors": [
-        "Jonas Seng",
-        "Bennet Wittelsbach",
-        "Kristian Kersting"
-      ],
-      "primary_category": "cs.LG",
-      "categories": [
-        "cs.LG"
-      ],
-      "published": "2026-09-29T01:32:10+00:00",
-      "link": "https://arxiv.org/pdf/2609.36472v1",
-      "tags": [
-        "keyword:dse",
-        "keyword:li",
-        "query:dse",
-        "query:li"
-      ],
-      "llm_score": 7.0,
-      "llm_evidence_en": "sequential model-based optimization with Bayesian surrogates and expert-in-the-loop black-box search",
-      "llm_evidence_cn": "基于贝叶斯代理模型的序列黑盒优化与专家引导搜索",
-      "llm_evidence": "基于贝叶斯代理模型的序列黑盒优化与专家引导搜索",
-      "canonical_evidence": "基于贝叶斯代理模型的序列黑盒优化与专家引导搜索",
-      "llm_tldr_en": "DisCoMBO proposes a Distributional Conformance Score that gives probabilistic-circuit generative surrogates formal exploration-exploitation semantics, letting expert knowledge be injected into sequential model-based black-box optimization more faithfully.",
-      "llm_tldr_cn": "序列模型优化长期依赖贝叶斯或集成代理来量化不确定性，但标准采集函数重加权方式引导不透明、专家知识融合保真度低。本文提出分布一致性分数DisCo，为概率电路这类生成式代理引入规范的探索-利用语义，使外部领域知识可通过条件采样直接注入。摘要指出该指标统一了生成代理的灵活性与优化语义，为专家参与的黑盒优化提供新的分布级准则。其思路可迁移至硬件设计空间探索与贝叶斯优化流程。",
-      "llm_tldr": "序列模型优化长期依赖贝叶斯或集成代理来量化不确定性，但标准采集函数重加权方式引导不透明、专家知识融合保真度低。本文提出分布一致性分数DisCo，为概率电路这类生成式代理引入规范的探索-利用语义，使外部领域知识可通过条件采样直接注入。摘要指出该指标统一了生成代理的灵活性与优化语义，为专家参与的黑盒优化提供新的分布级准则。其思路可迁移至硬件设计空间探索与贝叶斯优化流程。",
-      "llm_tags": [
-        "query:dse"
-      ],
-      "matched_query_tag": "query:dse",
-      "matched_query_text": "Design space exploration for hardware, HLS, compiler, or EDA flows using Bayesian optimization, surrogate models, evolutionary search, or active learning.",
-      "matched_requirement_id": "req-20",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "7"
-    },
-    {
-      "id": "2609.34814v1",
-      "source": "arxiv",
-      "title": "WaveAlign: Cache-Aware Query-Row Scheduling for Sparse Attention in Long-Video Generation",
-      "abstract": "Long-video generation with diffusion transformers (DiTs) produces extremely long token sequences, making attention a dominant inference bottleneck. Dynamic sparse attention reduces computation, but its realized speedup remains limited because irregular query-row execution degrades L2 cache locality and increases HBM traffic. We present WaveAlign, a lightweight, cache-aware query-row reordering framework for dynamic sparse attention. WaveAlign formulates row ordering as an optimization problem and approximates it with two stages. The first stage derives a low-rank SVD representation of sparse-mask rows and groups query rows with similar K/V access patterns, increasing K/V overlap among concurrently scheduled rows. The second stage exploits streaming GPU scheduling by sorting rows within each wave in descending order of their K/V-block counts, so that short rows from the current wave are followed by long rows from the next. This aligns K/V accesses across wave boundaries and enables shared blocks to be reused before eviction. An adaptive skip module avoids unprofitable reordering. By only permuting query and mask rows, WaveAlign preserves sparse-attention semantics and requires no changes to existing methods or backend kernels. Across two GPU architectures, two video DiTs, and four sparse-attention methods, WaveAlign raises the L2 cache hit ratio from 28.48%--36.35% to 79.38%--89.06%, reduces HBM read traffic by up to 92.11%, and achieves up to 1.25x kernel and 1.17x end-to-end generation speedup without quality loss.",
-      "authors": [
-        "Zijian Dai",
-        "Sen Han",
-        "Youhui Bai",
-        "Shannon Wang",
-        "Kan Wu",
-        "Jingkai Huang",
-        "Yuhang Wang",
-        "Jing Li",
-        "Cheng Li"
-      ],
-      "primary_category": "cs.DC",
-      "categories": [
-        "cs.DC"
-      ],
-      "published": "2026-09-28T10:15:00+00:00",
-      "link": "https://arxiv.org/pdf/2609.34814v1",
-      "tags": [
-        "keyword:dse",
-        "keyword:li",
-        "query:dse",
-        "query:li"
-      ],
-      "llm_score": 6.0,
-      "llm_evidence_en": "Cache-aware scheduling for sparse attention inference",
-      "llm_evidence_cn": "面向稀疏注意力推理的缓存感知调度",
-      "llm_evidence": "面向稀疏注意力推理的缓存感知调度",
-      "canonical_evidence": "面向稀疏注意力推理的缓存感知调度",
-      "llm_tldr_en": "Long-video diffusion transformers make attention the inference bottleneck, but irregular sparse-attention query rows hurt L2 locality and raise HBM traffic. WaveAlign reorders query rows via low-rank SVD grouping to boost K/V overlap, improving realized sparse-attention speedup.",
-      "llm_tldr_cn": "长视频生成中扩散Transformer产生极长token序列，注意力成为推理瓶颈，而动态稀疏注意力的不规则查询行执行破坏了L2缓存局部性并加剧HBM流量，使实际加速受限。本文提出WaveAlign，将查询行排序建模为优化问题，先用低秩SVD表示稀疏掩码行并按K/V访问模式分组，再进一步调度以提升并发行的K/V重叠。该框架在保持轻量的同时显著改善缓存局部性，提升了稀疏注意力在长序列推理中的实际加速比。",
-      "llm_tldr": "长视频生成中扩散Transformer产生极长token序列，注意力成为推理瓶颈，而动态稀疏注意力的不规则查询行执行破坏了L2缓存局部性并加剧HBM流量，使实际加速受限。本文提出WaveAlign，将查询行排序建模为优化问题，先用低秩SVD表示稀疏掩码行并按K/V访问模式分组，再进一步调度以提升并发行的K/V重叠。该框架在保持轻量的同时显著改善缓存局部性，提升了稀疏注意力在长序列推理中的实际加速比。",
-      "llm_tags": [
-        "query:li"
-      ],
-      "matched_query_tag": "query:li",
-      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
-      "matched_requirement_id": "req-9",
       "selection_source": "fresh_fetch",
       "quick_tier": "6"
     },
@@ -739,19 +704,144 @@
         "query:li"
       ],
       "llm_score": 8.0,
-      "llm_evidence_en": "algorithm-system co-design tackling monotonic KV cache growth in on-device streaming inference",
-      "llm_evidence_cn": "针对端侧流式推理中 KV 缓存单调增长的算法—系统协同设计",
-      "llm_evidence": "针对端侧流式推理中 KV 缓存单调增长的算法—系统协同设计",
-      "canonical_evidence": "针对端侧流式推理中 KV 缓存单调增长的算法—系统协同设计",
-      "llm_tldr_en": "OmniTide is an algorithm-system co-design for on-device streaming omni-modal inference, using modality-aware structural sparsity and a unit-based abstraction to curb monotonic KV cache growth, online estimation latency and memory fragmentation.",
-      "llm_tldr_cn": "端侧流式全模态推理可保护隐私并省去逐 token API 成本，但多模态数据持续涌入使 KV 缓存单调增长，迅速耗尽受限的内存与算力。本文提出 OmniTide，首个面向端侧流式全模态推理的算法—系统协同设计，基于模态感知结构稀疏性引入单元化抽象，并结合稀疏算法与内存管理缓解碎片。实验表明其能有效降低内存与延迟开销。该工作为端侧长流推理的 KV 缓存与注意力优化提供了新范式。",
-      "llm_tldr": "端侧流式全模态推理可保护隐私并省去逐 token API 成本，但多模态数据持续涌入使 KV 缓存单调增长，迅速耗尽受限的内存与算力。本文提出 OmniTide，首个面向端侧流式全模态推理的算法—系统协同设计，基于模态感知结构稀疏性引入单元化抽象，并结合稀疏算法与内存管理缓解碎片。实验表明其能有效降低内存与延迟开销。该工作为端侧长流推理的 KV 缓存与注意力优化提供了新范式。",
+      "llm_evidence_en": "Algorithm-system co-design to curb monotonic KV cache growth in on-device streaming inference",
+      "llm_evidence_cn": "抑制端侧流式推理中KV缓存单调增长的算法-系统协同设计",
+      "llm_evidence": "抑制端侧流式推理中KV缓存单调增长的算法-系统协同设计",
+      "canonical_evidence": "抑制端侧流式推理中KV缓存单调增长的算法-系统协同设计",
+      "llm_tldr_en": "On-device streaming omni-modal inference is bottlenecked by monotonically growing KV caches that exhaust memory and compute, while existing sparse attention methods add latency or destroy cross-modal context. OmniTide co-designs algorithm and system around modality-aware sparsity and a unit abstraction to cut memory and compute while preserving context.",
+      "llm_tldr_cn": "端侧流式全模态推理可保护隐私并避免高昂的按token API成本，但持续涌入的多模态数据使KV缓存单调增长，迅速耗尽受限的内存与算力，且存在物理内存碎片问题。现有稀疏注意力方法要么在线估计延迟过高，要么破坏交错的跨模态上下文。本文提出首个面向端侧流式全模态推理的算法-系统协同设计OmniTide，基于模态感知的结构稀疏性引入单元化抽象。实验表明该方法在保持跨模态上下文的同时显著缓解内存与计算瓶颈。",
+      "llm_tldr": "端侧流式全模态推理可保护隐私并避免高昂的按token API成本，但持续涌入的多模态数据使KV缓存单调增长，迅速耗尽受限的内存与算力，且存在物理内存碎片问题。现有稀疏注意力方法要么在线估计延迟过高，要么破坏交错的跨模态上下文。本文提出首个面向端侧流式全模态推理的算法-系统协同设计OmniTide，基于模态感知的结构稀疏性引入单元化抽象。实验表明该方法在保持跨模态上下文的同时显著缓解内存与计算瓶颈。",
       "llm_tags": [
         "query:li"
       ],
       "matched_query_tag": "query:li",
-      "matched_query_text": "KV cache",
-      "matched_requirement_id": "req-4",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2609.35167v1",
+      "source": "arxiv",
+      "title": "EdgeCraft: Automated Model Crafting for Edge IoT",
+      "abstract": "Machine learning (ML) increasingly powers Internet of Things (IoT) applications at the edge. Yet producing a deployable edge ML artifact for a specific scenario requires navigating a huge search space spanning data representation, model design, training on domain-specific data, and runtime customization. This workflow is fragmented and difficult to scale across diverse edge applications.   We present EdgeCraft, an LLM-driven system that turns high-level intent into deployable edge ML artifacts. Building such a system raises two challenges: (1) How can an LLM be guided to find high-quality solutions that meet dynamic SLOs for task quality, latency, and energy? (2) How can trustworthy target-device verification be obtained at low cost? EdgeCraft addresses these challenges with two designs. (1) A constraint-aware synthesis tree explores alternative candidates and uses measured SLO gaps to guide each improvement. (2) A multi-fidelity verifier progressively combines low-cost checks with full target-device verification to reduce verification cost while preserving reliable verification results. It also records verified failures for reuse, avoiding repeated device work. To support concurrency, EdgeCraft provides a multi-tenant runtime that runs cloud training and target-device verification in parallel while isolating requests. Across 50 public tasks, EdgeCraft exceeds the task-specific Reference in best-observed quality on 40 tasks and finds an SLO-feasible artifact on 45, with the two outcomes overlapping on 38 tasks. Moreover, EdgeCraft achieves competitive performance on our self-collected SEN dataset, suggesting its generalizability to real-world IoT sensing tasks.",
+      "authors": [
+        "Genglin Wang",
+        "Kaiwei Liu",
+        "Liekang Zeng",
+        "Wangsong Yin",
+        "Shangcheng Jin",
+        "Guoliang Xing",
+        "Zhenyu Yan"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG",
+        "cs.DC"
+      ],
+      "published": "2026-09-28T13:39:03+00:00",
+      "link": "https://arxiv.org/pdf/2609.35167v1",
+      "tags": [
+        "keyword:dse",
+        "query:dse"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "LLM-driven search over edge ML design space to meet SLOs",
+      "llm_evidence_cn": "LLM驱动的边缘ML设计空间搜索以满足SLO",
+      "llm_evidence": "LLM驱动的边缘ML设计空间搜索以满足SLO",
+      "canonical_evidence": "LLM驱动的边缘ML设计空间搜索以满足SLO",
+      "llm_tldr_en": "EdgeCraft is an LLM-driven system that navigates the large edge ML design space, from data representation to runtime customization, to produce deployable artifacts meeting task, latency, and energy SLOs.",
+      "llm_tldr_cn": "该论文针对为特定场景产出可部署边缘ML工件需在数据表示、模型设计、训练与运行时定制等巨大空间中搜索、流程碎片化难以规模化的痛点，提出LLM驱动的EdgeCraft系统。它把高层意图转化为可部署工件，引导LLM在满足任务质量、时延与能耗等动态SLO下寻找高质量方案，并以低成本获得可信的目标设备验证。系统面向多样边缘应用实现自动化模型构建。其贡献在于把LLM用于端到端的边缘设计空间探索。",
+      "llm_tldr": "该论文针对为特定场景产出可部署边缘ML工件需在数据表示、模型设计、训练与运行时定制等巨大空间中搜索、流程碎片化难以规模化的痛点，提出LLM驱动的EdgeCraft系统。它把高层意图转化为可部署工件，引导LLM在满足任务质量、时延与能耗等动态SLO下寻找高质量方案，并以低成本获得可信的目标设备验证。系统面向多样边缘应用实现自动化模型构建。其贡献在于把LLM用于端到端的边缘设计空间探索。",
+      "llm_tags": [
+        "query:dse"
+      ],
+      "matched_query_tag": "query:dse",
+      "matched_query_text": "LLM-driven design space exploration",
+      "matched_requirement_id": "req-11",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2609.35568v1",
+      "source": "arxiv",
+      "title": "From Experience to Expertise: Adoption-Aware Memory Learning for Data-Scarce NPU Kernel Synthesis",
+      "abstract": "High-performance kernels underpin efficient accelerator execution but require expert tuning and lengthy manual optimization cycles. LLM coding agents promise automation, yet their CUDA knowledge transfers poorly to data-scarce domain-specific architectures (DSAs) such as NPUs, whose execution models and memory hierarchies differ substantially from those of GPUs. To address this transfer gap, post-training methods adapt LLMs to NPU programming but depend on scarce expert data and substantial training compute. Memory-learning agents instead adapt through external memory, but their uniform credit assignment gives adopted and unused experiences the same reward target, potentially biasing subsequent retrieval rankings. Moreover, when learned values guide only retrieval, high-value experiences that generalize across operators must be retrieved repeatedly rather than retained in context, thereby increasing retrieval overhead and weakening cross-task guidance. We therefore present SAGE, a persistent self-improving agent for NPU kernel synthesis. Adoption-Traced Utility estimation (ATU) combines explicit adoption records with kernel evaluation outcomes for adoption-aware credit assignment. Utility-Gated Consolidation (UGC) uses positive utility and repeated adoption across operators to select and abstract reusable rules into a bounded resident context. On NPUKernelBench, SAGE achieves a 95.5% execution rate versus 84.1% for the strongest controlled baseline, with 86.9% of solved operators outperforming torch_npu. With GLM-5.3, SAGE achieves a 43.99x speedup over the torch_npu reference on sparse flash attention. These results show that adoption-aware credit assignment and selective consolidation enable agents to accumulate and reuse hardware-specific knowledge across tasks.",
+      "authors": [
+        "Longxiao Fan",
+        "Tao Zhang",
+        "Han Yan",
+        "Jiajun Li",
+        "Mingcong Song",
+        "Guoping Long",
+        "Hongjie Si",
+        "Weiwei Sun"
+      ],
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published": "2026-09-28T16:30:42+00:00",
+      "link": "https://arxiv.org/pdf/2609.35568v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "LLM agents for automated kernel synthesis on data-scarce NPU architectures",
+      "llm_evidence_cn": "面向数据稀缺NPU的智能体内核合成",
+      "llm_evidence": "面向数据稀缺NPU的智能体内核合成",
+      "canonical_evidence": "面向数据稀缺NPU的智能体内核合成",
+      "llm_tldr_en": "LLM coding agents struggle to transfer CUDA knowledge to data-scarce NPUs; this paper proposes adoption-aware memory learning so agents adapt via external memory and better synthesize high-performance kernels.",
+      "llm_tldr_cn": "高性能内核依赖专家手工调优，而LLM编码智能体的CUDA知识难以迁移到执行模型与内存层次迥异的NPU等专用架构，后训练又依赖稀缺专家数据。本文提出采纳感知的记忆学习智能体，通过区分被采纳与未采纳经验的信用分配来改进外部记忆检索与内核合成。摘要指出该方法在数据稀缺的NPU内核合成任务上缓解了统一信用分配带来的检索偏差，为跨架构内核自动生成提供了可复用的智能体记忆学习框架。",
+      "llm_tldr": "高性能内核依赖专家手工调优，而LLM编码智能体的CUDA知识难以迁移到执行模型与内存层次迥异的NPU等专用架构，后训练又依赖稀缺专家数据。本文提出采纳感知的记忆学习智能体，通过区分被采纳与未采纳经验的信用分配来改进外部记忆检索与内核合成。摘要指出该方法在数据稀缺的NPU内核合成任务上缓解了统一信用分配带来的检索偏差，为跨架构内核自动生成提供了可复用的智能体记忆学习框架。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "GPU kernel optimization",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2609.34663v1",
+      "source": "arxiv",
+      "title": "Tool Waiting and Re-arrival in Compile-Time-Static LLM Serving: Cost Mechanisms and Configuration Selection",
+      "abstract": "In agentic LLM services, a session calls an external tool, waits for it, and re-arrives to continue inference. Statically compiled NPU serving can fix the batch bucket set, the maximum batch size, and the number of KV cache slots at compile time. We define such an environment as a compile-time-static serving substrate and analyze the execution-time cost that tool waiting and re-arrival incur in it. On a single LLM instance, we run synthetic workloads following a measured tool waiting time distribution and compare, on the same inputs, a baseline configuration with settings {1, 2, 4, 8}, 8, and 8 against configurations that change some of them. Because re-arrival times differ across configurations, we build a simulator that replays request processing in time order, select the candidate with the lowest predicted cost among 2,077 configurations, and validate it on new inputs. We identify three mechanisms: discrete batch alignment, KV cache survival, and prefill interference. At a concurrency of 6, absent from the bucket set, tool waiting lowered the padding ratio (0.235 to 0.120) yet increased decode execution time 1.51-fold, so padding alone did not indicate cost. On new inputs at a concurrency of 8, where the baseline reused KV in 9 of 24 re-arrivals, enlarging the maximum batch size alone cut execution cost by 8.25%, and the selected configuration, which also adjusted the bucket set, by 9.72%. Where 17 of 18 re-arrivals were already reused, the effect was 0.59%. Compile-time configurations should thus be selected by diagnosing KV reuse loss and the resulting change in execution.",
+      "authors": [
+        "Dongkyeom Jang",
+        "In-Nea Wang",
+        "Junho Jeong"
+      ],
+      "primary_category": "cs.PF",
+      "categories": [
+        "cs.PF"
+      ],
+      "published": "2026-09-28T09:02:13+00:00",
+      "link": "https://arxiv.org/pdf/2609.34663v1",
+      "tags": [
+        "keyword:dse",
+        "keyword:li",
+        "query:dse",
+        "query:li"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "Batch bucket and KV slot configuration in static LLM serving",
+      "llm_evidence_cn": "静态LLM服务中的批桶与KV槽配置",
+      "llm_evidence": "静态LLM服务中的批桶与KV槽配置",
+      "canonical_evidence": "静态LLM服务中的批桶与KV槽配置",
+      "llm_tldr_en": "Analyzes execution-time cost of tool waiting and re-arrival in compile-time-static NPU LLM serving, comparing batch bucket, max batch size and KV slot configurations to guide selection.",
+      "llm_tldr_cn": "智能体式LLM服务中，会话会调用外部工具、等待后重新进入继续推理，而静态编译的NPU服务在编译期就固定了批桶、最大批大小与KV缓存槽数，其执行代价尚不明确。本文定义该编译期静态服务基底，用遵循实测等待时间分布的合成负载，在单实例上对比不同配置并构建模拟器。结果揭示了工具等待与重入的成本机制，并给出配置选择建议，为静态服务调优提供依据。",
+      "llm_tldr": "智能体式LLM服务中，会话会调用外部工具、等待后重新进入继续推理，而静态编译的NPU服务在编译期就固定了批桶、最大批大小与KV缓存槽数，其执行代价尚不明确。本文定义该编译期静态服务基底，用遵循实测等待时间分布的合成负载，在单实例上对比不同配置并构建模拟器。结果揭示了工具等待与重入的成本机制，并给出配置选择建议，为静态服务调优提供依据。",
+      "llm_tags": [
+        "query:li"
+      ],
+      "matched_query_tag": "query:li",
+      "matched_query_text": "Efficient LLM inference and serving systems with scheduling, continuous batching, and memory management.",
+      "matched_requirement_id": "req-10",
       "selection_source": "fresh_fetch",
       "quick_tier": "8plus"
     },
@@ -779,13 +869,13 @@
         "query:li"
       ],
       "llm_score": 7.0,
-      "llm_evidence_en": "Scale-up GPU collective communication framework for distributed inference",
-      "llm_evidence_cn": "面向分布式推理的GPU集合通信框架",
-      "llm_evidence": "面向分布式推理的GPU集合通信框架",
-      "canonical_evidence": "面向分布式推理的GPU集合通信框架",
-      "llm_tldr_en": "Purlin decouples collective semantics, orchestration, and datapath to make distributed inference communication adaptable to new hardware, introducing the SNAC orchestration protocol derived from layout and operation specifications.",
-      "llm_tldr_cn": "分布式推理依赖GPU集合通信跟上硬件与专用负载演进，但现有实现将语义、编排与数据通路耦合，导致采用新硬件机制与定制通信代价高昂。本文提出Purlin框架，将集合操作表述为输入输出布局与复制或归约操作，并引入Stage、Notify、Consume共享编排协议从规格推导协调，下层对接硬件数据通路。该解耦设计提升了通信对演化硬件的适配性与可定制性。",
-      "llm_tldr": "分布式推理依赖GPU集合通信跟上硬件与专用负载演进，但现有实现将语义、编排与数据通路耦合，导致采用新硬件机制与定制通信代价高昂。本文提出Purlin框架，将集合操作表述为输入输出布局与复制或归约操作，并引入Stage、Notify、Consume共享编排协议从规格推导协调，下层对接硬件数据通路。该解耦设计提升了通信对演化硬件的适配性与可定制性。",
+      "llm_evidence_en": "separating orchestration from datapath for GPU collective communication",
+      "llm_evidence_cn": "将GPU集合通信的编排与数据通路解耦",
+      "llm_evidence": "将GPU集合通信的编排与数据通路解耦",
+      "canonical_evidence": "将GPU集合通信的编排与数据通路解耦",
+      "llm_tldr_en": "Purlin separates semantics, orchestration and datapath in GPU collective communication for distributed inference, introducing a specification-based framework and the SNAC protocol to ease hardware adoption and application customization.",
+      "llm_tldr_cn": "分布式推理依赖GPU集合通信，但现有实现常将语义、编排与数据通路耦合，难以适配新硬件与应用定制。作者提出Purlin，一个scale-up通信框架，将集合通信表示为输入输出布局与拷贝或归约操作，并引入SNAC编排协议从规格推导协调逻辑。该解耦设计降低了适配新硬件与定制通信的成本，为分布式大模型推理的通信基础设施提供了更灵活的抽象。",
+      "llm_tldr": "分布式推理依赖GPU集合通信，但现有实现常将语义、编排与数据通路耦合，难以适配新硬件与应用定制。作者提出Purlin，一个scale-up通信框架，将集合通信表示为输入输出布局与拷贝或归约操作，并引入SNAC编排协议从规格推导协调逻辑。该解耦设计降低了适配新硬件与定制通信的成本，为分布式大模型推理的通信基础设施提供了更灵活的抽象。",
       "llm_tags": [
         "query:li"
       ],
@@ -796,59 +886,68 @@
       "quick_tier": "7"
     },
     {
-      "id": "2609.35038v1",
+      "id": "2610.00426v1",
       "source": "arxiv",
-      "title": "GUIDE-FBO: Guidance via Uncertainty Intervention and Distributional Exchange for Federated Bayesian Optimization",
-      "abstract": "Federated Bayesian Optimization (FBO) enables distributed agents to collaboratively optimize expensive black-box objectives without sharing raw local observations. However, effective knowledge transfer remains challenging under communication constraints and task heterogeneity. We propose GUIDE-FBO, in which agents exchange compact distributions over the locations of their respective optima inferred from local Gaussian process (GP) posteriors, rather than raw observations, query points, or surrogate parameters. The server merges and reweights these distributional components before returning a subset to each agent. Each agent then constructs a Federated Interventional GP (FI-GP), which preserves the local posterior mean and spatially rescales its covariance for local decision making. For the upper confidence bound (UCB) instantiation, GUIDE-UCB, we prove that any bounded FI-GP uncertainty intervention preserves the leading-order cumulative regret rate of standard GP-UCB. When the transferred distributions place greater support near an optimum than in a suboptimal region, selecting the latter requires greater local posterior uncertainty. Experiments on 12 synthetic benchmarks and three real-world optimization tasks show that GUIDE-FBO remains effective across settings ranging from homogeneous to severely heterogeneous. Ablation results highlight the importance of spatially localized uncertainty intervention, while the communication analysis shows that GUIDE-FBO exchanges only compact distributional messages.",
+      "title": "IrekoGPT: Turning Structured Pruning into Post-Hoc Slimmable LLMs",
+      "abstract": "We introduce IrekoGPT, a post-hoc method for converting pretrained LLMs into slimmable models whose width can be adjusted at inference time. Building on SliceGPT, we retain its projection matrices without pruning them, allowing a single model to expose nested subnetworks at different widths. We improve robustness by calibrating each layer across multiple compression ratios, and correct downstream linear layers through gradient-free ridge regression. Across Llama and Qwen models, preliminary results show improvements over naive PCA-based slimming, with the largest gains at high compression. Code is available at https://github.com/aimagelab/IrekoGPT",
       "authors": [
-        "Jintao Wei",
-        "Chenxi Li",
-        "Songhao Wang"
+        "Pietro Moriello",
+        "Pietro Buzzega",
+        "Angelo Porrello",
+        "Simone Calderara"
       ],
-      "primary_category": "stat.ML",
+      "primary_category": "cs.LG",
       "categories": [
-        "stat.ML",
-        "cs.LG"
+        "cs.LG",
+        "stat.ML"
       ],
-      "published": "2026-09-28T12:37:48+00:00",
-      "link": "https://arxiv.org/pdf/2609.35038v1",
+      "published": "2026-09-30T16:08:59+00:00",
+      "link": "https://arxiv.org/pdf/2610.00426v1",
       "tags": [
         "keyword:dse",
-        "query:dse"
+        "keyword:li",
+        "query:dse",
+        "query:li"
       ],
       "llm_score": 6.0,
-      "llm_evidence_en": "Federated Bayesian optimization exchanging optimum distributions under communication constraints",
-      "llm_evidence_cn": "通信受限下交换最优分布的联邦贝叶斯优化",
-      "llm_evidence": "通信受限下交换最优分布的联邦贝叶斯优化",
-      "canonical_evidence": "通信受限下交换最优分布的联邦贝叶斯优化",
-      "llm_tldr_en": "GUIDE-FBO lets distributed agents exchange compact distributions over their optima inferred from local GP posteriors, enabling collaborative black-box optimization under communication limits and task heterogeneity.",
-      "llm_tldr_cn": "联邦贝叶斯优化让分布式智能体在不共享原始观测的前提下协同优化昂贵黑箱目标，但通信约束与任务异质性使知识迁移困难。本文提出GUIDE-FBO，智能体交换由本地高斯过程后验推断的最优位置紧凑分布，服务器合并重加权后回传子集，各智能体据此构建联邦干预高斯过程。该方法在通信受限与任务异构下保持本地后验，提升协同优化效果。",
-      "llm_tldr": "联邦贝叶斯优化让分布式智能体在不共享原始观测的前提下协同优化昂贵黑箱目标，但通信约束与任务异质性使知识迁移困难。本文提出GUIDE-FBO，智能体交换由本地高斯过程后验推断的最优位置紧凑分布，服务器合并重加权后回传子集，各智能体据此构建联邦干预高斯过程。该方法在通信受限与任务异构下保持本地后验，提升协同优化效果。",
+      "llm_evidence_en": "post-hoc pruning turns LLMs into width-adjustable slimmable models for cheaper inference",
+      "llm_evidence_cn": "事后剪枝把LLM转为宽度可调的可伸缩模型以降低推理成本",
+      "llm_evidence": "事后剪枝把LLM转为宽度可调的可伸缩模型以降低推理成本",
+      "canonical_evidence": "事后剪枝把LLM转为宽度可调的可伸缩模型以降低推理成本",
+      "llm_tldr_en": "IrekoGPT post-hoc converts pretrained LLMs into width-adjustable slimmable models by keeping SliceGPT projections, calibrating layers across compression ratios, and ridge-regression correction, beating naive PCA slimming at high compression.",
+      "llm_tldr_cn": "针对大模型推理时难以按算力灵活调整规模的问题，本文提出IrekoGPT，一种事后把预训练LLM转成宽度可调的可伸缩模型的方法。它在SliceGPT基础上保留投影矩阵，通过逐层多压缩率校准与无梯度岭回归校正下游线性层。在Llama与Qwen上相较朴素PCA瘦身取得提升，且高压缩率下增益最大。该工作为推理时弹性伸缩部署提供了可行路径。",
+      "llm_tldr": "针对大模型推理时难以按算力灵活调整规模的问题，本文提出IrekoGPT，一种事后把预训练LLM转成宽度可调的可伸缩模型的方法。它在SliceGPT基础上保留投影矩阵，通过逐层多压缩率校准与无梯度岭回归校正下游线性层。在Llama与Qwen上相较朴素PCA瘦身取得提升，且高压缩率下增益最大。该工作为推理时弹性伸缩部署提供了可行路径。",
       "llm_tags": [
-        "query:dse"
+        "query:li"
       ],
-      "matched_query_tag": "query:dse",
-      "matched_query_text": "Bayesian optimization for hardware",
-      "matched_requirement_id": "req-12",
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM inference",
+      "matched_requirement_id": "req-6",
       "selection_source": "fresh_fetch",
       "quick_tier": "6"
     },
     {
-      "id": "2609.34663v1",
+      "id": "2609.34814v1",
       "source": "arxiv",
-      "title": "Tool Waiting and Re-arrival in Compile-Time-Static LLM Serving: Cost Mechanisms and Configuration Selection",
-      "abstract": "In agentic LLM services, a session calls an external tool, waits for it, and re-arrives to continue inference. Statically compiled NPU serving can fix the batch bucket set, the maximum batch size, and the number of KV cache slots at compile time. We define such an environment as a compile-time-static serving substrate and analyze the execution-time cost that tool waiting and re-arrival incur in it. On a single LLM instance, we run synthetic workloads following a measured tool waiting time distribution and compare, on the same inputs, a baseline configuration with settings {1, 2, 4, 8}, 8, and 8 against configurations that change some of them. Because re-arrival times differ across configurations, we build a simulator that replays request processing in time order, select the candidate with the lowest predicted cost among 2,077 configurations, and validate it on new inputs. We identify three mechanisms: discrete batch alignment, KV cache survival, and prefill interference. At a concurrency of 6, absent from the bucket set, tool waiting lowered the padding ratio (0.235 to 0.120) yet increased decode execution time 1.51-fold, so padding alone did not indicate cost. On new inputs at a concurrency of 8, where the baseline reused KV in 9 of 24 re-arrivals, enlarging the maximum batch size alone cut execution cost by 8.25%, and the selected configuration, which also adjusted the bucket set, by 9.72%. Where 17 of 18 re-arrivals were already reused, the effect was 0.59%. Compile-time configurations should thus be selected by diagnosing KV reuse loss and the resulting change in execution.",
+      "title": "WaveAlign: Cache-Aware Query-Row Scheduling for Sparse Attention in Long-Video Generation",
+      "abstract": "Long-video generation with diffusion transformers (DiTs) produces extremely long token sequences, making attention a dominant inference bottleneck. Dynamic sparse attention reduces computation, but its realized speedup remains limited because irregular query-row execution degrades L2 cache locality and increases HBM traffic. We present WaveAlign, a lightweight, cache-aware query-row reordering framework for dynamic sparse attention. WaveAlign formulates row ordering as an optimization problem and approximates it with two stages. The first stage derives a low-rank SVD representation of sparse-mask rows and groups query rows with similar K/V access patterns, increasing K/V overlap among concurrently scheduled rows. The second stage exploits streaming GPU scheduling by sorting rows within each wave in descending order of their K/V-block counts, so that short rows from the current wave are followed by long rows from the next. This aligns K/V accesses across wave boundaries and enables shared blocks to be reused before eviction. An adaptive skip module avoids unprofitable reordering. By only permuting query and mask rows, WaveAlign preserves sparse-attention semantics and requires no changes to existing methods or backend kernels. Across two GPU architectures, two video DiTs, and four sparse-attention methods, WaveAlign raises the L2 cache hit ratio from 28.48%--36.35% to 79.38%--89.06%, reduces HBM read traffic by up to 92.11%, and achieves up to 1.25x kernel and 1.17x end-to-end generation speedup without quality loss.",
       "authors": [
-        "Dongkyeom Jang",
-        "In-Nea Wang",
-        "Junho Jeong"
+        "Zijian Dai",
+        "Sen Han",
+        "Youhui Bai",
+        "Shannon Wang",
+        "Kan Wu",
+        "Jingkai Huang",
+        "Yuhang Wang",
+        "Jing Li",
+        "Cheng Li"
       ],
-      "primary_category": "cs.PF",
+      "primary_category": "cs.DC",
       "categories": [
-        "cs.PF"
+        "cs.DC"
       ],
-      "published": "2026-09-28T09:02:13+00:00",
-      "link": "https://arxiv.org/pdf/2609.34663v1",
+      "published": "2026-09-28T10:15:00+00:00",
+      "link": "https://arxiv.org/pdf/2609.34814v1",
       "tags": [
         "keyword:dse",
         "keyword:li",
@@ -856,19 +955,19 @@
         "query:li"
       ],
       "llm_score": 8.0,
-      "llm_evidence_en": "compile-time-static LLM serving with tool waiting and KV cache slot configuration",
-      "llm_evidence_cn": "含工具等待与KV缓存槽配置的编译期静态LLM服务",
-      "llm_evidence": "含工具等待与KV缓存槽配置的编译期静态LLM服务",
-      "canonical_evidence": "含工具等待与KV缓存槽配置的编译期静态LLM服务",
-      "llm_tldr_en": "In agentic LLM services, sessions call external tools, wait, and re-arrive, while statically compiled NPU serving fixes batch buckets and KV cache slots at compile time. This paper defines the compile-time-static substrate, analyzes tool-waiting and re-arrival costs, and compares configurations via simulation.",
-      "llm_tldr_cn": "在智能体LLM服务中，会话调用外部工具后等待并重新到达继续推理，而静态编译的NPU服务需在编译期固定批桶集合、最大批大小与KV缓存槽数。本文定义该编译期静态服务基底，分析工具等待与重到达造成的执行时开销，并用模拟器在不同配置下对比同一输入的代价。研究量化了批桶与缓存槽设置对成本的影响，为服务配置选择提供指导。",
-      "llm_tldr": "在智能体LLM服务中，会话调用外部工具后等待并重新到达继续推理，而静态编译的NPU服务需在编译期固定批桶集合、最大批大小与KV缓存槽数。本文定义该编译期静态服务基底，分析工具等待与重到达造成的执行时开销，并用模拟器在不同配置下对比同一输入的代价。研究量化了批桶与缓存槽设置对成本的影响，为服务配置选择提供指导。",
+      "llm_evidence_en": "cache-aware query-row scheduling for sparse attention",
+      "llm_evidence_cn": "面向稀疏注意力的缓存感知查询行调度",
+      "llm_evidence": "面向稀疏注意力的缓存感知查询行调度",
+      "canonical_evidence": "面向稀疏注意力的缓存感知查询行调度",
+      "llm_tldr_en": "WaveAlign improves dynamic sparse attention for long-video diffusion transformers by reordering query rows to raise L2 cache locality and K/V overlap, cutting HBM traffic and restoring speedups.",
+      "llm_tldr_cn": "该论文针对长视频扩散Transformer中注意力成为推理瓶颈、动态稀疏注意力因查询行执行不规则导致L2缓存局部性差与HBM流量高、实际加速受限的问题，提出缓存感知的查询行重排序框架WaveAlign。它把行排序建模为优化问题，先用稀疏掩码行的低秩SVD表示对访问模式相似的查询行分组，再进一步近似求解。方法提升了并发调度行间的K/V重叠，改善了缓存局部性。该工作为稀疏注意力提供了轻量且通用的调度优化思路。",
+      "llm_tldr": "该论文针对长视频扩散Transformer中注意力成为推理瓶颈、动态稀疏注意力因查询行执行不规则导致L2缓存局部性差与HBM流量高、实际加速受限的问题，提出缓存感知的查询行重排序框架WaveAlign。它把行排序建模为优化问题，先用稀疏掩码行的低秩SVD表示对访问模式相似的查询行分组，再进一步近似求解。方法提升了并发调度行间的K/V重叠，改善了缓存局部性。该工作为稀疏注意力提供了轻量且通用的调度优化思路。",
       "llm_tags": [
         "query:li"
       ],
       "matched_query_tag": "query:li",
-      "matched_query_text": "LLM serving",
-      "matched_requirement_id": "req-5",
+      "matched_query_text": "KV cache management, prefix caching, attention optimization, and prefill decode disaggregation for LLM serving.",
+      "matched_requirement_id": "req-9",
       "selection_source": "fresh_fetch",
       "quick_tier": "8plus"
     },
@@ -893,16 +992,17 @@
       "tags": [
         "keyword:dse",
         "keyword:li",
-        "query:dse"
+        "query:dse",
+        "query:li"
       ],
       "llm_score": 7.0,
-      "llm_evidence_en": "multi-engine DL accelerator design methodology and engine combination search",
-      "llm_evidence_cn": "多引擎深度学习加速器设计方法学与引擎组合搜索",
-      "llm_evidence": "多引擎深度学习加速器设计方法学与引擎组合搜索",
-      "canonical_evidence": "多引擎深度学习加速器设计方法学与引擎组合搜索",
-      "llm_tldr_en": "MEDEM proposes a systematic methodology for designing multi-engine DL accelerators, exploring how to co-design engines and choose combinations that minimize aggregate time or energy cost across heterogeneous workloads.",
-      "llm_tldr_cn": "多引擎深度学习加速器日益普遍，用以应对异构且复杂的工作负载，但现有多引擎设计方法缺乏系统性，如何协同设计引擎、如何选择引擎组合以最小化总执行成本仍无定论。本文提出 MEDEM 多引擎加速器设计方法学，系统化地探索引擎组合与协同设计空间。研究表明该方法能有效比较不同组合的时延与能耗代价。该工作为多引擎加速器的设计空间探索提供了结构化框架。",
-      "llm_tldr": "多引擎深度学习加速器日益普遍，用以应对异构且复杂的工作负载，但现有多引擎设计方法缺乏系统性，如何协同设计引擎、如何选择引擎组合以最小化总执行成本仍无定论。本文提出 MEDEM 多引擎加速器设计方法学，系统化地探索引擎组合与协同设计空间。研究表明该方法能有效比较不同组合的时延与能耗代价。该工作为多引擎加速器的设计空间探索提供了结构化框架。",
+      "llm_evidence_en": "systematic design space exploration for multi-engine DL accelerator design",
+      "llm_evidence_cn": "面向多引擎深度学习加速器的系统化设计空间探索",
+      "llm_evidence": "面向多引擎深度学习加速器的系统化设计空间探索",
+      "canonical_evidence": "面向多引擎深度学习加速器的系统化设计空间探索",
+      "llm_tldr_en": "MEDEM addresses the lack of a systematic methodology for multi-engine deep learning accelerator design by exploring engine combinations that minimize aggregate execution cost across heterogeneous workloads.",
+      "llm_tldr_cn": "该论文针对多引擎深度学习加速器设计缺乏系统方法学、难以确定引擎协同设计与最优引擎组合的问题，提出MEDEM设计方法学。方法围绕多样化计算特征工作负载，系统探索互补能力引擎的组合，以最小化时间或能耗等总体执行代价。研究给出面向异构内核的引擎组合选择框架，帮助设计者在巨大设计空间中做出权衡。其贡献在于为多引擎加速器提供可复用的设计空间探索流程。",
+      "llm_tldr": "该论文针对多引擎深度学习加速器设计缺乏系统方法学、难以确定引擎协同设计与最优引擎组合的问题，提出MEDEM设计方法学。方法围绕多样化计算特征工作负载，系统探索互补能力引擎的组合，以最小化时间或能耗等总体执行代价。研究给出面向异构内核的引擎组合选择框架，帮助设计者在巨大设计空间中做出权衡。其贡献在于为多引擎加速器提供可复用的设计空间探索流程。",
       "llm_tags": [
         "query:dse"
       ],
@@ -913,27 +1013,25 @@
       "quick_tier": "7"
     },
     {
-      "id": "2609.37221v1",
+      "id": "2610.00465v1",
       "source": "arxiv",
-      "title": "OptiCom : A Unified Framework for State-Conditioned Composition in LLM-Driven Optimization",
-      "abstract": "Large language models (LLMs) are increasingly deployed to solve complex scientific and practical problems via iterative optimization. However, dynamically coordinating diverse search mechanisms as candidate quality, failure modes, and resource budgets evolve remains a critical open challenge. Targeted empirical diagnostics reveal that mechanism effectiveness is highly state-dependent. Motivated by this, we analyze how individual decisions drive final outcomes, decomposing the expected terminal improvement under a shared budget into cumulative decision opportunities minus cumulative selection losses. Guided by this opportunity-loss theoretical foundation, we propose OptiCom, a unified framework that represents LLM-driven optimizers within a shared configuration space: C=(A,Q,O,E,M,S), corresponding to artifact, query, operator, evaluation, memory, and strategy. Operating within this space, a fast LLM-based Optimization Controller dynamically composes immediate mechanisms through structured Action Packages, while a slower Strategy Adapter refines long-term selection preferences, operator weights, and templates based on accumulated trajectory feedback. Comprehensive evaluations across 32 benchmark groups demonstrate the superiority of framework: OptiCom achieves an average Max-score rank of 1.72 among 14 evaluated configurations, securing the top score in 23 groups. Ultimately, these results highlight the broad applicability and high extensibility of OptiCom as a general-purpose paradigm for robust LLM test-time scaling.",
+      "title": "AIR-LLM: Broadcasting AI Weights over Radio for Memory-Free Edge LLM Inference via RF Computing",
+      "abstract": "Next-generation large language models (LLMs) are expanding from the cloud to ubiquitous edge devices. However, edge devices typically either lack the memory to store increasingly large LLM weights or, even with enough memory, spend unaffordable energy on loading the weights. This raises our question: can an edge device run an LLM without storing or loading its weights, but receive them over the air and consume them on the fly? Inspired by wireless broadcasting, we present AIR-LLM, an LLM inference architecture for edge devices, which is composed of: (i) a central radio (e.g., 5G base stations) that broadcasts the LLM weights into the air, and (ii) the edge user that receives the weights and completes the general matrix-vector multiplication (GEMV) of LLM inference directly in the radio frequency (RF) domain using RF mixers. To further shorten the airtime, AIR-LLM exploits MIMO spatial multiplexing and proposes an energy-efficient precoder-postcoder pair on the edge to calibrate its own wireless channel. Since the central radio stays user-unaware, AIR-LLM is user-scalable so that one broadcast serves unlimited users within its coverage. We implement AIR-LLM on the NVIDIA Sionna ray-traced channels of two real-world urban scenes and the profiling of a real RF mixer. With a WikiText-2 perplexity degradation of 4.0% on LLaMA-3.1-8B, AIR-LLM saves the energy by 157.7x/40.4x against the FP16 and weight-only quantization baselines; with 20 users, its airtime is 104.1x/26.0x shorter, respectively.",
       "authors": [
-        "Chenxing Wei",
-        "Sichen Liu",
-        "Lizhao Liu",
-        "Ningyuan Sun",
-        "Chen Bingzhou",
-        "Ying He",
-        "Bo Jiang",
-        "Fei Yu",
-        "Yao Shu"
+        "Zhihui Gao",
+        "Tingjun Chen",
+        "Dirk Englund"
       ],
-      "primary_category": "cs.AI",
+      "primary_category": "cs.IT",
       "categories": [
-        "cs.AI"
+        "cs.IT",
+        "cs.ET",
+        "cs.LG",
+        "eess.SP",
+        "physics.app-ph"
       ],
-      "published": "2026-09-29T10:38:06+00:00",
-      "link": "https://arxiv.org/pdf/2609.37221v1",
+      "published": "2026-09-30T18:00:02+00:00",
+      "link": "https://arxiv.org/pdf/2610.00465v1",
       "tags": [
         "keyword:dse",
         "keyword:li",
@@ -941,19 +1039,19 @@
         "query:li"
       ],
       "llm_score": 6.0,
-      "llm_evidence_en": "LLM-driven optimization framework composing search mechanisms by state",
-      "llm_evidence_cn": "LLM驱动优化中按状态组合搜索机制",
-      "llm_evidence": "LLM驱动优化中按状态组合搜索机制",
-      "canonical_evidence": "LLM驱动优化中按状态组合搜索机制",
-      "llm_tldr_en": "LLM-driven optimizers struggle to coordinate diverse search mechanisms as states evolve. OptiCom decomposes terminal improvement into decision opportunities minus selection losses, composing mechanisms state-conditioned to improve results under shared budgets.",
-      "llm_tldr_cn": "论文针对LLM驱动迭代优化中多种搜索机制难以动态协调的问题，指出现有方法无法随候选质量与资源预算变化调整策略。作者通过经验诊断发现机制有效性高度依赖状态，并提出机会-损失理论分解，将终端改进拆分为决策机会与选择损失之差，进而设计OptiCom框架按状态条件化组合搜索机制。实验表明该框架能在共享预算下提升优化效果，为LLM驱动优化器的自适应调度提供了理论与方法基础。",
-      "llm_tldr": "论文针对LLM驱动迭代优化中多种搜索机制难以动态协调的问题，指出现有方法无法随候选质量与资源预算变化调整策略。作者通过经验诊断发现机制有效性高度依赖状态，并提出机会-损失理论分解，将终端改进拆分为决策机会与选择损失之差，进而设计OptiCom框架按状态条件化组合搜索机制。实验表明该框架能在共享预算下提升优化效果，为LLM驱动优化器的自适应调度提供了理论与方法基础。",
+      "llm_evidence_en": "memory-free edge LLM inference via RF computing and weight broadcasting",
+      "llm_evidence_cn": "通过射频计算与权重广播实现无内存边缘LLM推理",
+      "llm_evidence": "通过射频计算与权重广播实现无内存边缘LLM推理",
+      "canonical_evidence": "通过射频计算与权重广播实现无内存边缘LLM推理",
+      "llm_tldr_en": "AIR-LLM addresses edge devices lacking memory to store or energy to load large LLM weights by broadcasting weights over radio from a central base station and consuming them on the fly during matrix-vector computation.",
+      "llm_tldr_cn": "下一代大模型正从云端扩展到边缘设备，但边缘设备往往缺乏存储庞大权重的内存，或即使有足够内存也需花费难以承受的能量来加载权重。AIR-LLM提出一种边缘LLM推理架构：由中心射频（如5G基站）将模型权重广播到空中，边缘用户接收权重并即时完成通用矩阵向量乘计算。该方案让设备无需存储或加载权重即可运行LLM，为边缘推理提供通信与计算一体的新型架构。",
+      "llm_tldr": "下一代大模型正从云端扩展到边缘设备，但边缘设备往往缺乏存储庞大权重的内存，或即使有足够内存也需花费难以承受的能量来加载权重。AIR-LLM提出一种边缘LLM推理架构：由中心射频（如5G基站）将模型权重广播到空中，边缘用户接收权重并即时完成通用矩阵向量乘计算。该方案让设备无需存储或加载权重即可运行LLM，为边缘推理提供通信与计算一体的新型架构。",
       "llm_tags": [
-        "query:dse"
+        "query:li"
       ],
-      "matched_query_tag": "query:dse",
-      "matched_query_text": "LLM-driven design space exploration",
-      "matched_requirement_id": "req-11",
+      "matched_query_tag": "query:li",
+      "matched_query_text": "LLM inference",
+      "matched_requirement_id": "req-6",
       "selection_source": "fresh_fetch",
       "quick_tier": "6"
     }
