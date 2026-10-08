@@ -1,0 +1,676 @@
+Title: ECO: Energy-Oriented Configuration Optimization for Attention FFN Disaggregated LLM Serving
+
+URL Source: https://arxiv.org/pdf/2610.08373v1
+
+Published Time: Wed, 07 Oct 2026 01:34:08 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+Preprint 
+
+# ECO: ENERGY -O RIENTED CONFIGURATION OPTI -
+
+# MIZATION FOR ATTENTION –FFN DISAGGREGATED 
+
+# LLM S ERVING 
+
+Zou Qingyun, Bin Gao, Zhuobin Huang, Weng-Fai Wong, Tulika Mitra, Bingsheng He 
+
+National University of Singapore 
+
+ABSTRACT 
+
+Energy-efficient LLM serving requires minimizing serving GPU energy while meeting latency and throughput service-level objectives (SLOs). Attention–FFN disaggregation (AFD) enables separate resource allocation and operating con-trols for attention and expert computation, but their energy effects remain cou-pled through the execution pipeline. Realizing its energy-saving potential there-fore requires navigating a hierarchical configuration space in which deployment structures constrain admissible controls and shape their end-to-end effects. Find-ing low-energy configurations that meet SLOs is challenging because physical evaluations are costly and only a small fraction of candidates can be measured. We present Energy-Oriented Configuration Optimization (ECO), which jointly searches deployment structures and their admissible operating controls under a limited measurement budget. ECO constructs a structure-aware energy prior from calibrated stage behavior and pipeline dependencies, then learns residual predic-tion errors with a Gaussian process. Its cost-aware constrained Bayesian optimiza-tion prioritizes measurements according to expected energy improvement while accounting for SLO feasibility, execution success, and evaluation cost, and returns the lowest-energy measured feasible configuration. Across all 16 scenarios on A6000 and A100 with Qwen and DeepSeek, ECO’s frozen configurations, eval-uated on disjoint requests, reduce serving energy by 40.5% and increase output token rate by 20.7% on average relative to baselines while meeting target SLOs. Across the 8 A6000 scenarios, its selected feasible energy averages 33.1% below generic constrained Bayesian optimization and 25.8% below genetic search. 
+
+1 INTRODUCTION 
+
+Energy-efficient LLM serving requires minimizing serving GPU energy while meeting latency and throughput service-level objectives (SLOs). Attention–feed-forward network (FFN) disaggregation (AFD) provides additional flexibility for pursuing this objective. Attention and expert FFNs have different computation, memory, and communication demands (Rajbhandari et al., 2022; Zhu et al., 2025). By placing them on separate GPU groups, AFD allows each role to use its own resource allocation, parallelism, frequency, and power cap (Zhu et al., 2025; Wu et al., 2026). By placing them on separate GPU groups, AFD provides flexibility in both the deployment structure , including GPU allocation, parallelism, and dual batch overlap (DBO) settings, and the operating controls ,including per-role frequencies and power caps (Zhu et al., 2025; Wu et al., 2026). The central configuration problem is how to use this flexibility to reduce energy across the active GPUs while satisfying fixed service requirements. Three properties of AFD make this problem challenging. 
+
+First , deployment structure and operating controls are coupled through the execution pipeline. Each microbatch passes through attention, dispatch, FFN, and combine before entering the next layer. Slowing one stage may reduce its power draw, but can also delay dependent stages and extend the time during which other GPUs consume power. A local power reduction therefore need not reduce total serving energy: its benefit depends on how the selected structure permits work to overlap and delays to propagate. Evaluating operating controls therefore requires accounting for their effects across the pipeline. 1arXiv:2610.08373v1 [cs.AR] 6 Oct 2026 Preprint Microbatches                     
+
+> Attention
+> GPU GPU ···
+> NA fA ,pA
+> FFN
+> GPU GPU ···
+> NF fF ,pF
+> Dispatch Combine
+> Allocation NA ,NF
+> Parallelism TP · DP · EP
+> Work + communication Balance + overlap Capacity · SLO · energy Operating controls
+> fA ,pA ;fF ,pF
+> DBO Qwen · 8×A6000 · 4A+2F
+> 8→16 req/s: 1560/1560 →2100/1920 MHz
+
+Figure 1: AFD execution and configuration dependencies. Left: GPU groups and load-dependent clocks. Right: configuration choices and their effects on service and energy. 
+
+Second , AFD has a hierarchical configuration space. GPU allocation constrains the parallelism choices available to each role, while parallelism and DBO settings determine how work is partitioned and overlapped within the deployment. Frequencies and power caps must also satisfy the constraints of the assigned hardware. These dependencies restrict which combinations of settings form valid configurations and must be respected during search. However, satisfying the known static constraints does not ensure that a configuration will execute successfully or meet the SLOs. 
+
+Third , configuration selection depends on the model and offered load. The same deployment struc-ture and operating controls can produce different energy and service responses across models and workloads. As load increases, a configuration may need higher operating frequencies, additional GPUs, or a different allocation between attention and FFN computation to remain feasible. The appropriate adjustment can differ across models, so deployment structures and operating controls need to be evaluated jointly for the target model and workload. Identifying suitable configurations under these conditions requires extensive measurements, but each measurement is costly. Each trial incurs lifecycle overhead from deployment, warmup, workload re-play, and telemetry collection, and failed trials consume budget too. Our audited A6000 spaces con-tain 2,700–22,950 statically legal candidates, while 16 search attempts cover only 0.070–0.593%. Such sparse coverage makes it difficult to learn the energy and feasibility of unmeasured configu-rations solely from observed outcomes. The practical problem is therefore to identify low-energy, SLO-feasible configurations in a structured search space using a limited measurement budget. Prior systems establish the value of coordinated provisioning and frequency control. AFD systems study resource partitioning and communication-aware execution (Zhu et al., 2025; Wu et al., 2026); DynamoLLM coordinates instance count, parallelism, and frequency (Stojkovic et al., 2024); and AFlex combines AFD provisioning with operator profiling and GPU frequency control (Hu et al., 2026). Our focus is how to select energy-efficient, SLO-feasible configurations when measurements for the target deployment are limited. A black-box energy surrogate without pipeline information must learn configuration effects primarily from sparse observations. AFD, however, exposes use-ful structure before search begins: configuration rules constrain legal deployments, and pipeline dependencies shape how operating controls affect energy. The key question is how to incorporate this information into an energy prior that helps identify promising feasible configurations within the available measurement budget. We present Energy-Oriented Configuration Optimization (ECO) to address this question. To our knowledge, ECO is the first design-space exploration framework jointly searching AFD struc-tures and GPU frequencies under a limited measurement budget. As search proceeds, stage records from measured configurations calibrate structure-specific stage behavior. ECO propagates predicted stage times through pipeline dependencies and combines the resulting timing estimates with cali-brated GPU power to estimate serving energy. A Gaussian process (GP) learns residual prediction errors from completed trials, refining the prior with measured outcomes. Building on constrained and cost-aware Bayesian optimization (Gelbart et al., 2014; Gardner et al., 2014; Snoek et al., 2012), ECO’s cost-aware constrained Bayesian optimization (C 2BO) prioritizes candidates according to ex-pected energy improvement while accounting for SLO feasibility, execution success, and evaluation cost. Acquisition-based choices are interleaved with structure and single-control probes that sup-ply calibration data within the same search allowance. ECO returns the lowest-energy measured configuration that passes the execution and SLO eligibility checks, with its settings fixed during subsequent serving. Our contributions are as follows: 2Preprint Q/4 Q/8 D/8             
+
+> Model / GPU budget
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Candidates (log)
+> 2,700 15,525 22,950
+> 16 trials
+> 0.593% 0.103% 0.070%
+> Enumerated Legal
+> 2010 2100
+> FFN clock (MHz)
+> 32/512 64/1024
+> DBO thresholds 53.97 × 54.54 × 53.86 × 53.13
+> Energy (kJ) 4/4 4/8 8/8 8/16
+> GPU budget / load (req/s)
+> 02468
+> Active GPUs
+> 2:2
+> Q
+> 2:1
+> D
+> 2:2
+> Q
+> 2:1
+> D
+> 4:2
+> Q
+> 4:1
+> D
+> 4:2
+> Q
+> 5:1
+> D
+> Attention FFN
+> 1560 2100
+> Clock (MHz)
+> ● A □ F
+> Qwen DeepSeek
+> 816
+> Load (req/s)
+> 20 60
+> Energy (kJ)
+> 38.1 53.0 19.8 21.4
+
+Figure 2: AFD configuration characterization on A6000. From left to right: search-space size, DBO–frequency interaction, selected allocations, and selected clocks and energy across loads. • Configuration characterization. We characterize AFD’s deployment hierarchy, present an exam-ple of structure-dependent frequency behavior, and examine model- and load-dependent configura-tion selections. Exact validator counts quantify search-space coverage under measurement budget. • Structure-guided optimization. We develop ECO for budgeted AFD configuration search. ECO combines a calibrated stage-and-pipeline energy prior with GP residual correction and cost-aware constrained Bayesian optimization to guide the selection of physical measurements. • Empirical evaluation. We evaluate ECO with Qwen and DeepSeek on A6000 and A100 GPUs. Across all 16 scenarios, the frozen configurations, evaluated on disjoint requests, reduce serving energy by 40.5% and increase output token rate by 20.7% on average relative to Default on the same held-out requests, with scenarios weighted equally, while meeting the fixed scenario SLOs. Ablations examine the effects of energy modeling, joint tuning, and cost-aware acquisition. • Deployment insights. We examine the selected configurations to derive deployment insights into configuration reuse, asymmetric GPU allocation, and service headroom in the tested scenarios. 
+
+2 AFD C ONFIGURATION LANDSCAPE 
+
+AFD places attention and expert FFN computation on separate GPU groups. Microbatches follow the attention–dispatch–FFN–combine pipeline across layers and can overlap when resources permit (Figure 1). This section examines how deployment structures and operating controls interact through the pipeline, how configuration choices depend on one another, and how model and load affect configuration selection under fixed SLOs. 
+
+Motivation 1: Structure–control coupling. A role’s frequency affects both its power and the timing of dependent stages. Slowing attention can delay FFN execution, while slowing FFN can delay the next layer. A local power reduction can therefore extend the time during which other GPUs consume power, so its effect on total serving energy depends on how delays propagate through the pipeline. DBO thresholds control when two microbatches overlap, and overlap and shared resources shape this propagation (Yu et al., 2022; Agrawal et al., 2024). Consequently, isolated operator energy profiles do not capture the full serving response. The matched Qwen measurements at 16 requests/s in Figure 2 illustrate this dependence. With other settings fixed, raising the FFN clock target from 2010 to 2100 MHz increases energy under DBO thresholds (32 , 512) but decreases it under (64 , 1024) . The difference between these two energy changes is −1.303 kJ (Appendix D). Each cell contains one observation, however, and three cells violate the throughput SLO; repeated measurements are needed to distinguish the interaction from run-to-run variation. We use this local reversal as motivation for evaluating operating controls within their deployment structure. 
+
+Motivation 2: Hierarchical configuration space. GPU allocation constrains the parallelism avail-able to each role. Let NA and NF denote the numbers of attention and FFN GPUs. Tensor par-allelism (TP) partitions computation, data parallelism (DP) distributes request batches, and expert parallelism (EP) distributes experts. In our backend, TP r must divide Nr , DP r = Nr /TP r for 
+
+r ∈ { A, F }, and EP F = NF ; allocation additionally requires NA ≥ NF and NF | NA. For example, 4A+2F admits attention TP degrees {1, 2, 4} and FFN TP degrees {1, 2} before model and memory checks. Energy optimization must therefore respect the dependencies that define valid deployment structures and evaluate operating controls within those structures. Figure 2 reports the resulting search-space sizes. Static checks leave 2,700–22,950 candidates across the audited A6000 3Preprint User Inputs Serving Engine ECO: AFD Configuration Search with C²BO Search workload Energy + SLOs GPU / search budgets            
+
+> Launch · warm up · replay ADFC
+> AFD execution Service metrics · power · stage records
+> 7Initialize Search 1
+> Validate · measure reference
+> Deployment structure
+> Allocation · TP · DBO
+> Operating controls
+> Frequency · power cap
+> Observations 3
+> Energy · service metrics Execution outcomes Stage times · trial cost
+> Update Predictive Models 4Stage-based energy prior
+> A→D→F→C + power
+> + GP residual correction Service GPs
+> TTFT · TPOT · throughput Execution & cost models
+> Suggest a Configuration 6
+> Structure / control probes Acquisition ranking + screening Revisit deferred candidates
+> Cost-Aware Acquisition 5
+> Expected energy improvement × P(SLO feasible) × P(execution success) Predicted evaluation cost (GPU-hours)
+> 2
+> Predict energy, feasibility & cost Config. Measurement feedback
+> 8
+> Search ends
+> 9Freeze lowest-energy measured feasible configuration Held-out evaluation
+
+Figure 3: ECO workflow. Stage profiling calibrates the energy prior; trial outcomes update predic-tive models. C 2BO selects configurations on the fixed search workload. The final choice is frozen before independent held-out replay, which supplies the main results. settings, while 16 search attempts cover only 0.070–0.593%. These checks establish static legality; execution success and SLO feasibility still require measurement (Appendix D). The resulting sparse coverage motivates using known configuration structure to guide the limited physical evaluations. 
+
+Motivation 3: Model and load dependence. The two rightmost panels of Figure 2 compare the best feasible configurations found for Qwen (Q) and DeepSeek (D). Under an eight-GPU budget, increasing load from 8 to 16 requests/s leaves Qwen’s 4A+2F deployment structure and power caps unchanged, but raises attention/FFN clocks from 1560/1560 to 2100/1920 MHz. DeepSeek instead changes allocation from 4A+1F to 5A+1F while retaining 1560/1560 MHz clocks. These selections show different deployment structures and operating controls across models as load increases, moti-vating their joint evaluation for the target workload. They are the best feasible configurations found under limited search budgets, rather than established global optima, and do not isolate the causal effect of individual configuration choices. Together, these observations and configuration constraints motivate ECO’s design: pipeline cou-pling motivates a stage-and-pipeline energy prior; the configuration hierarchy motivates structure-conditioned search; model and load dependence motivates stage calibration on the target workload; and sparse physical coverage motivates combining the prior with residual correction as measure-ments become available. 
+
+3 PROBLEM FORMULATION 
+
+Configuration space. Given an LLM, a GPU budget G, a target workload W, and SLO targets, we search for a static configuration x = ( s, u ). The deployment structure s = ( NA, N F , TP A, TP F , b )
+
+specifies the GPU allocation and tensor parallelism of each role, together with a DBO setting b
+
+that includes its enabled state and active decode/prefill thresholds. The operating controls u =(fA, f F , p A, p F ) specify per-role frequencies and power caps. DP and EP are derived from the structure under the backend’s rules; placement and other serving settings remain fixed. Let S contain deployment structures that satisfy known static constraints on allocation, divisibility, model compatibility, memory, hardware, and backend support, including 1 ≤ NF ≤ NA, NA +
+
+NF ≤ G, and NF | NA. For each structure s, let U(s) contain operating controls permitted by its assigned hardware and static constraints. The search domain is X = S
+
+> s∈S
+
+ {s} × U (s). Structures may share the same operating-control grid while exhibiting different energy and service responses. Table 1 specifies the experimental grids; DBO thresholds are active only when DBO is enabled. Membership in X establishes static legality, not execution success or SLO feasibility. 
+
+Energy and feasibility. Serving energy E(x; W) integrates power across the active GPUs from the first request submission to the last response completion, including waiting periods (Appendix A.3). The feasible set FW ⊆ X contains configurations that execute successfully, denoted by v(x; W) = 1, and meet all applicable service targets: p90 time to first token (TTFT) and time per output token (TPOT) must not exceed their thresholds, and output token rate must satisfy R(x; W) ≥ Rmin .Scenarios with a time-between-tokens (TTBT) constraint additionally require p90 TTBT to remain 4Preprint within its fixed threshold. We call these quantities service metrics and their SLO requirements ser-vice constraints. All thresholds remain unchanged throughout search. Energy, execution success, and service metrics are unknown for unmeasured configurations and must be estimated from mea-surements of the target workload. 
+
+Measurement budget. A search policy selects configuration xt using observations available before attempt t. Each attempt incurs cost ct in GPU-hours for deployment, warmup, replay with telemetry, and cleanup, including failed attempts. We allow n ≤ K search attempts and count initialization probes toward K. A shared preparation measurement is charged separately: the experiments use 
+
+K = 16 search attempts plus one preparation evaluation, for 17 charged evaluations in total. If preparation costs Cprep GPU-hours, the nominal time-budget constraint is Cprep + Pnt=1 ct ≤ B.Trial cost depends on the preceding configuration and is uncertain before execution. ECO admits a trial only if an attempt remains and its predicted cost fits the remaining GPU-hour budget. If actual cost overruns this budget, ECO records the full cost and launches no further trials. Search quality is the lowest feasible energy physically evaluated on W within this accounting. 
+
+Final selection. Let Mn contain the measured configurations eligible under the execution and SLO checks, with repeated measurements aggregated as described in Appendix B.1. Search returns 
+
+ˆxn ∈ arg min 
+
+> x∈M n
+
+En(x; W), (1) where En(x; W) is the measured mean serving energy of configuration x on the target workload. If 
+
+Mn is empty, search reports that no feasible configuration was found. We freeze this selection and evaluate it on disjoint held-out requests. These replay measurements provide the main comparison between methods; they do not affect search or selection. 
+
+4 ECO M ETHODS 
+
+ECO calibrates structure-specific stage responses, propagates timing through the pipeline, and learns residual energy error (Figure 3). After candidate validation and a reference measurement, C 2BO updates its predictive models to select each trial. All trials use the same fixed search workload. We reserve calibration for fitting ECO’s stage responses within the search budget. ECO returns the lowest-energy measured feasible configuration. 4.1 PREDICTIVE MODELS 
+
+The energy surrogate combines a calibrated stage-and-pipeline prior with GP residual correction. Calibration fits each deployment structure s separately because stage responses to operating controls 
+
+u are structure dependent. 
+
+Stage-time model. We decompose each layer into Attention ( A), dispatch ( D), FFN ( F ), and combine ( C). Within each structure, nonnegative least squares fits stage duration to prefill and decode token counts. Paired measurements that vary one operating control estimate its effect on stage time. Multiple changes combine these local responses unless calibration identifies a joint effect; unidentified effects and extrapolation increase prior uncertainty. Appendix B.2 gives the fitting equations and implementation details. 
+
+Pipeline and energy model. First-in, first-out (FIFO) simulator propagates predicted stage times through a finite number of in-flight microbatches, capturing execution time. An operation starts when its predecessor has completed and its resource is free: Fo = max {Fpred( o), A res( o)} + bso,where Fo is operation o’s finish time and Ares( o) is its resource’s availability time. This recurrence propagates local timing changes through dependencies and resource contention. A microbatch enters the next layer only after combine, and two communication directions share resource by default. The completion time bTpipe gives the capacity estimate bC = Nref / bTpipe , where Nref is the calibrated number of requests per pipeline unit. For N requests at arrival rate λ, the log-energy prior is 
+
+m0(x) = log N bP (x)min {λ, bC(x)}
+
+!
+
+. (2) 5Preprint Table 1: Configuration ranges on A100 and A6000.                                          
+
+> Parameter A100-SXM4 A6000 Allocation (NA, N F)1≤NF≤NA,NA+NF≤G,NF|NA
+> Parallelism (TP r,DP r,EP F)TP r|Nr,DP r=Nr/TP r,EP F=NF
+> Decode/prefill thresholds (16 ,256) ,(32 ,512) ,(64 ,1024)
+> Frequency / power cap 1050, 1170, 1290, 1350, 1410 MHz 200, 250, 300, 350, 400 W/GPU 1560, 1740, 1920, 2010, 2100 MHz 200, 250, 300 W/GPU
+
+Here bP (x) is calibrated total GPU power, bounded by the configured caps, and time is in seconds. The effective processing rate is limited by arrival rate or pipeline capacity. This approximation ranks candidates by energy; separate service models predict SLO feasibility. 
+
+GP correction. The GP learns the prior’s error from completed trials. With prior log-energy mean 
+
+m0 and uncertainty s0 > 0, the residual target for successful measurement i is yi = (log Ei −
+
+m0(xi)) /s 0(xi). For residual posterior mean μh(x) and standard deviation σh(x), the corrected prediction is μE (x) = m0(x) + s0(x)μh(x) with σE (x) = s0(x)σh(x). Prior updates trigger recomputation of all residual targets before refitting. Appendix B.2 specifies GP inputs and kernel. 
+
+Service and execution models. Separate GPs model log ratios of latency to its upper limit and the throughput floor to achieved throughput; nonpositive values satisfy the constraints. Additional SLOs follow the same convention (Appendix B.2). Completed runs, including SLO violations, provide targets for predicting means μj (x) and standard deviations σj (x). Execution probability pexec (x)
+
+uses smoothed, similarity-weighted success and failure counts. Failed runs update this estimate but supply no energy or latency targets. 4.2 ACQUISITION FUNCTION 
+
+The acquisition function weighs expected energy improvement by feasibility and evaluation cost. Under an independence approximation for the constraint predictions, SLO feasibility is estimated as 
+
+pSLO (x) = Q 
+
+> j∈J
+
+Φ( −μj (x)/σ j (x)) , where J contains all applicable service constraints and Φ is the standard normal cumulative distribution function. This probability guides exploration; measured outcomes determine final feasibility. C2BO scores feasibility-weighted expected energy improvement per GPU-hour as 
+
+a(x) = E[( E⋆ − E(x)) +] pSLO (x) pexec (x)
+
+bc(x) . (3) Here E⋆ is the best measured feasible energy, (u)+ = max( u, 0) , and bc(x) is predicted trial cost in GPU-hours. The expectation uses the log-normal energy posterior. Until a feasible configuration is found, C 2BO omits the improvement term and scores feasibility per unit cost. The initial cost estimate accounts for GPU allocation and trial lifecycle costs, including configuration switching. A GP corrects it using observed GPU-hours from successful and failed trials. Candidates whose predicted cost exceeds the remaining budget are excluded from the next trial. 4.3 CANDIDATE FILTERING AND SELECTION 
+
+Filter candidates and schedule measurements. C2BO removes configurations that violate static constraints; for example, 3A+2F violates NF | NA. Execution success must still be established by measurement. After the reference, C 2BO interleaves acquisition choices with untried structures and single-control probes, such as varying only the Attention clock to estimate its stage-time response. Power-cap probes require evidence that the cap could affect execution. Appendix B.4 specifies the measurement policy. 
+
+Rank candidates and select the final configuration. C2BO defers candidates whose optimistic predictions violate an SLO or exceed the best measured feasible energy by a margin, then measures the remaining candidate with the highest acquisition score (Equation 3). Periodic tests, model up-dates, and an empty active pool trigger reconsideration, preventing permanent exclusion from early prediction errors. ECO updates its predictive models using available trial measurements and execu-tion outcomes. It returns the lowest-energy measured feasible configuration, or reports none, and 6Preprint 4 8 8 16 0% 20% 40% 60% 80% 100%                                  
+
+> Reduction vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (a) TTFT
+> 48816 −10% 0% 10% 20% 30% 40% 50%
+> Reduction vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (b) TPOT
+> 48816 0% 20% 40% 60%
+> Increase vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (c) Token Rate
+> 48816 0% 20% 40% 60%
+> Reduction vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (d) Energy
+> GA BO ECO 48816 0% 20% 40% 60% 80% 100%
+> Reduction vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (a) TTFT
+> 48816 −10% 0% 10% 20% 30% 40% 50%
+> Reduction vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (b) TPOT
+> 48816 0% 20% 40% 60%
+> Increase vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (c) Token Rate
+> 48816 0% 20% 40% 60%
+> Reduction vs. Default
+> 4×A6000 8×A6000
+> Offered load (requests/s)
+> (d) Energy
+> GA BO ECO
+
+Figure 4: A6000 vs. Default on the same held-out requests: Qwen (top), DeepSeek (bottom). Higher is better. freezes the settings before the independent held-out replay. Appendix B.1 specifies measurement eligibility and aggregation; held-out measurements do not update search. 
+
+5 EXPERIMENTAL EVALUATION 
+
+We evaluate Qwen3.6-35B-A3B (Qwen Team, 2026) and DeepSeek-V2-Lite-Chat (DeepSeek-AI, 2024) using vLLM 0.26.0 (Kwon et al., 2023) with AFD on A100-SXM4 (80 GB) and A6000 (48 GB) GPUs. On each platform, both models use four-GPU pools at 4/8 requests/s and eight-GPU pools at 8/16 requests/s. ECO, constrained BO, and GA independently search the same fixed 200-request workload constructed from the Splitwise Azure trace (Patel et al., 2024b). For each sce-nario, we repeat each method’s search with multiple random seeds and report averages across these independent runs. Each run allows 16 physical search trials, including initialization probes and fail-ures, plus one shared preparation evaluation charged separately (17 evaluations per run in total). Search and held-out replays use real text prompts from replay files; request identities, prompts, to-ken lengths, and arrival schedules are identical across methods within each split. BO uses a constant energy prior. Default uses the full GPU pool with equal Attention and FFN groups, while selected configurations may use fewer GPUs. SLO thresholds are fixed before search at 105% of historical Default latency and 95% of historical Default throughput, serving as latency ceilings and through-put floors, respectively. TTBT constraints apply where specified, and all thresholds remain fixed during held-out evaluation. In each run, each method freezes its lowest-energy measured feasible configuration before replaying 200 disjoint held-out requests. Default is rerun on the same held-out requests and arrival schedule to provide the comparison denominators. Figures 4 and 5 report p90 TTFT/TPOT, output tokens/s, and serving energy from these replays; held-out results do not affect configuration selection. Appendix A details the measurement protocol, and Appendix B.5 specifies BO and GA settings. 5.1 RESULTS 
+
+Energy savings across platforms. ECO reduces energy relative to Default in all 16 scenarios and achieves the lowest energy among the three search methods in 15 (Figures 4 and 5). Across all 16 scenarios on A6000 and A100, its mean energy reduction is 40.5% and its mean output-token-rate increase is 20.7%, with each scenario weighted equally. Across the eight A6000 scenarios, selected feasible energy averages 33.1% below BO and 25.8% below GA. On A6000, Qwen’s four-GPU se-lections improve latency and token rate, whereas its eight-GPU selections operate near the through-put floor; DeepSeek improves the plotted service metrics, but GA slightly outperforms ECO’s energy at the higher eight-GPU load. On A100, ECO achieves the lowest energy in every setting while im-proving latency and token rate over Default. GA sometimes improves service metrics further without 7Preprint 4 8 8 16 −40% 0% 40% 80%                                  
+
+> Reduction vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (a) TTFT
+> 48816 −10% 0% 10% 20% 30% 40% 50%
+> Reduction vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (b) TPOT
+> 48816 0% 20% 40% 60%
+> Increase vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (c) Token Rate
+> 48816 −80% −40% 0% 40%
+> Reduction vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (d) Energy
+> GA BO ECO 48816 −40% 0% 40% 80%
+> Reduction vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (a) TTFT
+> 48816 −10% 0% 10% 20% 30% 40% 50%
+> Reduction vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (b) TPOT
+> 48816 0% 20% 40% 60%
+> Increase vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (c) Token Rate
+> 48816 −80% −40% 0% 40%
+> Reduction vs. Default
+> 4×A100 8×A100
+> Offered load (requests/s)
+> (d) Energy
+> GA BO ECO
+
+Figure 5: A100 vs. Default on the same held-out requests: Qwen (top), DeepSeek (bottom). Higher is better. matching ECO’s energy; for eight-GPU Qwen at the lower load, its higher token rate comes with greater energy use than Default. 
+
+Fewer attempts to reach the energy target. Figure 6 shows 16 search attempts per method for DeepSeek on four A6000 GPUs at 4 requests/s. Using GA’s best feasible energy, 30.93 kJ, as a common target, ECO reaches a feasible configuration at or below that energy after 4 attempts, versus 10 for BO and 9 for GA. Their lowest feasible energies are 17.39, 26.50, and 30.93 kJ, respectively. Appendix C details completed, SLO-feasible, and failed attempts. These trajectories compare search outcomes; matched ablations are needed to attribute differences to individual components. 5.2 ABLATION STUDY 
+
+The full surrogate finds lower-energy configurations. All three ablations use DeepSeek on four A100 GPUs. Full ECO finds the lowest feasible energy at every budget in Figure 7 (left). At budget 16, Full ECO uses 10.1% less energy than Constant prior + GP, which overtakes Mechanism prior only; Simplified pipeline + GP remains 9.2% above Full ECO. These variants respectively replace the mechanism prior with a constant, remove residual correction, or replace FIFO scheduling with a bottleneck approximation. The trends suggest that the prior guides early search, residual learning corrects persistent error, and pipeline scheduling improves energy estimates. 
+
+Joint tuning yields additional energy savings. Joint tuning saves 40.2% and 18.1% relative to each load’s Default at 4 and 8 requests/s in Figure 7 (middle), compared with 30.7% and 14.6% for se-quential tuning. The additional energy reduction over sequential tuning narrows from 13.7% to 4.1% at higher load. Sequential tuning fixes the deployment structure before adjusting operating controls, restricting the combinations considered in the second step; joint tuning retains the alternatives. 
+
+Cost awareness lowers energy under GPU-hour budgets. At 4 requests/s, Full ECO uses 21.1% and 10.8% less energy at budgets of 2.0 and 2.5 GPU-hours in Figure 7 (right), despite matching No-cost after six attempts. No-cost removes acquisition cost normalization. 5.3 KEY FINDINGS 
+
+Finding 1. Load growth can preserve the efficient allocation and clocks. On four A6000 GPUs, both models retain their selected GPU counts and clocks when the tested request rate doubles (Ta-ble 6). This suggests checking whether the existing allocation and clocks remain feasible before incurring a structural reconfiguration. Operating controls such as power caps can still require ad-justment within that structure. 
+
+Finding 2. Efficient AFD allocations can be strongly asymmetric. Under the eight-GPU budget, both models select Attention-heavy deployments. At higher load, DeepSeek adds Attention capacity while retaining its FFN pool. These selections motivate scaling the two GPU groups independently 8Preprint 1 4 8 12 16             
+
+> Search iteration
+> −100% −50% 0% 50%
+> Energy reduction
+> 14812 16
+> Search iteration
+> −50% −25% 0% 25%
+> Token rate increase
+> 14812 16
+> Search iteration
+> −5000% −500% −50% 0% 100%
+> TTFT reduction (symlog)
+> 14812 16
+> Search iteration
+> −20% 0% 20%
+> TPOT reduction ECO BO GA SLO pass SLO violation Execution failure SLO limit Default (0%)
+
+Figure 6: Search trajectories for DeepSeek on four A6000 GPUs at 4 requests/s. Trials use the same search workload; changes are relative to Default (higher is better). 4 8 12 16      
+
+> Search budget (attempts)
+> 050 100
+> Lowest feasible energy ↓
+> 76.59 66.88 62.85 61.18
+> 86.81 77.97 72.05 68.08 81.27 73.51 70.28 68.95 82.98 74.01 69.28 66.78
+> Full ECO Constant prior + GP Mechanism prior only Simplified pipeline + GP 48
+> Offered load (requests/s)
+> 0% 20% 40%
+> Energy saving vs. Default
+> 22.3% 10.5% 14.6% 4.8% 30.7% 14.6% 40.2% 18.1%
+> Structure only Operating only Sequential Joint 1.0 1.5 2.0 2.5
+> Search budget (GPU-hours)
+> 020 40 60
+> Lowest feasible energy (kJ)
+> 44.06 31.78 25.08 22.37 45.26 31.78 31.78 25.08
+> Full No-cost
+
+Figure 7: Ablations on DeepSeek with four A100 GPUs. Left to right: energy model, joint versus sequential tuning, and cost-aware acquisition. and comparing allocation ratios jointly with operating controls; they do not isolate the benefit of any single configuration choice. 
+
+Finding 3. Minimum measured energy can leave little service headroom. Both eight-GPU Qwen selections have less than 1% throughput headroom above the SLO floor. A deployment requiring additional service margin should encode that margin in the search constraints. Doing so changes the feasible set and can change the selected configuration and its energy savings; feasibility on the fixed search workload alone does not establish robustness to workload shifts or higher demand. 
+
+6 RELATED WORK 
+
+Power and energy management. POLCA supports cluster power oversubscription (Patel et al., 2024a); DynamoLLM jointly adjusts instance count, parallelism, and frequency (Stojkovic et al., 2024); DualScale coordinates placement and frequency control in prefill/decode disaggregation (Ba-sit et al., 2026). AFlex is closest to our setting, combining Attention–FFN provisioning and fre-quency control with offline operator profiles, global scheduling, and adaptive pipelining and batch-ing (Hu et al., 2026). Runtime approaches include throttLL’eM’s iteration-level performance predic-tion (Kakolyris et al., 2024) and GreenLLM’s separate prefill optimization and decode feedback con-trol (Liu et al., 2025). ECO uses AFD hierarchy and pipeline dependencies to select measurements under a limited search budget, returning a measured static configuration for the target workload. 
+
+Automatic configuration search. CherryPick uses BO for cloud configuration selection (Alipour-fard et al., 2017). For LLM inference, SCOOT combines single- and multi-objective BO, known-constraint pruning, hidden-constraint modeling, and parallel suggestions (Cheng et al., 2025). ECO builds on constrained BO for unknown feasibility (Gelbart et al., 2014; Gardner et al., 2014) and cost-aware BO for varying evaluation duration (Snoek et al., 2012). Its AFD-specific energy prior conditions stage responses on deployment structure and propagates pipeline timing before residual correction. Our characterization and model ablation evaluate the information this prior supplies. 
+
+7 CONCLUSION 
+
+ECO combines a calibrated stage-and-pipeline energy prior, residual learning, and cost-aware con-strained Bayesian optimization to jointly select AFD deployment structures and operating controls under a limited measurement budget. Across 16 A6000 and A100 scenarios, frozen configurations evaluated on disjoint requests reduce serving energy by 40.5% and increase output token rate by 20.7% on average relative to Default while meeting SLOs. Future work should evaluate separate adaptation schedules end-to-end and quantify their mechanisms through controlled attribution and stage-waiting measurements. 9Preprint 
+
+AI U SE STATEMENT 
+
+We used generative AI tools to assist with implementing portions of the code and polishing the writing of this manuscript. The authors take responsibility for the final code, experimental results, and manuscript, including content produced with AI assistance. 
+
+ETHICS STATEMENT 
+
+This work studies energy-efficient LLM serving while maintaining service-level objectives. Our experiments use real text prompts stored in the replay trace files, with request timing and token-length metadata from the Splitwise Azure trace. The study focuses on serving efficiency, with energy consumption and service quality evaluated together. 
+
+REPRODUCIBILITY STATEMENT 
+
+Section 5 describes the experimental setup, Appendix A specifies the workload and measurement protocol, and Appendix B details the search procedures and baseline settings. These sections doc-ument the implementation and configuration used in the experiments under the reported hardware and software settings. 10 Preprint 
+
+REFERENCES 
+
+Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav Gula-vani, Alexey Tumanov, and Ramachandran Ramjee. Taming throughput-latency tradeoff in LLM inference with Sarathi-Serve. In 18th USENIX Symposium on Operating Systems De-sign and Implementation (OSDI 24) , pp. 117–134. USENIX Association, 2024. URL https: //www.usenix.org/conference/osdi24/presentation/agrawal .Omid Alipourfard, Hongqiang Harry Liu, Jianshu Chen, Shivaram Venkataraman, Minlan Yu, and Ming Zhang. CherryPick: Adaptively unearthing the best cloud configurations for big data analytics. In 14th USENIX Symposium on Networked Systems Design and Implementation (NSDI 17) , pp. 469–482. USENIX Association, 2017. URL https://www.usenix.org/ conference/nsdi17/technical-sessions/presentation/alipourfard .Omar Basit, Yunzhao Liu, Z. Jonny Kong, and Y. Charlie Hu. DualScale: Energy-efficient disag-gregated LLM serving via phase-aware placement and DVFS, 2026. URL https://arxiv. org/abs/2602.18755v3 .Ke Cheng, Zhi Wang, Wen Hu, Tiannuo Yang, Jianguo Li, and Sheng Zhang. SCOOT: SLO-oriented performance tuning for LLM inference engines. In Proceedings of the ACM on Web Conference 2025 , pp. 829–839, 2025. URL https://arxiv.org/abs/2408.04323 .DeepSeek-AI. DeepSeek-V2: A strong, economical, and efficient mixture-of-experts language model, 2024. URL https://arxiv.org/abs/2405.04434 .Jacob R. Gardner, Matt J. Kusner, Zhixiang Xu, Kilian Q. Weinberger, and John P. Cunning-ham. Bayesian optimization with inequality constraints. In Proceedings of the 31st Inter-national Conference on Machine Learning , volume 32, pp. 937–945. PMLR, 2014. URL 
+
+https://proceedings.mlr.press/v32/gardner14.html .Michael A. Gelbart, Jasper Snoek, and Ryan P. Adams. Bayesian optimization with unknown con-straints, 2014. URL https://arxiv.org/abs/1403.5607 .Cunchen Hu, Liangliang Xu, Tian Liu, Min Lyu, Yongkun Li, Sa Wang, Shuo Quan, Yanan Yang, Wenda Tang, Yiduo Wang, Fu Yu, and Jie Wu. Energy-efficient LLM serving via disaggre-gated attention–FFN and flexible frequency scaling, 2026. URL https://arxiv.org/abs/ 2608.01891 .Andreas Kosmas Kakolyris, Dimosthenis Masouros, Petros Vavaroutsos, Sotirios Xydis, and Dim-itrios Soudris. SLO-aware GPU frequency scaling for energy efficient LLM inference serving, 2024. URL https://arxiv.org/abs/2408.05235 .Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management for large language model serving with PagedAttention. In Proceedings of the 29th Symposium on Operating Systems Prin-ciples (SOSP) , 2023. doi: 10.1145/3600006.3613165. URL https://arxiv.org/abs/ 2309.06180 .Qunyou Liu, Darong Huang, Marina Zapater, and David Atienza. GreenLLM: SLO-aware dynamic frequency scaling for energy-efficient LLM serving, 2025. URL https://arxiv.org/abs/ 2508.16449 .Pratyush Patel, Esha Choukse, Chaojie Zhang, ´ I˜ nigo Goiri, Brijesh Warrier, Nithish Mahalingam, and Ricardo Bianchini. Characterizing power management opportunities for LLMs in the cloud. In Proceedings of the ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS) , 2024a. URL https: //www.microsoft.com/en-us/research/publication/characterizing-power-management-opportunities-for-llms-in-the-cloud/ .Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, I˜ nigo Goiri, Saeed Maleki, and Ricardo Bianchini. Splitwise: Efficient generative LLM inference using phase splitting. In 
+
+Proceedings of the International Symposium on Computer Architecture (ISCA) , 2024b. URL 
+
+https://www.microsoft.com/en-us/research/publication/splitwise-efficient-generative-llm-inference-using-phase-splitting/ .11 Preprint Qwen Team. Qwen3.6-35B-A3B: Agentic coding power, now open to all, April 2026. URL 
+
+https://qwen.ai/blog?id=qwen3.6-35b-a3b .Samyam Rajbhandari, Conglong Li, Zhewei Yao, Minjia Zhang, Reza Yazdani Aminabadi, Am-mar Ahmad Awan, Jeff Rasley, and Yuxiong He. DeepSpeed-MoE: Advancing mixture-of-experts inference and training to power next-generation AI scale. In Proceedings of the 39th Interna-tional Conference on Machine Learning , volume 162, pp. 18332–18346. PMLR, 2022. URL 
+
+https://proceedings.mlr.press/v162/rajbhandari22a.html .Carl Edward Rasmussen and Christopher K. I. Williams. Gaussian Processes for Machine Learning .MIT Press, 2006. ISBN 978-0-262-18253-9. URL https://gaussianprocess.org/ gpml/ .Jasper Snoek, Hugo Larochelle, and Ryan P. Adams. Practical bayesian optimization of machine learning algorithms. In Advances in Neural Information Processing Sys-tems , volume 25, 2012. URL https://papers.nips.cc/paper/2012/hash/ 05311655a15b75fab86956663e1819cd-Abstract.html .Jovan Stojkovic, Chaojie Zhang, ´ I˜ nigo Goiri, Josep Torrellas, and Esha Choukse. DynamoLLM: Designing LLM inference clusters for performance and energy efficiency, 2024. URL https: //arxiv.org/abs/2408.00741 .Hanjiang Wu, Abhimanyu Rajeshkumar Bambhaniya, Sarbartha Banerjee, Tuhin Khare, Sudar-shan Srinivasan, Suvinay Subramanian, Souvik Kundu, Madhu Kumar, Midhilesh Elavazhagan, William Won, Amir Yazdanbakhsh, and Tushar Krishna. How far can disaggregation go? adesign-space exploration of attention-FFN disaggregation for efficient MoE LLM serving, 2026. URL https://arxiv.org/abs/2605.28302 .Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and Byung-Gon Chun. Orca: A distributed serving system for Transformer-Based generative models. In 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI 22) , pp. 521–538. USENIX Association, 2022. URL https://www.usenix.org/conference/osdi22/ presentation/yu .Ruidong Zhu, Ziheng Jiang, Chao Jin, Peng Wu, Cesar A. Stuardo, Dongyang Wang, Xinlei Zhang, Huaping Zhou, Haoran Wei, Yang Cheng, Jianzhe Xiao, Xinyi Zhang, Lingjun Liu, Haibin Lin, Li-Wen Chang, Jianxi Ye, Xiao Yu, Xuanzhe Liu, Xin Jin, and Xin Liu. MegaScale-Infer: Serving mixture-of-experts at scale with disaggregated expert parallelism, 2025. URL 
+
+https://arxiv.org/abs/2504.02263 .12 Preprint 
+
+A APPENDIX 
+
+The static configurations in Sections 3–5 fix the deployment structure and operating controls for each serving replay. We use A for attention and F for FFN computation, with E denoting expert GPUs in deployment descriptions. A.1 WORKLOADS AND DEPLOYMENT SETTINGS 
+
+We evaluate 16 scenarios: two models on two GPU platforms, each with the four GPU-budget/load pairs in Table 2 (Section 5). The GPU budget G bounds the selected allocation, NA + NF ≤ G. A configuration using six GPUs can therefore be selected under the eight-GPU budget, G = 8 .Table 2: Scenario grid, repeated for both models on both platforms. Each scenario uses a fixed 200-request search workload constructed from the Splitwise Azure trace, eight warmup requests, and a separate 200-request held-out replay. TTFT, TPOT, and output token rate are constrained in every scenario.                        
+
+> GPU budget GLoad (requests/s) Default NADefault NFTTBT constraint 4422No 4822Yes 8844Yes 816 44Yes
+
+We construct the replay workload from request arrival times and input/output token lengths recorded in the Splitwise Azure trace (Patel et al., 2024b). Both the search and held-out workloads use real text prompts read from the replay trace files. The requested output length is capped at 128 tokens, using the smaller of the recorded output length and this cap. Generation uses temperature zero and disables end-of-sequence termination so that early stopping does not change the requested workload. Requests follow a predetermined submission schedule, allowing arrivals to overlap with ongoing generation. All methods in a scenario receive the same prompt texts and request schedule within each split; the held-out replay uses separate request identities with the matched arrival schedule specified in Section 5. For each scenario, we repeat ECO, constrained BO, and GA searches with multiple random seeds, maintaining independent search histories for each run. The fixed search workload defines the objec-tive for physical configuration trials. ECO also uses trial measurements for stage profiling, model updates, and later search decisions. The eight warmup requests come from the search workload and are excluded from serving metrics. SLO thresholds are fixed from the historical Default before search. In each run, we freeze the selected configuration before the independent held-out replay; the reported comparisons average results across these independent search seeds. Held-out observations never update the optimizer or change its selection. Matched arrival schedules isolate the change in request sample; this replay does not test shifts in offered load. Replay files must retain source request identities: changing a file name or arrival rate does not create a disjoint request set. Table 1 specifies the operating-control grids. Operating controls apply per GPU within each role, so attention and expert GPUs may use different settings. The derived parallel degrees satisfy 
+
+DP r = Nr /TP r and EP F = NF . These algebraic conditions are checked together with model divisibility and backend support. DBO uses two microbatches when its decode or prefill thresh-old is reached; enabling DBO does not imply that every batch is split. Default enables DBO with thresholds (32 , 512) and uses 1410 MHz/400 W on A100 or 2100 MHz/300 W on A6000. A.2 LATENCY , T HROUGHPUT , AND SLO S
+
+Latency is measured at the serving client. For request i, let ai be its actual submission time, ui its first-token arrival time, di its response completion time, and ni its completed output-token count. The request-level metrics, in seconds, are 
+
+TTFT i = ui − ai, TPOT i = di − ui
+
+max( ni − 1, 1) . (4) 13 Preprint We compute LTTFT and LTPOT as the p90 values across requests, converting to milliseconds where reported. Quantiles use linear interpolation between adjacent sorted observations: for m values and quantile q, the fractional zero-based index is q(m − 1) . TPOT is computed for each request before taking the percentile. TTBT measures individual token-arrival intervals within a request. Let ui,j be the client arrival time of output token j. We pool the intervals ui,j +1 − ui,j across requests and take their p90. Tokens delivered in the same streaming event share a timestamp, so stream coalescing affects this measurement. TPOT instead averages each request’s post-first-token duration. Scenarios with a TTBT constraint check both metrics separately. The serving interval is T = max i di − min i ai, and output token rate is R = P 
+
+> i
+
+ni/T . The superscript b denotes the baseline used only to set SLO thresholds, measured in the historical Default run for the same model, GPU platform, GPU budget, and offered load. We set the fixed SLO thresholds from these baseline latencies and output token rate: 
+
+τTTFT = 1 .05 Lb
+
+> TTFT
+
+, τTPOT = 1 .05 Lb
+
+> TPOT
+
+,τTTBT = 1 .05 Lb
+
+> TTBT
+
+, Rmin = 0 .95 Rb.
+
+(5) The TTBT threshold adds an acceptance condition for the rows marked Yes in Table 2. All applicable thresholds must be met and remain fixed throughout search and held-out replay. A.3 ENERGY ACCOUNTING AND RESULT NORMALIZATION 
+
+Serving energy integrates power measured through the NVIDIA Management Library (NVML) from the first request submission to the last response completion: 
+
+E(x; W) = 
+
+Z T (x;W)0
+
+X
+
+> g∈G (x)
+
+Pg (t) dt, (6) where G(x) is the active GPU set, Pg (t) is measured GPU power, and T is the same interval used for output token rate. Energy includes idle and waiting periods on the selected GPUs and excludes GPUs outside that allocation. Model loading and warmup precede the serving window. Power caps limit the operating point; the energy calculation uses the measured power samples. A usable trial must complete all requests and pass output and telemetry checks. Request logs de-termine the measured interval and output count; power records establish coverage of that interval. Failed launches, incomplete responses, and invalid measurements consume search attempts but can-not qualify as low-energy results. Search cost includes all reserved GPU time over the full trial lifecycle, including failed trials and any overrun by an ongoing trial. We rerun Default on the same 200 held-out requests and arrival schedule as each frozen search-selected configuration. Let M D,h denote a metric from this Default replay, and M x,h the cor-responding metric for the selected configuration. For each seed, the energy or latency percent-age change is 100(1 − M x,h /M D,h ); for output token rate it is 100( Rx,h /R D,h − 1) . Posi-tive values indicate improvement. The historical measurements M b in Section A.2 set the SLO thresholds before search; the held-out Default measurements supply the comparison denominators. Consequently, the fixed latency threshold appears at 100(1 − τ /M D,h ) and the throughput floor at 100( Rmin /R D,h − 1) , which need not equal −5% . Within each search run, all metrics for a method/scenario come from the held-out replay of that run’s frozen configuration. For each scenario q, we average percentage changes over the independent search seeds, denoting the mean energy reduction by ∆Eq and the mean output-token-rate increase by ∆Rq . We then summarize all 16 model/platform/GPU-budget/load scenarios with equal weight: 116 
+
+P16  
+
+> q=1
+
+∆Eq ≈
+
+40 .5% and 116 
+
+P16  
+
+> q=1
+
+∆Rq ≈ 20 .7% . Each four- and eight-GPU scenario contributes once to these averages. 14 Preprint 
+
+B SEARCH AND SELECTION DETAILS 
+
+B.1 MEASUREMENT OUTCOMES AND CONFIGURATION ELIGIBILITY 
+
+For each method and random seed, the 16-attempt search allowance counts all in-search candidate evaluations, including initialization probes and failures. Preparation is charged separately as one evaluation and its GPU-hour cost; a completed 16-attempt search therefore has 17 charged evalua-tions in total, using the accounting in Section 3. Methods share the workload and service thresholds while maintaining independent search histories. Generic constrained BO uses the constant energy prior specified in Section 5. ECO uses the stage-based prior and search rules in Section 4. Table 3 lists the model feedback and selection consequences for each outcome. Table 3: Use of trial outcomes in ECO. Feasibility is determined by the complete scenario-specific SLO rule.   
+
+> Outcome Model feedback Final-selection consequence Execution or measurement failure Execution outcome and incurred cost; no energy or service target for the GPs. Ineligible; still consumes an attempt. Completed, SLO-violating trial Measured energy, service metrics, execution success, and cost. Retained in search history; SLO eligibility is checked at configuration level. Completed, SLO-feasible trial Measured energy, service metrics, execution success, and cost. Can become the incumbent after configuration-level eligibility checks.
+
+Within each search run, ECO averages energy and service metrics across repeated attempts of the same configuration. Latency aggregation uses the per-run p90 values, rather than a percentile of pooled request samples. Eligibility requires every attempt to succeed and the averaged service met-rics to meet all applicable SLOs. ECO returns the eligible configuration with the lowest mean energy; a low-energy trial that violates a constraint cannot by itself replace the feasible incumbent. B.2 SURROGATE IMPLEMENTATION DETAILS 
+
+Following Section 4.1, we fit the stage-time model separately for each measured deployment struc-ture s. Within a fixed structure, the base model for stage k at a measured operating point is 
+
+bs0 
+
+> k
+
+= bk + apknp + adknd, bk, a pk, a dk ≥ 0, (7) where np, n d are prefill and decode tokens per microbatch. The coefficients are specific to the fixed structure and are fitted to its calibration stage records by nonnegative least squares. For control uj
+
+and reference u0 
+
+> j
+
+, the local response is bsk(uj ) = sk(u0 
+
+> j
+
+)( uj /u 0 
+
+> j
+
+)−ηkj . We fit ηkj from paired log time ratios, keeping the deployment structure and all other operating controls fixed, as in Section 4.1. Multiple control changes combine these local responses unless calibration identifies a joint effect. Unidentified effects and extrapolation increase prior uncertainty. When query-context records are available, the Attention stage model uses the total context length across queries to predict the slowest participating rank’s service time. Routing imbalance adjusts FFN time, and transferred bytes scale dispatch and combine times. Positive calibration residuals provide an empirical margin against underprediction. In the pipeline simulator, calibration service weights distribute fitted stage totals across layers; missing layer records use uniform weights. The residual GP takes normalized log operating controls, a one-hot encoding of deployment struc-ture, and stage times normalized by the longest stage as inputs. It uses a Mat´ ern-5/2 kernel (Ras-mussen & Williams, 2006). Service GPs predict normalized constraints: 
+
+g1 = log LTTFT 
+
+τTTFT 
+
+, g2 = log LTPOT 
+
+τTPOT 
+
+, g3 = log Rmin 
+
+R . (8) 15 Preprint Feasibility requires each value to be nonpositive. Additional scenario-specific constraints, including TTBT, use the same normalization. Training includes completed SLO-violating runs, but excludes execution failures. B.3 EXPECTED IMPROVEMENT IN ENERGY UNITS 
+
+The energy GP predicts log energy, whereas the improvement term in Equation 3 is measured in joules. Let Z = log E ∼ N (μE , σ 2 
+
+> E
+
+) at a candidate and let E⋆ > 0 be the current feasible incumbent energy. For σE > 0, define z = (log E⋆ − μE )/σ E . Integrating the log-normal posterior gives 
+
+EI E =
+
+Z log E⋆
+
+> −∞
+
+(E⋆ − et) 1
+
+σE
+
+ϕ
+
+ t − μE
+
+σE
+
+
+
+dt 
+
+= E⋆Φ( z) − exp 
+
+
+
+μE + σ2
+
+> E
+
+2
+
+
+
+Φ( z − σE ),
+
+(9) where ϕ and Φ are the standard normal density and cumulative distribution function. The zero-variance limit is max( E⋆ − exp( μE ), 0) . Multiplying this expectation by the predicted SLO and execution probabilities and dividing by predicted GPU-hours yields the acquisition in the main text. Before a feasible incumbent exists, selection uses feasibility per unit cost as specified in Section 4.2. When calibration records change the stage model, ECO recomputes the prior prediction and residual target for every successful observation before refitting the GP. Each target is (log Ei −
+
+m0(xi)) /s 0(xi), as defined in Section 4.1, so the GP learns the error of the updated prior. Com-pleted SLO violations supply residual targets; execution failures do not. B.4 MEASUREMENT ALLOCATION AND SCREENING DEFAULTS 
+
+Following Section 4.3, ECO interleaves acquisition-based choices with probes of untried structures and single-control probes after the reference measurement. A structure probe collects calibration records at one operating point of the new structure. A single-control probe changes one role’s frequency or power cap relative to a measured reference in the same structure, supplying the paired observations used in Section B.2. These probes update the corresponding structure’s model within the search allowance; a structure probe alone does not identify its control-response coefficients. A power-cap trial requires a cap at most 95% of the busiest GPU’s measured 95th-percentile power, so the cap could affect execution. Repeats normally wait until the final quarter of the allowance, except near measured SLO boundaries or when no new candidate remains. All probes and repeats launched during search count toward the 16-attempt search allowance; the shared preparation measurement is accounted for separately as specified in Section B.1. At acquisition steps, optimistic predictions use μ−2.5σ. Candidates are deferred if these predictions still violate an SLO or exceed the best measured feasible energy by more than 2%. ECO periodically tests deferred candidates and reconsiders them after model updates or when the active pool is empty. If acquisition scores numerically underflow, selection uses energy uncertainty weighted by SLO feasibility. Configurations that violate static constraints remain excluded; final eligibility depends on measured outcomes. B.5 BO AND GA B ASELINE CONFIGURATIONS 
+
+Shared protocol and initialization. Table 4 specifies the baseline settings used in each indepen-dent search run. Both methods search the scenario’s statically legal candidate set, use the same calibration workload and fixed SLO thresholds, and maintain independent observation histories. Each begins by measuring the designated reference configuration as its first search attempt. This measurement counts toward the 16 attempts, separately from the preparation charge in Section B.1. BO then starts acquisition-based selection, without an additional random initialization batch. GA fills a four-candidate initial population with the reference and three uniformly sampled, previously untried affordable candidates. Thus a complete GA run spends four attempts on initialization and twelve on offspring evaluations. Failed initial trials still consume attempts. For each scenario, the reported comparison averages results over multiple random seeds for each method, as specified in 16 Preprint Section 5. Each seed defines an independent search run with its own 16-attempt allowance and frozen configuration for held-out evaluation. Table 4: BO and GA settings for comparisons averaged over multiple random seeds. Budgets and initialization apply to each independent search run. The population size in GA is the number of retained candidates, not an additional evaluation budget.                                
+
+> Setting Constrained BO GA Initialization Reference, then acquisition Reference + 3 random candidates Search allowance per run 16 attempts 16 attempts Search seeds Multiple random seeds Multiple random seeds Maximum attempts per candidate 21Energy prior Constant log Eref , SD 1 No surrogate Constraint prior Mean 0, SD 0.5 Measured constraint domination GP kernel Mat´ ern-5/2, length scale 1 —GP observation noise Log-scale SD 0.05 —GP hyperparameter fitting Disabled —Population / tournament size —4 / 2 Crossover probability —0.9 per offspring Mutation probability —0.2 per gene Mechanism prior / screening Disabled / disabled Disabled / disabled
+
+Constrained BO: representation and fitting. The input concatenates a one-hot encoding of de-ployment structure with the four log frequency/cap values, each min–max normalized over the can-didate set. Mechanism-derived features are disabled. Energy uses a constant prior mean log Eref 
+
+and standard deviation 1, where Eref is the historical Default energy. Each normalized log-SLO constraint in Equation 8 has prior mean 0 and standard deviation 0.5. Independent GPs use a unit-amplitude Mat´ ern-5/2 kernel with fixed length scale 1, without hyperparameter optimization or target-mean normalization. With prior standard deviation s, the standardized target is (y − m)/s 
+
+and the diagonal noise variance is (0 .05 /s )2 + 10 −8. GPs are refitted after each completed observa-tion; successful SLO-violating runs contribute energy and constraint targets. Failed runs contribute execution and cost information but no fabricated energy or latency target. 
+
+Constrained BO: acquisition and repeats. BO enumerates eligible candidates and maximizes the energy-unit lognormal expected improvement in Appendix B.3, multiplied by SLO and execu-tion probabilities and divided by predicted GPU-hours. Before finding a feasible observation, it uses feasibility probability per predicted GPU-hour. SLO probability is the product of the indepen-dent constraint probabilities. Execution probability is (1 + P 
+
+> i∈S
+
+wi)/(2 + P 
+
+> i∈S∪F
+
+wi), where 
+
+S, F denote successful and failed trials and wi = exp( −∥ ϕ(x) − ϕ(xi)∥22) for the encoded input ϕ.Mechanism screening and ECO’s structure/control probe schedules are disabled. Candidates marked runtime-incompatible are excluded, and each candidate permits at most two attempts, including fail-ures. Acquisition ties prefer fewer previous attempts and then the lexicographically larger candidate identifier. If all scores are at most 10 −300 , selection maximizes energy uncertainty times SLO prob-ability, again breaking ties by candidate identifier. 
+
+Trial-cost prediction. Both implementations first exclude candidates whose predicted cost exceeds the remaining GPU-hour budget. Their base estimate is c0(x) = [teval Gx +
+
+d(x, x prev ) max( Gx, G prev )] /3600 , where Gx is the active GPU count and teval is the scenario-specific evaluation seconds stored in the archived configuration. The switching allowance d
+
+is 120 seconds for either a structure or control change and zero for an unchanged configuration; the first launch uses 120 seconds and Gprev = Gx. BO corrects c0 with a GP on measured log cost ra-tios, using prior standard deviation 0.5 and observation-noise standard deviation 0.25; its predicted log correction is clipped to [−3, 3] . GA uses c0 for affordability without fitting a cost GP or dividing fitness by cost. Actual GPU-hours include all lifecycle costs and failures. 
+
+GA: representation and fitness. GA is a steady-state search that evaluates one offspring at a time. Its seven genes are topology, the execution-mode/microbatch pair, the decode/prefill DBO-threshold pair, and the four operating controls. Topology and each paired setting are atomic genes. After initialization, the population is reconstructed as the best four previously evaluated candidates under a lexicographic fitness rule. Feasible candidates rank first by energy; completed infeasible candidates rank next by total normalized violation, with energy breaking ties; failed or invalid measurements 17 Preprint rank last. The violation is 
+
+V (x) = X
+
+> j∈L
+
+max 
+
+ Lj (x)
+
+τj
+
+− 1, 0
+
+
+
++ max 
+
+ Rmin 
+
+R(x) − 1, 0
+
+
+
+, (10) where L contains the scenario’s latency constraints. Candidate identifiers break remaining fitness ties. Fitness uses only this GA arm’s measured outcomes. 
+
+GA: selection, variation, and repair. Each parent is selected by a size-two tournament sampled without replacement; the second tournament excludes the first parent. With probability 0.9, uniform crossover independently chooses each gene from either parent with equal probability; otherwise the child copies the first parent. Each gene then mutates independently with probability 0.2 to a uniformly chosen alternative value present in the legal space. The child is repaired to an untried affordable legal candidate with minimum gene-wise Hamming distance, with uniform random tie-breaking. Repair uses configuration distance, not predicted fitness of unmeasured candidates. Each step reinitializes Python’s random generator with the string ga-v1:0: t, where t is the number of previous search attempts. Previously attempted candidates, including failures, are excluded from fu-ture proposals. Both methods stop when the attempt budget is exhausted or no admissible affordable candidate remains, and return the lowest-energy measured feasible configuration under Section B.1. The table reports settings verified from the available archived configuration manifests. 
+
+C SUPPLEMENTARY SEARCH STATISTICS AND CONFIGURATIONS 
+
+C.1 STATISTICS FOR THE SEARCH TRAJECTORIES 
+
+Table 5 summarizes the DeepSeek configuration-search trajectory in Figure 6 and supplementary Qwen search records. Attempt numbers are one-based and include execution failures. “Feasible” counts completed attempts satisfying the full SLO rule, including Qwen’s TTBT constraint. The selected attempt minimizes energy among feasible observations in each recorded trajectory. These quantities describe configuration-search progress; held-out measurements do not enter the trajectory or alter its selected attempt. Table 5: Configuration-search statistics: DeepSeek in Figure 6 and supplementary Qwen records. Qwen uses eight A100 GPUs at 16 requests/s; DeepSeek uses four A6000 GPUs at 4 requests/s. Energy is for the selected search attempt.                                      
+
+> Scenario Method Attempts Completed Feasible Selected Energy (kJ) ↓
+> Qwen / A100 ECO 16 16 10 15 36.216 Qwen / A100 BO 16 16 15 13 49.751 DeepSeek / A6000 ECO 16 16 13 10 17.393 DeepSeek / A6000 BO 16 16 11 14 26.503 DeepSeek / A6000 GA 16 13 9930.931
+
+For a common energy target Etarget , we count attempts to target as 
+
+ktarget = min {k : attempt k completes, satisfies all SLOs, and Ek ≤ Etarget }. (11) In DeepSeek’s four-A6000, 4-request/s trajectory, GA’s best feasible energy gives Etarget =30 .9306 kJ. ECO, BO, and GA first reach this target at attempts 4, 10, and 9, respectively. This statistic counts measured attempts, including earlier failures; it does not estimate elapsed search time. The best feasible energies and target crossings are computed from unrounded observations, with rounding applied only for presentation. For Qwen, ECO selects a lower-energy configuration with 10 feasible attempts, compared with BO’s 15. ECO’s attempt 16 has lower energy than its incumbent but violates TTFT, leaving attempt 15 selected. DeepSeek’s GA attempts 2, 4, and 11 fail execution. They count toward its 16-attempt bud-get and appear as gaps in numerical measurements. Attributing these search outcomes to individual ECO components requires matched ablations. 18 Preprint C.2 SELECTED A6000 D EPLOYMENT SETTINGS 
+
+Table 6 lists ECO’s search-selected A6000 configurations for the scenarios in Figure 4. All listed configurations use TP A = TP F = 1 and enable DBO, so DP A = NA, DP F = NF , and EP F =
+
+NF . The table reports role counts rather than host-specific GPU indices. Settings remain fixed during each replay. Table 6: ECO’s selected A6000 settings. Frequency and power-cap pairs are attention/expert; DBO thresholds are decode/prefill token counts. G is the available GPU budget, and load is in requests/s. Power caps are per GPU.                                                       
+
+> Model GLoad Allocation Clock (MHz) Cap (W) DBO thresholds Qwen 442A+2E 1560/1560 250/250 64/1024 Qwen 482A+2E 1560/1560 200/250 64/1024 Qwen 884A+2E 1560/1560 300/300 32/512 Qwen 816 4A+2E 2100/1920 300/300 32/512 DeepSeek 442A+1E 1560/1560 250/250 64/1024 DeepSeek 482A+1E 1560/1560 250/250 64/1024 DeepSeek 884A+1E 1560/1560 200/200 64/1024 DeepSeek 816 5A+1E 1560/1560 200/200 64/1024
+
+For Qwen under the eight-GPU budget, both loads select 4A+2E (Section 5.1). Increasing load from 8 to 16 requests/s raises attention frequency from 1560 to 2100 MHz and expert frequency from 1560 to 1920 MHz, while retaining the same power caps and DBO thresholds. DeepSeek selects 2A+1E under the four-GPU budget and asymmetric allocations under the eight-GPU budget. Because the search selects the deployment structure and operating controls jointly, these rows do not isolate the energy saving from any one configuration choice. 
+
+D CONFIGURATION CHARACTERIZATION DETAILS 
+
+Figure 2 uses configuration-search measurements and frozen validator outputs. The candidate sets fix the GPU pool, model, operating-point grids, and DBO threshold profiles. Their enumerator already applies allocation and rank-product restrictions. We count statically legal candidates by ex-cluding model-divisibility and proven memory-capacity violations. An execution-verified structure does not establish SLO feasibility for all of its operating points. For Qwen on four A6000 GPUs, static checks reduce 6,075 enumerated candidates to 2,700. Eight-GPU enumeration yields 31,725 candidates per model, of which 15,525 remain statically legal for Qwen and 22,950 for DeepSeek. The corresponding 16-attempt coverage is 0.593%, 0.103%, and 0.070%. Each audited campaign evaluates 16 distinct legal candidates in 16 search attempts and charges one preparation evaluation separately, for 17 charged evaluations in total. Candidate-space coverage uses the 16 search attempts, consistently with Sections 3 and 5. The leftmost panel of Figure 2 reports coverage by these attempts. Qwen on four A6000 GPUs at 8 requests/s completes 14 attempts, of which 9 satisfy the SLOs. For Qwen on eight GPUs, the completion/feasible counts are 16/4 at 8 requests/s and 15/2 at 16 requests/s. DeepSeek on eight GPUs completes all 16 attempts at each load, with 13 feasible at 8 requests/s and 12 at 16 requests/s. These counts describe the measured subsets of legal spaces containing 2,700, 15,525, and 22,950 candidates, respectively. The unmeasured candidates’ execution and SLO outcomes are unknown. For two factors a, b , with all other settings and the replay workload fixed, define the energy interac-tion contrast 
+
+I(a, b ) = E(a, b ) − E(a, b 0) − E(a0, b ) + E(a0, b 0). (12) An additive energy response has I = 0 ; a measured nonzero value also contains measurement noise. We inspect all fully observed structure-by-control rectangles within the five audited campaigns and find one in the current records. For the heatmap in Figure 2, a0 = (32 , 512) and a = (64 , 1024) 
+
+are DBO threshold pairs, while b0 = 2010 and b = 2100 MHz are FFN frequencies. The energy difference caused by the frequency change is +569 .98 J at a0 and −732 .60 J at a, yielding I =
+
+19 Preprint TP1 EP4 TP2 EP2 TP4 EP1       
+
+> (a) TP/EP configuration
+> 0.0 0.1 0.2 0.3 0.4
+> Energy / iteration (J)  4 A100s, 1410 MHz
+> 0.198 0.374 0.333 510 690 870 1050 1230 1410
+> (b) GPU frequency (MHz)
+> 10 20
+> Energy / iteration (mJ)
+> 690 MHz 870 MHz
+> Attention FFN
+
+Figure 8: Qwen-shaped A100 microbenchmarks: (a) TP/EP energy at 1410 MHz; (b) Attention and FFN energy across frequencies. 
+
+−1302 .58 J, or −2.414% of E(a0, b 0). The quartet shares the same search-workload trace, context, and execution protocol, and has one observation per cell. It exhibits a frequency-preference reversal, while the energy ranking between the two DBO settings remains unchanged. Three cells fail the throughput SLO. No confidence interval or general interaction-strength ranking follows from this quartet. The quartet uses Qwen at 16 requests/s with 4A+2F, TP A = TP F = 1 , a 2100 MHz Attention clock target, and 300 W power caps. Only the DBO thresholds and FFN clock target vary. The quartet records end-to-end metrics but no stage timing or waiting measurements, so it cannot locate a migrating bottleneck. 
+
+E MOTIVATION MICROBENCHMARK DETAILS 
+
+Figure 8 uses Qwen-shaped microbenchmarks on A100 GPUs. The recorded hidden and interme-diate dimensions are 2048 and 512. The configuration comparison and operator frequency sweep probe different sources of energy variation; they are separate from the end-to-end serving workload in Section 5. The parallel-configuration experiment fixes four GPUs, 6144 global tokens, one microbatch, and a 1410 MHz clock. It compares TP1 ×EP4, TP2 ×EP2, and TP4 ×EP1 with five repetitions per config-uration. The TP/EP labels describe the partitioning in this microbenchmark; serving configurations use the vLLM parallelism convention in Table 1. The measured mean energies are 0.1976, 0.3735, and 0.3327 J per iteration, with sample standard deviations of 0.0144, 0.0372, and 0.0332 J, respec-tively. The frequency experiment measures attention and FFN prefill operators separately, using batch size one and 128 tokens. Each operator is evaluated at 510, 690, 870, 1050, 1230, and 1410 MHz, with five repetitions per point. Requested and applied clocks agree in the recorded measurements. This sweep explores operator response over a broader frequency range than the serving search grid in Table 1; its frequencies do not extend that candidate grid. 20 Preprint Table 7: Operator frequency sweep underlying Figure 8(c). Energy is in mJ per iteration; entries are mean ± one sample standard deviation over five runs. Lower energy is better.                                         
+
+> Frequency (MHz) Attention (mJ) ↓FFN (mJ) ↓
+> 510 17 .66 ±0.49 10 .78 ±0.29
+> 690 15 .94 ±0.29 9.95 ±0.54
+> 870 16 .88 ±1.87 9.03 ±0.66
+> 1050 16 .09 ±0.97 9.59 ±0.54
+> 1230 17 .64 ±0.67 10 .05 ±0.61
+> 1410 22 .20 ±1.33 12 .66 ±0.70
+
+For five energies e1, . . . , e 5, the plotted mean and dispersion are ¯e = P 
+
+> j
+
+ej /5 and s =
+
+qP 
+
+> j
+
+(ej − ¯e)2/4. Error bars show one sample standard deviation. Stars identify the lowest ob-served means, at 690 MHz for attention and 870 MHz for FFN. These minima describe the sampled operator workloads and do not establish statistically distinct or universal optima. End-to-end config-uration selection additionally evaluates communication, waiting, and the service constraints defined in the main text. 21

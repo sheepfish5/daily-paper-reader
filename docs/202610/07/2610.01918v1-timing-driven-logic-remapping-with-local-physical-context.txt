@@ -1,0 +1,469 @@
+Title: Timing-Driven Logic Remapping with Local Physical Context
+
+URL Source: https://arxiv.org/pdf/2610.01918v1
+
+Published Time: Fri, 02 Oct 2026 02:11:47 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Timing-Driven Logic Remapping with Local Physical Context 
+
+Zijian Jiang, Hongyang Pan, Cunqing Lan, Keren Zhu ∗
+
+State Key Laboratory of ASIC and System, Fudan University, Shanghai, China 
+
+Abstract —The timing behavior of a mapped circuit depends on both its logic implementation and the physical environment in which that implementation is realized. Revisiting mapping decisions after placement therefore requires a search procedure that accounts for surrounding timing constraints, fanout loads, and interconnect effects. We study local remapping in this setting and develop a framework that couples discrete mapping search with physical implementation feedback. Timing-critical regions are isolated through bounded windows whose interfaces retain the context of the surrounding circuit. Within each window, a mixed-integer formulation jointly selects logic cuts, signal polarities, and library cells under a delay model informed by estimated locations and interconnect parasitics. A continuous relaxation filters the search space before discrete optimization produces alternative implementations with similar modeled timing and dif-ferent structural choices. These implementations are reconstructed and assessed through legalization, routing-based parasitic esti-mation, and timing analysis. Physically validated improvements are incorporated into the design, and the updated context guides subsequent searches. The framework provides a systematic way to revisit local logic implementations while accounting for their interaction with an existing placement. 
+
+I. I NTRODUCTION 
+
+Timing closure remains one of the most iterative stages in physical design. Gate sizing and buffer insertion adjust delay by modifying cell drive strength or inserting repeaters, but do not explore alternative Boolean decompositions. When the original logic decomposition is suboptimal, the existing structure can limit the timing improvements achievable through these operations. Logic restructuring complements this toolkit by replacing combinational regions with functionally equivalent implementations that may offer better timing after physical realization. Applying restructuring to an already placed design provides access to the surrounding physical context, but also requires the new implementation to remain compatible with that context. Post-placement local restructuring raises two related chal-lenges. First, replacing gates introduces new instances that require placement and legalization. A larger region exposes more optimization opportunities, but may disrupt more of the established placement and alter the loads seen by neighboring gates. Extraction must therefore balance optimization scope against physical disruption. Second, even a bounded region admits a combinatorial space of cut, phase, and cell choices. A mapping cost model, including one informed by physical information, may rank these choices differently from timing analysis after reconstruction, legalization, and parasitic updates.  
+
+> ∗Corresponding author: krzhu@fudan.edu.cn
+
+A modeled improvement thus need not survive physical imple-mentation. Evaluating every alternative in the placed design is costly, motivating selective candidate generation followed by physical validation. Prior efforts connect logic optimization and physical design in several ways. Concurrent approaches interleave logic opti-mization with placement to account for their interaction [1]– [4]. Layout-driven synthesis also considers congestion during decomposition and mapping [5]. Physically aware technol-ogy mapping incorporates spatial information into mapping decisions: PigMAP uses primitive-gate placement to guide mapping [6], and PigMap2 extends the use of physical infor-mation in the mapping framework [7]. PigMap3 further studies incremental mapping with on-the-fly post-layout critical-path tracking [8]. CPA-Remap constructs local cones using critical paths and cell locations for physically aware remapping [9]. These approaches establish the relevance of physical context to mapping optimization. Our focus is a complementary question: how can the timing and load context of a placed design guide joint local mapping decisions while accounting for the physical effects of implementing those decisions? Our key insight is to guide local restructuring with the timing and load context of the placed design and estimates of candidate interconnect delay, while using physical evaluation to deter-mine candidate acceptance. Based on this insight, we propose Physically Contextualized Restructuring (PCR), which extracts bounded windows around timing-critical endpoints and jointly optimizes cut, phase, and library-cell choices. Reference timing and external pin loads retain the surrounding design context. Predicted gate positions provide wirelength and RC estimates for candidate scoring; these estimates remain fixed within each solve and can be refreshed using the selected topology. A linear programming (LP) relaxation screens windows for modeled improvement and restricts the mapping domain for integer optimization. Sparse and structurally distinct candidates are selected under a common modeled timing cap, reconstructed, and evaluated through legalization and global-routing-based timing analysis. Accepted candidates update the physical design and provide the reference context for subsequent iterations. Our main contributions are as follows:  
+
+> •
+
+A local mapping formulation that jointly models cut, phase, and cell choices within bounded windows, incor-porating estimated interconnect delays while preserving shared boundary signals and the surrounding timing con-text (Sections III-A–III-B).  
+
+> •
+
+A staged solution procedure that combines relaxation-arXiv:2610.01918v1 [cs.AR] 1 Oct 2026 bound screening and action-domain restriction with integer feasibility and timing optimization (Sections III-B–III-C).  
+
+> •
+
+A dual-representative generation strategy that selects sparse and structurally distinct mappings under a common modeled timing cap, enabling separate physical evaluation of alternatives with similar modeled timing (Section III-C).  
+
+> •
+
+An experimental evaluation showing that the complete PCR flow outperforms PigMap3 [8] with 86.7%/95.2% reductions in geometric-mean WNS/TNS violation mag-nitudes under position-aware postprocessing, and genetic and annealing with 48.6–49.2%/53.3–63.1% reductions under uniform postprocessing. It outperforms PigMap3 in WNS on seven of nine cases and each resynthesis baseline on six of seven cases, with one tie (Section IV). The source code is available at https://github.com/jzj3021/ PCR. II. P RELIMINARIES 
+
+A. Logic Synthesis and Technology Mapping 
+
+Logic synthesis optimizes a technology-independent repre-sentation, such as an And-Inverter Graph (AIG), before map-ping it to library cells. Cut-based mapping [10], [11] selects compatible implementations covering the required outputs, of-ten from a restricted set of priority cuts [12]. Delay-oriented methods include load-aware ExactMap [13] and learned delay prediction in AiMap+ [14]. PCR uses ABC [15] to obtain legal cut, phase, and cell alternatives and their dependencies, defining the discrete domain optimized in Section III-B. 
+
+B. Linear Programming Relaxation 
+
+An LP relaxation replaces binary selections x ∈ { 0, 1} by 
+
+x ∈ [0 , 1] while retaining the linear constraints. Let M be the integer feasible set, P ⊇ M its relaxation, and bT the modeled arrival-time objective. For a feasible minimization problem, 
+
+LLP = min 
+
+> q∈P
+
+bT (q) ≤ min 
+
+> m∈M
+
+bT (m) = J⋆. (1) The enlarged feasible set gives a lower bound, while fractional solutions need not represent realizable mappings. PCR uses this bound to screen local mapping domains before integer candidate generation (Section III-B). 
+
+C. Placement and Timing Closure 
+
+Cell locations and interconnect geometry determine wire re-sistance and capacitance. Static timing analysis (STA) combines cell models with parasitics estimated from placement or global routing to compute arrival and required times. Setup slack is required time minus arrival time; negative slack indicates a violation. Worst negative slack (WNS) measures the largest setup violation, and total negative slack (TNS) sums negative endpoint slacks. 
+
+D. Post-Placement Timing Optimization 
+
+Post-placement timing optimization adjusts cell drive strengths and interconnect loads through sizing, buffering, and related transformations. Lagrangian-relaxation-based siz-ing [16], [17] optimizes cell sizes under timing constraints; BufFormer learns buffer-tree topology, sizes, and locations [18]; OpenROAD’s Resizer [19] provides cell and interconnect repair operations. PCR complements these techniques by replacing local logic with equivalent mappings, using estimated positions and interconnect delays for search and physical evaluation for acceptance. III. A PPROACH 
+
+PCR consists of four stages: (1) timing-driven window extraction , which selects a violating endpoint and extracts a bounded logic region; (2) mapping formulation and LP screening , which estimates candidate positions and intercon-nect delays, models legal mapping choices, and screens for modeled improvement; (3) integer mapping and reconstruc-tion , which uses MIP to generate concrete candidate netlists; and (4) physical evaluation and iterative update , which vali-dates candidates through physical checks and global-routing-based timing evaluation before accepting a change. These stages repeat until timing is closed or the search budget is exhausted. 
+
+A. Timing-Driven Window Extraction 
+
+PCR extracts a bounded combinational window rooted at the worst-slack data endpoint, subject to limits on depth, instance count, and boundary inputs. Sequential and macro instances remain outside the window. The extracted context includes interface nets, reference STA timing, external pin loads, and the positions of existing cells, boundary sources, and external sinks. Boundary-source and external-sink positions anchor candidate position estimates. Signals that drive loads outside the window are retained as boundary outputs, preserving their functions and external connections without expanding the window to include all fanout instances. The extracted logic defines an action graph of legal cut–phase choices, fanin dependencies, and available cell variants. Re-quired outputs induce demands on internal nodes, and compat-ible actions are selected jointly to form a complete mapping. 
+
+B. Mapping Formulation and LP Screening 
+
+An action a ∈ A i specifies a cut and its phase implementa-tion at node i; its cell variants specify concrete library gates, including available drive strengths. We jointly select actions and cells because a gate’s delay depends on both its own drive and its fanout loads. Let xia select an action, dip indicate demand for phase p, and ri indicate whether either phase is demanded. The core selection constraints are 
+
+X
+
+> a∈A i
+
+xia = ri, dip ≤ ri ≤ di0 + di1, X
+
+> a
+
+qiap = dip , (2) where qiap = xia dip indicates that action a serves requested phase p. Required output phases have dip = 1 . Each served action activates its required child phases; conversely, a non-output phase can be demanded only if a selected parent requires it. These constraints exclude unsupported internal gates. Re-quested phases are translated to physical gate phases according to the action’s legal phase implementation. For each such gate, P 
+
+> c
+
+ziapc = giap selects exactly one compatible cell when gate-use indicator giap = 1 .Update timing and select the next window 
+
+Window extraction RC model + LP screening Integer mapping Physical evaluation  
+
+> Select timing-critical target Extract bounded fanin window
+> Record interfaces and positions Estimate positions and wire RC Freeze RC coefficients; relax mapping choices
+> Solve LP and test lower bound
+> Retain top-two actions per node Find feasible integer mapping Minimize modeled arrival time
+> Sparse m₁ Diverse m₂
+> Reconstruct and deduplicate
+> Legalize candidate placement Global routing + parasitics STA and acceptance test
+> Pass: retain candidate
+> Otherwise: retain current design
+
+Boundary preservation Relaxed mapping model Alternative implementations Routed timing check 
+
+> g₀ uvw
+> external load
+> Extracted window
+> Boundary output serves both internal and external loads
+
+a₁ 
+
+> x₁ ∈ [0, 1]
+
+a₂ 
+
+> x₂ ∈ [0, 1]
+
+a₃ 
+
+> x₃ ∈ [0, 1]
+> Fractional action selections
+> LP bound ≤ integer optimum
+> Bound for the current domain and frozen RC coefficients
+
+m₁  
+
+> g₁ g₂ g₃
+
+m₂ 
+
+> g₁ g₂ g₄
+> Sparse and diverse mappings under a common timing cap
+> WNS / TNS / composite cost
+> Accept only after physical evaluation of the candidate
+> Refresh from sparse mapping (at most once)
+
+Fig. 1: Overview of PCR. Window interfaces provide fixed physical context for candidate position and RC estimation. LP screening and integer optimization use a frozen delay model to generate sparse and diverse mappings. The sparse mapping can refresh the model for one additional solve. Reconstructed candidates undergo legalization, global routing, and timing analysis before acceptance. 
+
+1) Candidate position and interconnect estimation: Before each solve, we estimate internal node positions from their connectivity to neighboring nodes and fixed boundary locations. Each position is iteratively moved toward a weighted centroid and projected onto a local region Ω enclosing the original window and interface positions, expanded by 2 μm and clipped to the core: 
+
+epi = Π Ω
+
+P 
+
+> j∈N i
+
+wij pj
+
+P 
+
+> j∈N i
+
+wij 
+
+!
+
+. (3) Boundary sources remain fixed. The centroid includes con-nected neighbors, external sinks, and a weak window-center anchor; external sinks receive greater weight to prevent collapse toward the fanins. An action-specific centroid then combines its cut leaves, downstream neighbors, external sinks, and the estimated root position. These coordinates predict connectivity costs and are not placement decision variables. For each candidate driver, a minimum spanning tree with Manhattan edge lengths approximates its internal fanout net. For clarity, action and cell indices on the tree quantities are suppressed. Let ℓe be an edge length, rw, c w the per-unit-length resistance and capacitance, and C↓ 
+
+> e
+
+the sink and wire capacitance below the edge, excluding its own wire capacitance. The estimated wire capacitance and worst-sink Elmore delay are 
+
+Cwi = cw
+
+X
+
+> e∈T i
+
+ℓe,Dwi = max 
+
+> s∈S i
+
+X 
+
+> e∈P(i,s )
+
+rwℓe
+
+ C↓ 
+
+> e
+
++ 12 cwℓe
+
+ . (4) The first solve uses possible fanouts and their maximum available input-pin capacitances for this RC estimate. If a sparse mapping is obtained, its selected topology and cell loads refresh the estimates for at most one additional solve. Both solves share the search budget. External output RC and downstream timing remain in the fixed reference context; the tree adds only internal interconnect effects. 
+
+2) Delay model and relaxation: We minimize modeled target arrival bT . With RC coefficients frozen for the current solve, the delay proxy for a selected driver variant c is 
+
+bdi,c = d0 
+
+> i,c
+
++ ∆ dRC  
+
+> i,c
+
++ Ri,c 
+
+Cext  
+
+> i
+
++ X
+
+> j
+
+Cin  
+
+> j
+
+zj
+
+ ,
+
+∆dRC  
+
+> i,c
+
+= Ri,c Cwi + Dwi + Din 
+
+> i,c
+
+.
+
+(5) Here j indexes fanout cell variants; the internal pin load uses their mean input-pin capacitances. For a gate directly driven by window inputs, Din  
+
+> i,c
+
+is the maximum input-wire estimate 
+
+rwL(Cin  
+
+> i,c
+
++ cwL/ 2) over its boundary-source connections of Manhattan length L; it is zero otherwise. Reference STA offsets calibrate the local arrival objective, while external pin loads remain fixed. The RC correction is a constant for each variant within a solve, preserving linearity. The model does not predict congestion, obstacle detours, or slew propagation. Conditional arrival constraints propagate delays through selected depen-dencies. Selecting a driver and its load introduces products of selection variables. Each product w = uv is represented by 
+
+0 ≤ w, w ≤ u, w ≤ v, w ≥ u + v − 1. (6) These inequalities are exact when u, v are binary, so the discrete proxy is a mixed-integer linear model. We relax the remaining binary domains to [0 , 1] , retaining all selection, dependency, timing, and product constraints. For fractional selections, Eq. (6) bounds their products, yielding the relaxation 
+
+LLP = min 
+
+> FLP
+
+bT ≤ min 
+
+> FIP
+
+bT , τ = bT0 − δ. (7) Here FIP is the integer domain under the configured search limits and FLP its relaxation. A certified bound LLP > τ +ϵcert ,or proven infeasibility of the threshold relaxation, rejects the modeled target; ϵcert accounts for numerical tolerance. We use the original starting-mapping score as the screening threshold (δ = 0 ), unchanged across the two solves. The lower bound applies only to the specified candidate domain and the current frozen RC model; it does not bound timing after routing or a subsequent model update. 
+
+C. Integer Mapping and Reconstruction 
+
+Integer mapping jointly determines the gates and their con-nections under the current frozen delay model. We define the search domain and representative objectives below; Algorithm 1 specifies their execution order and the optional model refresh. Let m denote a model assignment with action/cell selections 
+
+b(m) and continuous timing variables. 
+
+1) Restrict the action domain: Let ¯xia be the LP value of action a at node i. We retain the two highest-ranked actions at each node (or all actions if fewer are available): 
+
+A′ 
+
+> i
+
+= Top 2{a ∈ A i; ¯ xia },
+
+F′ = {m ∈ F IP : xia = 0 for a / ∈ A ′
+
+> i
+
+}. (8) Compatible cell variants remain available. MIP jointly selects actions and cells subject to dependency and phase constraints. Infeasibility and optimality conclusions apply to the restricted domain F′.
+
+2) Establish feasibility and optimize timing: We first search for an integer assignment m ∈ F ′ satisfying bT (m) ≤ τ . Once such an incumbent is found, we solve the timing minimization problem to establish the best modeled arrival in the retained domain: 
+
+bT ⋆ = min 
+
+> m∈F ′
+
+bT (m), S = {m ∈ F ′ : bT (m) ≤ bT ⋆ + ϵT }.
+
+(9) The feasibility stage can stop upon finding a threshold-feasible incumbent, avoiding a full timing optimization for windows without such an incumbent within the allotted budget. The 
+
+Algorithm 1: Candidate generation Require: Action graph G, physical context B, threshold τ ,tolerances ϵT , ϵ cert 
+
+Ensure: Candidate netlist set C 
+
+> 1:
+
+C ← ∅; mprev ← ⊥  
+
+> 2:
+
+for k = 0 , 1 while search budget remains do  
+
+> 3:
+
+θk ← EstimateRC( G, B, m prev ) 
+
+> 4:
+
+Construct FIP , FLP , bT with frozen θk. 
+
+> 5:
+
+¯m ← SolveLP(min FLP 
+
+bT ) 
+
+> 6:
+
+if ¯m = ⊥ or bT ( ¯ m) > τ + ϵcert : break  
+
+> 7:
+
+Construct F′ using (8).  
+
+> 8:
+
+m0 ← FindFeasible( F′ ∩ { bT ≤ τ }) 
+
+> 9:
+
+if m0 = ⊥: break  
+
+> 10:
+
+Solve for bT ⋆ and construct S using (9).  
+
+> 11:
+
+if timing optimum is unresolved: break  
+
+> 12:
+
+Solve for m1 using (10).  
+
+> 13:
+
+if m1 = ⊥: break  
+
+> 14:
+
+Ck ← ValidateAndDeduplicate( m1, ∅) 
+
+> 15:
+
+Solve for m2 using (10), with m1 fixed.  
+
+> 16:
+
+if m2̸ = ⊥ then  
+
+> 17:
+
+Ck ← ValidateAndDeduplicate( m2, Ck) 
+
+> 18:
+
+end if  
+
+> 19:
+
+if Ck = ∅: break  
+
+> 20:
+
+C ← C k; mprev ← m1 
+
+> 21:
+
+end for  
+
+> 22:
+
+return C
+
+timing stage establishes a common reference for representative selection. We use ϵT = 0 .1 ps to admit alternatives with nearly equal modeled timing. 
+
+3) Select two representatives: Within S, define N (m) = P 
+
+> k∈N
+
+zk(m), where N indexes non-default cell variants of the retained actions. We first minimize N (m) to obtain a sparse representative m1. We then seek a second representative m2
+
+that differs most from m1 in its action and cell selections: 
+
+m1 ∈ lex arg min 
+
+> m∈S
+
+ N (m), bT (m),m2 ∈ lex arg min 
+
+> m∈S
+
+ −H(m, m 1), bT (m),H(m, m 1) = X 
+
+> k:bk(m1)=0
+
+bk(m) + X 
+
+> k:bk(m1)=1
+
+ 1 − bk(m).
+
+(10) The sparse objective minimizes non-default cell selections, not total gate count or changes to the input netlist. The diverse objective maximizes structural difference at similar modeled timing. Both objectives use arrival time as a secondary criterion; remaining sparse ties are resolved deterministically. 
+
+4) Reconstruct the netlists: 
+
+ValidateAndDeduplicate( m, C) reconstructs the selected gates and connections, preserves the window interfaces, and retains compatible, realizable mappings with distinct structures or cells. It independently recomputes the original cell/load-model score for consistency checks; search uses the RC-augmented score. TABLE I: Position-aware comparison with PigMap3 on all nine completed pairs. Both methods use detailed placement, setup timing repair, and final detailed placement.                                                                                                              
+
+> PCR (Ours) PigMap3 [8] Design WNS TNS Area Leakage WNS TNS Area Leakage
+> ICCAD 2024 Problem C [20]
+> mempool tile wrap -100.90 -2994.80 21088.06 2594.1801 -8722.70 -32259792.00 21224.38 2594.2643 aes 256 0.00 0.00 24001.03 16.9181 -61.57 -356.96 24006.67 16.9176
+> hidden1 -141.79 -7496.61 5627.56 2.8745 -3049.58 -348824.22 5880.08 3.0498 hidden5 0.00 0.00 28068.42 26.8309 -300.52 -3544.54 28095.91 26.8359
+> MLCAD 2025 [21]
+> ac97 top -59.50 -22641.40 1157.00 83.6219 -73.65 -23640.86 1159.43 83.4392
+> aes cipher top -22.77 -1669.02 1002.96 30.3782 -29.31 -1815.61 1003.05 30.3805 partition m †-127.15 -4891.43 1920.13 171.4317 -124.29 -4916.95 1920.22 171.4467 partition p -184.16 -36540.81 9269.18 612.6764 -160.88 -33286.33 9303.89 611.4790
+> partition c †-124.44 -1100.77 23591.66 18102.9051 -162.33 -1135.72 23593.43 18102.9473 Geo. mean ∗33.10 818.82 6972.59 136.4062 248.63 16927.00 7017.36 137.2482 Ratio 1.00 1.00 1.000 1.000 7.51 20.67 1.006 1.006 WNS/TNS: ps; area: μm2; leakage: μW. Bold denotes the best displayed value, including ties. Names partition m/p/c abbreviate NV NVDLA partition m/p/c.
+> †One remapping update accepted; the other seven cases retain their input mappings. ∗Timing geometric means use G= [ Qni=1 (|xi|+ 1)] 1/n −1with n= 9 ;area/leakage use ordinary geometric means. Ratio is Gmethod /G PCR ; values above one favor the PCR flow. Lower aggregates are better.
+
+In Algorithm 1, ⊥ denotes failure to meet a solve’s comple-tion criterion: feasibility for FindFeasible or optimality within solver tolerances for optimization. A timeout does not prove infeasibility. An unresolved diverse representative leaves the sparse candidate available; an incomplete model-refresh round retains the previous completed candidate set. 
+
+D. Physical Evaluation and Iterative Update 
+
+Predicted coordinates serve only the delay model. Each reconstructed candidate is applied to a separate copy of the current placed design, where actual placement and legalization determine its physical locations. Detailed placement legalizes the modified region, followed by placement checking, global routing, parasitic estimation, and STA. The candidate and reference are evaluated using the same timing constraints and physical settings. A candidate is accepted when WNS and TNS do not degrade beyond tolerance, at least one improves, and the composite cost decreases. The tolerances and cost function are specified in Section IV-A. If the candidate passes, we retain its design, recompute the search context, and restart endpoint selection from the worst slack. Otherwise, we retain the previous design, try any remaining representative, and then advance to the next endpoint. Iteration stops when setup timing is closed, the window limit is reached, or the wall-time budget expires. IV. E XPERIMENTAL RESULTS AND DISCUSSION 
+
+A. Experimental Setup 
+
+Experiments run on a Linux cluster with Intel Xeon proces-sors, using single-threaded workers. Both benchmark suites use ASAP7 libraries [22]. OpenROAD [19] provides the physical-design backend for placement, timing repair, global routing, parasitic estimation, and static timing analysis. We com-pare PCR with OpenROAD’s genetic-algorithm and simulated-annealing based restructuring methods ( resynth_genetic 
+
+and resynth_annealing ), and with PigMap3 [8]. All methods use the same initial checkpoint, libraries, timing constraints, and final evaluation settings for each design. We evaluate benchmarks from the 2024 ICCAD Contest Problem C [20] and the 2025 MLCAD Contest [21]. Table I lists all nine completed position-aware pairs with PigMap3 [8]; Table II lists all seven completed uniform-flow comparisons with annealing and genetic. Each table uses a common case set for its methods and reports WNS, TNS, standard-cell area, and leakage power. PCR uses extraction limits of depth six, 60 instances, and 40 boundary inputs, with an endpoint pool of 256. Each run attempts at most 20 windows within max(1800 , ⌈2tref + 600 ⌉)
+
+seconds, where tref is reference evaluation time. The LP/MIP selection rules and timing tolerances are specified in Section III. Resynthesis and physical-stage timeouts are 7200 and 14400 s, respectively; search budgets are method-specific. During local restructuring, routed candidate acceptance al-lows at most 0.001 ps degradation in WNS/TNS, requires improvement exceeding 0.001 ps in at least one, and requires a decrease exceeding 10 −6 in 
+
+C = Pleak + 10 | min(TNS , 0) | + 20 Vslew + 20 Vcap , (11) with leakage, TNS, slew violation, and capacitance violation expressed in μW, ns, ns, and fF. 
+
+B. Experimental Flow 
+
+We organize comparisons by matched physical postprocess-ing. PCR and PigMap3 [8] are compared in the position-aware flow : detailed placement, setup timing repair, and fi-nal detailed placement. Annealing and genetic are compared with PCR in the uniform flow : global and detailed placement both before and after timing repair. These settings assess placement-preserving optimization and optimization followed by common global re-placement, respectively. For each method, TABLE II: Uniform-flow comparison on all seven cases completed by all three methods. Every method uses global and detailed placement before and after setup timing repair.                                                                                                                                       
+
+> PCR (Ours) Annealing Genetic Design WNS TNS Area Leakage WNS TNS Area Leakage WNS TNS Area Leakage
+> ICCAD 2024 Problem C [20]
+> partition m -236.59 -10784.62 2759.48 2.7394 -438.20 -21553.12 2073.74 1.9454 -485.89 -23138.89 2302.42 2.1421 partition p -172.12 -21405.49 10850.60 6.6562 -391.17 -100520.52 10587.47 6.4325 -375.68 -98190.02 10675.18 6.5484 aes 256 -427.70 -9144.16 24001.04 16.9181 -427.70 -9144.16 24001.04 16.9181 -427.70 -9144.16 24001.04 16.9181
+> hidden1 -73.06 -2843.29 5627.71 2.8747 -112.18 -4764.22 5682.15 2.9453 -125.23 -1298.82 5706.71 2.9664 hidden5 -156.44 -4817.11 28104.82 26.8765 -157.45 -4138.66 28104.82 26.8765 -157.45 -4138.66 28104.82 26.8765
+> MLCAD 2025 [21]
+> ac97 top -65.50 -24721.82 1156.16 83.4442 -162.46 -142236.77 1271.77 66.7008 -159.43 -123481.26 1291.86 72.3576 aes cipher top -41.80 -2806.58 1009.81 30.4120 -301.08 -39003.28 1292.66 35.4963 -236.81 -30209.31 1266.97 31.8558 Geo. mean ∗127.71 7949.77 5393.12 12.9319 251.47 21563.35 5425.30 12.1761 248.39 17038.68 5513.40 12.3416 Ratio 1.00 1.00 1.000 1.000 1.97 2.71 1.006 0.942 1.94 2.14 1.022 0.954 WNS/TNS: ps; area: μm2; leakage: μW. Bold denotes the best displayed value, including ties. Names partition m/p/c abbreviate NV NVDLA partition m/p/c. All seven cases retain their input mappings during remapping. ∗Timing geometric means use G= [ Qni=1 (|xi|+ 1)] 1/n −1with n= 7 ; area/leakage use ordinary geometric means. Ratio is Gmethod /G PCR ; values above one favor the PCR flow. Lower aggregates are better.
+
+the two flows reuse the same mapping output. Repair uses 
+
+repair_timing -setup , allowing sizing, buffering, pin swapping, and cloning. Final checkpoints undergo legalization and global-routing-based timing evaluation. 
+
+C. Results Analysis 
+
+Each table reports geometric means and ratios over its own completed case set. Timing aggregates use add-one smoothing to include zero violations. The two tables have different case sets and physical flows, so their aggregate values are not directly comparable. 
+
+1) Position-Aware Comparison with PigMap3: The PCR flow achieves better WNS on seven of nine cases and better TNS on eight. It closes timing on aes_256 and hidden5 ,and gives lower area on all nine cases. The large aggre-gate timing advantage reflects both these zero-violation results and large PigMap3 violations on mempool_tile_wrap and 
+
+hidden1 ; its magnitude depends on the smoothing conven-tion. Only MLCAD partition_m and partition_c ,marked in Table I, accept a remapping update. Before timing repair, these updates improve WNS by 48.61 and 1976.43 ps relative to their respective initial designs. After the complete flow, partition_c improves WNS/TNS over PigMap3 by 37.90/34.95 ps, with slightly smaller area and leakage. On 
+
+partition_m , TNS violation decreases by 0.52%, while WNS worsens by 2.86 ps. The remaining seven cases retain their input mappings, so the table’s overall advantage measures complete-flow outcomes rather than isolated remapping gains. 
+
+2) Uniform Comparison with Annealing and Genetic: 
+
+Across seven completed cases, the PCR flow reduces geometric-mean WNS and TNS violation magnitudes by 48.6– 49.2% and 53.3–63.1%, respectively, relative to annealing and genetic. It has the best WNS on all seven cases, including a tie on aes_256 , and the best TNS on five, also including that tie. Area and leakage exhibit design-dependent tradeoffs, as shown in Table II. V. C ONCLUSION 
+
+We presented PCR, a physically contextualized local restruc-turing method for post-placement timing optimization. PCR ex-tracts bounded windows around timing-critical endpoints while preserving their interfaces to the surrounding design. Within each window, PCR predicts gate positions and interconnect RC to jointly optimize cut, phase, and cell choices under a delay model frozen for each solve. The selected topology can refresh this model once; an LP relaxation screens for modeled improvement and guides action-domain restriction, followed by integer optimization to select sparse and structurally diverse candidate mappings. Candidates are reconstructed, legalized, and evaluated using global-routing parasitics before acceptance. Accepted updates guide subsequent window selection, enabling iterative optimization within a fixed computation budget. Exper-imental results show that the complete PCR flow outperforms PigMap3 [8] with 86.7% and 95.2% reductions in geometric-mean WNS and TNS violation magnitudes under the position-aware flow, and genetic and annealing with reductions of 48.6– 49.2% and 53.3–63.1% under the uniform flow. It outperforms PigMap3 in WNS on seven of nine cases and each resynthesis baseline on six of seven cases, with one tie. REFERENCES [1] Y.-L. Jiang, S. Krstic, K.-T. Cheng, and M. Marek-Sadowska, “Post-layout logic restructuring for performance optimization,” in Proceedings of the 34th Design Automation Conference (DAC) , 1997, pp. 662–667. [2] W. Gosti, S. P. Khatri, and A. L. Sangiovanni-Vincentelli, “Addressing the timing closure problem by integrating logic optimization and placement,” in Proceedings of the IEEE/ACM International Conference on Computer-Aided Design (ICCAD) , 2001. [3] J. Lou, W. Chen, and M. Pedram, “Concurrent logic restructuring and placement for timing closure,” in Proceedings of the IEEE/ACM Interna-tional Conference on Computer-Aided Design (ICCAD) , 1999, pp. 31–36. [4] L. Stok, A. J. Brodnax, R. L. Bryles, D. L. Cerny, S.-K. Huang, and D. S. Kung, “Cycle time optimization by timing driven placement with simultaneous netlist transformations,” in Proceedings of the 38th Design Automation Conference (DAC) , 2001. [5] T. Kutzschebauch and L. Stok, “Congestion aware layout driven logic synthesis,” in Proceedings of the IEEE/ACM International Conference on Computer-Aided Design (ICCAD) , 2001. [6] H. Pan, C. Lan, Y. Liu, Z. Wang, L. Shang, X. Zeng, F. Yang, and K. Zhu, “Physically aware synthesis revisited: Guiding technology mapping with primitive logic gate placement,” in Proceedings of the 43rd IEEE/ACM International Conference on Computer-Aided Design , ser. ICCAD ’24. New York, NY, USA: Association for Computing Machinery, 2025. [Online]. Available: https://doi.org/10.1145/3676536.3676676 [7] C. Lan, H. Pan, Z. Wang, X. Zeng, F. Yang, and K. Zhu, “Pigmap2: A physical information guided technology mapping framework,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , pp. 1–1, 2025. [8] H. Pan, C. Lan, Z. Wang, X. Zeng, F. Yang, and K. Zhu, “Pigmap3: A physically aware incremental mapping framework with on-the-fly post-layout critical path tracking,” in 2026 31st Asia and South Pacific Design Automation Conference (ASP-DAC) , 2026, pp. 815–821. [9] M. He, P. Huang, Z. Zhao, and P. Bian, “CPA-Remap: Critical-Path-Based Physically Aware Remapping Framework for Timing Optimization,” in 
+
+2025 IEEE 43rd International Conference on Computer Design (ICCD) .Richardson, TX, USA: IEEE, Nov. 2025, pp. 393–400. [Online]. Available: https://ieeexplore.ieee.org/document/11310850/ [10] K. Keutzer, “Dagon: Technology binding and local optimization by dag matching,” in 24th ACM/IEEE Design Automation Conference , 1987, pp. 341–347. [11] S. Chatterjee, A. Mishchenko, R. Brayton, X. Wang, and T. Kam, “Reducing structural bias in technology mapping,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , vol. 25, no. 12, pp. 2894–2903, 2006. [12] A. Mishchenko, S. Cho, S. Chatterjee, and R. Brayton, “Combina-tional and sequential mapping with priority cuts,” in Proceedings of the IEEE/ACM International Conference on Computer-Aided Design (ICCAD) , 2007, pp. 354–361. [13] Z. Xie, L. Liu, T. Liu, and E. F. Young, “ExactMap: Enhancing Delay Optimization in Parallel ASIC Technology Mapping,” in 2025 IEEE/ACM International Conference On Computer Aided Design (ICCAD) . Munich, Germany: IEEE, Oct. 2025, pp. 1–9. [Online]. Available: https://ieeexplore.ieee.org/document/11240698/ [14] J. Liu and Q. Zhao, “AiMap+: Guiding Technology Mapping for ASICs via Learning Delay Prediction,” Electronics , vol. 13, no. 18, p. 3614, Sep. 2024. [Online]. Available: https://www.mdpi.com/2079-9292/13/18/3614 [15] A. Mishchenko, S. Chatterjee, and R. Brayton, “Dag-aware aig rewriting: a fresh look at combinational logic synthesis,” in 2006 43rd ACM/IEEE Design Automation Conference , 2006, pp. 532–535. [16] V. S. Livramento, C. Guth, J. L. G¨ untzel, and M. O. Johann, “Fast and efficient lagrangian relaxation-based discrete gate sizing,” in 2013 Design, Automation & Test in Europe Conference & Exhibition (DATE) , 2013, pp. 1855–1860. [17] G. Flach, T. Reimann, G. Posser, M. Johann, and R. Reis, “Effective method for simultaneous gate sizing and v th assignment using lagrangian relaxation,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , vol. 33, no. 4, pp. 546–557, 2014. [18] R. Liang, S. Nath, A. Rajaram, J. Hu, and H. Ren, “BufFormer: A Generative ML Framework for Scalable Buffering,” in Proceedings of the 28th Asia and South Pacific Design Automation Conference .Tokyo Japan: ACM, Jan. 2023, pp. 264–270. [Online]. Available: https://dl.acm.org/doi/10.1145/3566097.3567900 [19] T. Ajayi, D. Blaauw, T. Chan, C. Cheng, V. Chhabria, D. Choo, M. Coltella, S. Dobre, R. Dreslinski, M. Fogac ¸a et al. , “Openroad: Toward a self-driving, open-source digital layout implementation tool chain,” 
+
+Proc. GOMACTECH , pp. 1105–1110, 2019. [20] B.-Y. Wu, R. Liang, G. Pradipta, A. Agnesina, H. Ren, and V. A. Chhabria, “Invited paper: 2024 ICCAD CAD contest problem c: Scalable logic gate sizing using ML techniques and GPU acceleration,” in 2024 ACM/IEEE International Conference on Computer Aided Design (ICCAD) , 2024. [Online]. Available: https://ieeexplore.ieee.org/ document/11126197/ [21] V. Gopalakrishnan, A. Dey, R. Liang, Y. Zhang, H. Ren, and V. A. Chhabria, “Invited Paper: MLCAD 2025 Contest on ReSynthAI: Physical-aware Logic Resynthesis using AI,” in 2025 ACM/IEEE 7th Symposium on Machine Learning for CAD (MLCAD) . Santa Cruz, CA, USA: IEEE, Sep. 2025, pp. 1–7. [Online]. Available: https://ieeexplore.ieee.org/document/11189135/ [22] L. T. Clark, V. Vashishtha, L. Shifren, A. Gujja, S. Sinha, B. Cline, C. Ramamurthy, and G. Yeric, “Asap7: A 7-nm finfet predictive process design kit,” Microelectronics Journal , vol. 53, pp. 105–115, 2016. [Online]. Available: https://www.sciencedirect.com/science/article/ pii/S002626921630026X
