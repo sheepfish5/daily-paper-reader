@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-07</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-09</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 26 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>14</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-08 00:00:19 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-09 00:41:58 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天精读14篇、速读12篇共26篇，重点落在《Validity-Preserving Hierarchical RL for Joint Routing and Switch Placement in EDA》和《Hardware-Native Joint Sparse-Quantization for Trillion-Scale Mixture-of-Experts》两篇9.0分工作。</p>
-<p>最值得看的方向是万亿级MoE的稀疏-量化联合优化，以及GPU加速LLM推理中多Token预测的性能工程，相关速读还包括Mira的MoE内存优化与移动端按需音频加速。</p>
-<p>普通读者可先从MoE推理降本（Mira、稀疏量化）入手，再关注强化学习在EDA芯片设计中的落地。</p>
+<p>今日19篇推荐：7篇精读、12篇速读，两篇9分论文领跑LLM推理与稀疏计算。</p>
+<p>最值得看的是LLM推理并行中的计算-通信权衡，以及稀疏计算的软硬件协同优化。</p>
+<p>普通读者可先读两篇9分精读，再按兴趣看高带宽闪存、MoSE和PCIe专家并行通信等速读。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">14 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Validity-Preserving Hierarchical RL for Joint Routing and Switch Placement in EDA">Validity-Preserving Hierarchical RL for Joint Routing and Switch Placement in EDA</span></li><li><span class="dpr-home-dashboard-paper-title" title="Hardware-Native Joint Sparse-Quantization for Trillion-Scale Mixture-of-Experts">Hardware-Native Joint Sparse-Quantization for Trillion-Scale Mixture-of-Experts</span></li><li><span class="dpr-home-dashboard-paper-title" title="iS-KV: Online Low-Rank KV Cache Compression via Block-Incremental SVD">iS-KV: Online Low-Rank KV Cache Compression via Block-Incremental SVD</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="SparseCraft: Agentic Hardware-Software Co-Optimization for Sparse Computing">SparseCraft: Agentic Hardware-Software Co-Optimization for Sparse Computing</span></li><li><span class="dpr-home-dashboard-paper-title" title="Characterizing Parallelism Strategies in LLM Inference: Fundamental Compute-Communication Trade-offs">Characterizing Parallelism Strategies in LLM Inference: Fundamental Compute-Communication Trade-offs</span></li><li><span class="dpr-home-dashboard-paper-title" title="StagQ: Constraint-Driven Multi-Precision Weight Quantization for LLMs">StagQ: Constraint-Driven Multi-Precision Weight Quantization for LLMs</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>12</strong></span><span class="dpr-home-dashboard-tag">dse <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>6</strong></span><span class="dpr-home-dashboard-tag">dse <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -89,9 +89,9 @@
     <strong class="dpr-home-dashboard-count">12 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Beneath the Tokens: A Performance Engineering Study of Multi-Token Prediction in GPU-Accelerated LLM Inference">Beneath the Tokens: A Performance Engineering Study of Multi-Token Prediction in GPU-Accelerated LLM Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="AS$^2$D: Accelerating On-Demand Audio Understanding on Mobile Devices">AS$^2$D: Accelerating On-Demand Audio Understanding on Mobile Devices</span></li><li><span class="dpr-home-dashboard-paper-title" title="Mira: Memory-Efficient MoE Inference Using Adaptive Caching and Predictive Expert Staging">Mira: Memory-Efficient MoE Inference Using Adaptive Caching and Predictive Expert Staging</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Characterizing High Bandwidth Flash for LLM Serving">Characterizing High Bandwidth Flash for LLM Serving</span></li><li><span class="dpr-home-dashboard-paper-title" title="MoSE: Mode-Switching Expander for Mixed LLM Training and Inference">MoSE: Mode-Switching Expander for Mixed LLM Training and Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="Efficient Expert-Parallel Communication on PCIe-Connected Consumer GPUs">Efficient Expert-Parallel Communication on PCIe-Connected Consumer GPUs</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>8</strong></span><span class="dpr-home-dashboard-tag">dse <strong>4</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">li <strong>9</strong></span><span class="dpr-home-dashboard-tag">dse <strong>3</strong></span></div>
 </section>
 </div>
 

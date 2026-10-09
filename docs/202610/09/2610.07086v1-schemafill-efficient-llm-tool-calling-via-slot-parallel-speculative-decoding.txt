@@ -1,0 +1,480 @@
+Title: SchemaFill: Efficient LLM Tool Calling via Slot-Parallel Speculative Decoding
+
+URL Source: https://arxiv.org/pdf/2610.07086v1
+
+Published Time: Wed, 07 Oct 2026 00:14:26 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+Under review as a conference paper at ICLR 2027 
+
+# SCHEMA FILL : EFFICIENT LLM T OOL CALLING VIA 
+
+# SLOT -P ARALLEL SPECULATIVE DECODING 
+
+Zhi-Kai Chen 1,2 Song-Yan Li 3 De-Chuan Zhan 1,2 Han-Jia Ye 1,2 ∗
+
+> 1
+
+School of Artificial Intelligence, Nanjing University, China 
+
+> 2
+
+National Key Laboratory for Novel Software Technology, Nanjing University, China 
+
+> 3
+
+Nanjing University, China 
+
+# ABSTRACT 
+
+LLM agents interact with external systems by generating structured tool calls. Given a user request, conversational context, and a catalog of tool schemas, a tool-calling model must select tools and generate their arguments, potentially pro-ducing multiple calls in a single response. Standard autoregressive decoding gen-erates these calls token by token, incurring substantial latency for requests involv-ing multiple calls or many argument fields. The explicit argument structure offers opportunities for parallel generation, but later argument values may depend on preceding fields and calls, so independently generated values can differ from the target model’s output. We present SchemaFill, a framework for efficient LLM tool calling through slot-parallel speculative decoding. SchemaFill generates future slot values concurrently as candidates, without requiring advance knowledge of the actual call sequence or argument values. Candidates spanning multiple fields and calls are concatenated for verification by the target model under the actual output prefix. Only verified tokens are committed, and the target supplies correc-tions when candidates disagree. This applies target verification while exploiting parallelism across slots and calls. On Glaive and BFCL, SchemaFill achieves up to a 4.05 × improvement in end-to-end throughput over autoregressive decoding. Code is available at https://github.com/Czzzk/SchemaFill .
+
+# 1 INTRODUCTION 
+
+LLM agents extend language models from producing text to acting on external systems (Yao et al., 2023; Schick et al., 2023). Given a user request, conversation history, and a catalog of available tools, an agent may need to query a database, invoke a software service, or coordinate several ac-tions. Tool calling connects the model’s decision to such operations: the model selects an available function and supplies the information required to invoke it (Liu et al., 2024). Function-calling eval-uations therefore test whether an agent can choose and parameterize actions from natural-language requests (Patil et al., 2025; Li et al., 2023). To make those actions executable, the agent cannot communicate them only as free-form text. A tool runtime expects a machine-readable object whose tool names, argument keys, value types, and nesting satisfy predefined interface schemas (Willard & Louf, 2023; Dong et al., 2025; Geng et al., 2025). This structured object is the contract between the model and the runtime: it can be parsed, validated, routed to the selected tools, and executed without another semantic interpretation step. Generating it requires the model to decide which tools to invoke, how many calls to emit, their order, and the exact argument values; one response may contain different tools or repeat the same tool several times (Qin et al., 2024; Patil et al., 2025). Current tool-calling models usually generate the entire response autoregressively, one token at a time (Xia et al., 2026). Much of that response has explicit structure, including call wrappers, argu-ment keys, and typed value slots, yet AR decoding treats it as one flat token sequence (Zheng et al., 2024). The model must finish earlier fields and calls before reaching later slots, so requests with many fields or multiple calls incur substantial decoding latency (Chen et al., 2023; Xia et al., 2026). 
+
+> ∗
+
+Corresponding author. 
+
+1arXiv:2610.07086v1 [cs.LG] 5 Oct 2026 Under review as a conference paper at ICLR 2027 Using the structure to draft values for possible future slots concurrently can shorten this serial path and achieve substantially higher throughput than AR decoding. 200.99 233.35 375.71  
+
+> Throughput (tokens/s)
+> 64.09 100.00
+> Target AR agreement (%)
+> 1.87 ×throughput vs. EAGLE-3 (Table 1)
+> Standard SD (EAGLE-3) Parallel decoding (oracle, separate run) SchemaFill
+
+Figure 1: SD denotes speculative decod-ing. Direct slot-parallel generation can raise throughput but may change the target response. SchemaFill combines parallel proposals with target verification. The direct-parallel baseline follows the skeleton-then-parallel-fill idea of Skeleton-of-Thought (Ning et al., 2024), with the correct skeleton supplied in advance. Direct slot-parallel generation faces two problems: the realized tool-call sequence and argument slots are unknown when drafting begins, and indepen-dently drafted values may differ from what the tar-get would generate under the actual preceding out-put. Figure 2 shows the second problem even with an oracle skeleton: deviations from target AR ac-cumulate as more fields and calls are generated independently. Keeping the speedup while com-mitting only target-consistent tokens is the central challenge. These disagreements become output errors if inde-pendently drafted slot values are committed with-out checking them against the target under the pre-ceding fields and calls. To retain parallel gen-eration while preserving the target response, the drafted values must remain candidates until the tar-get decides which tokens to accept. Speculative decoding provides this accept-or-correct mecha-nism: the target verifies proposed tokens under the actual output prefix, accepts matches, and supplies a correction at the first mismatch (Leviathan et al., 2023; Chen et al., 2023). Conventional speculative decoders draft a continuation of the cur-rent prefix (Li et al., 2025); applying the same verification rule to future slots would let their values be drafted concurrently without committing disagreements to the response. We introduce S CHEMA FILL , which combines parallel drafting of future slots with target verification across fields and calls (Figure 1). From the request and tool catalog, it forecasts possible call posi-tions and slots without assuming the realized calls or values. Isolated branches draft slot values in parallel while the committed output advances. The runtime packs ready values with proposed tool names, field keys, and structural text for shared target verification. All packed tokens remain specu-lative until accepted by the target under the actual output prefix. Our contributions are threefold: • We present SchemaFill, a framework for slot-parallel speculative decoding of structured tool calls. It drafts future argument values concurrently and packs them with structural text across fields and calls, while the target verifies every token under the actual output prefix. • We design a shared verification runtime that evaluates concurrent drafts in one target forward pass while isolating branch attention and reusing verified KV states. • We achieve up to a 4.05 × mean end-to-end speedup over autoregressive decoding and outper-form existing speculative decoding baselines on G LAIVE and BFCL. 
+
+# 2 RELATED WORK 
+
+Tool Use, Function Calling, and Structured Generation. Tool-use research studies how lan-guage models select APIs, decide when to invoke them, and produce executable arguments: Tool-former learns these decisions from self-supervised API annotations (Schick et al., 2023), Gorilla adds retrieval-aware training for large and changing API collections (Patil et al., 2024), and Tool-LLM/ToolBench scales to thousands of real-world APIs and multi-tool solution paths (Qin et al., 2024). API-Bank and BFCL evaluate tool selection and structured arguments in tool-augmented and single-/multi-call settings (Li et al., 2023; Patil et al., 2025), while grammar-constrained meth-ods enforce valid output languages or schemas (Geng et al., 2023; Dong et al., 2025). These works improve tool-use capability or structural validity; SchemaFill addresses the inference cost of gener-ating an already structured response, using public schema metadata to propose slots while retaining target verification and target control over tools, fields, ordering, and values. 
+
+Speculative Decoding. Early methods use a lightweight drafter to propose future tokens for target verification (Leviathan et al., 2023; Chen et al., 2023). SpecInfer verifies draft trees (Miao et al., 2Under review as a conference paper at ICLR 2027 2024), EAGLE and EAGLE-3 draft from target features (Li et al., 2024; 2025), and Medusa uses multiple decoding heads to propose candidate continuations (Cai et al., 2024). Lookahead Decoding generates and verifies parallel token continuations without an auxiliary drafter (Fu et al., 2024). De-spite different proposal mechanisms, these methods work on continuations of the current serialized prefix. SchemaFill applies target verification to a different unit of parallel work: values for possible fields and tool calls beyond that prefix. 
+
+Schema-Aware Tool-Call Acceleration. ToolSpec is the closest prior work to our setting: it com-bines schema proposals, retrieval, and token recycling to accelerate tool calls (Xia et al., 2026). SchemaFill instead prepares argument values for future fields and forecast call positions, and packs those candidates with proposed structural syntax across call boundaries. Branches can prepare can-didates early, but their local acceptance never commits text to the final response; every proposed value is checked again under the actual output prefix. This distinction lets us evaluate slot-parallel drafting while preserving the target’s freedom to select tools, fields, ordering, and values. Together, these lines of work leave open how to apply target-verified speculation when the candidate units are noncontiguous slots in a structured multi-call response. SchemaFill addresses this gap by drafting possible argument slots across fields and calls, packing them for shared verification, and extending the response only with target-consistent tokens. The next section defines the tool-call setting and target verification rule, then examines why independently generated slot values cannot be committed directly. 
+
+# 3 SETTING AND MOTIVATION 
+
+3.1 STRUCTURED MULTI -C ALL GENERATION 
+
+An LLM agent processes a user request x in conversational context c, which may include earlier messages and tool results. Some requests can be handled directly; others require information from, or actions by, an external system. For the latter, the agent uses tool calling: it expresses the needed operation as a structured call that a runtime can execute. The runtime supplies a catalog T of available tools, each with a name, description, and argument schema St defining how it can be called. The model receives the request, context, and full catalog in the prompt P = P (x, c, T ).Given P , the model generates an ordered call sequence. For each call, it chooses a tool, selects its argument fields, and supplies their values from x and c. The sequence may contain multiple calls or repeated use of one tool: 
+
+(x, c, T ) 7 −→ C = (( t1, a 1), . . . , (tK , a K )) . (1) Here tj ∈ T is the selected tool and aj is its generated argument object. The model determines the number, order, and contents of the calls. Only after C is complete does the runtime dispatch each 
+
+(tj , a j ) to its tool for execution. Each tool schema declares possible argument fields, their types, and whether they are required. For a realized call (tj , a j ), we can view its arguments as field–value pairs aj = {fj,k : vj,k }Mj 
+
+> k=1
+
+in the order they are emitted. The target must decide which optional fields appear and generate the value 
+
+vj,k of every included field using the request and context. Thus the schema exposes possible value positions, but neither the realized field set nor its values. In a multi-call response, different calls may use different schemas, and later values may depend on fields or calls generated earlier. The target emits C as a serialized token sequence y1: L, interleaving tool names, argument keys, values, punctuation, and enclosing structure. Standard autoregressive (AR) decoding generates all of these tokens in order under the full prompt P , even when the schema makes parts of the structure predictable. Generation stops at the first closed outer structured object or end-of-sequence token. 3.2 SPECULATIVE DECODING ON SERIALIZED TOOL CALLS 
+
+Speculative decoding proposes several tokens before committing them, then uses the target to verify the proposal (Leviathan et al., 2023; Chen et al., 2023). Let m be the committed output prefix and 
+
+z = ( z1, . . . , z n) a proposed continuation, and let ∥ denote sequence concatenation. At candidate position i, the verifier evaluates pθ (· | P, m ∥z<i ): causal target evaluation can score the proposed 3Under review as a conference paper at ICLR 2027 positions together, while each score depends only on the actual prefix and preceding candidate to-kens. The prefix or proposal may cross a tool name, argument key, value, or structural delimiter; schema constraints do not make later fields or calls committed decisions. For the greedy target policy used in our main experiments at temperature 0, define gθ (P, u ) = arg max v∈V pθ (v | P, u ). Serial AR decoding chooses yAR  
+
+> i
+
+= gθ (P, y AR  
+
+> <i
+
+) after the complete pre-ceding output. Whether the drafter selects z deterministically or stochastically, greedy verification accepts the longest candidate prefix that follows the same target decisions: 
+
+r⋆(m, z ) = max {r ∈ { 0, . . . , n } : zi = gθ (P, m ∥z<i ) for every 1 ≤ i ≤ r} . (2) If r⋆ < n , the verifier commits z≤r⋆ and the target correction gθ (P, m ∥z≤r⋆ ), discards the rejected suffix, and resumes from the corrected prefix. If r⋆ = n, it commits all of z and continues from the next target position. This checks structural and value tokens under the same serialized prefix and can accept several tokens per target pass. Under a stochastic target policy, standard speculative sampling instead accepts a proposed token v with probability min {1, p θ (v | P, u )/q u(v)}, where qu
+
+is its proposal distribution, and samples a correction from the residual distribution on rejection. At temperature 0, our runtime uses the gθ verification rule. Appendix B proves consistency with greedy AR for this rule and gives the full stochastic rule and its distributional-consistency proof. 3.3 ACCUMULATED AR D EVIATION IN DIRECT PARALLEL SLOT GENERATION 1 2 3 4 5 6 7 8  
+
+> Parameter number
+> 020 40 60
+> AR deviation (%)
+> 49.50
+> Multi-parameter tasks
+> 123
+> Call number
+> 43.33
+> Multi-tool-call tasks
+
+Figure 2: AR deviation from independently generated slot values. Left: BFCL responses with at least eight parameters; right: at least three calls. Each curve follows a fixed cohort as more slots or calls are considered. Shading: 95% Wilson intervals (Wilson, 1927). We isolate the effect of missing inter-slot con-text in direct parallel generation with a controlled BFCL diagnostic. For each response, we take the call and field layout from an offline greedy au-toregressive (AR) output and replace every argu-ment value with a distinct slot marker. The target model then generates each value independently from the public prompt, the complete marked lay-out, and that slot’s identity, without seeing val-ues generated for other slots. We compare each value with greedy AR at the corresponding posi-tion, where AR conditions on the full preceding output. This oracle layout controls for tool and field selection in the diagnostic; SchemaFill does not receive it at inference. Figure 2 reports the fraction of responses with at least one independently generated value differing from AR. Within the fixed 200-response parameter cohort, this fraction changes from 3.0% after the first slot to 49.5% after eight slots. Within the fixed 270-response multi-call cohort, it changes from 6.7% after the first call to 43.3% after the third. Thus, direct parallel generation can change the target’s serialized output as deviations accumulate across values. These curves measure cumulative AR deviation, not downstream execution success or the difficulty of an individual slot. They mo-tivate treating parallel values as provisional candidates and verifying them under the target’s actual serialized prefix before committing them. 
+
+# 4 METHOD : S CHEMA FILL 
+
+4.1 METHOD OVERVIEW 
+
+SchemaFill follows a forecast–draft–verify loop. From the request, dialogue context, and full tool catalog, the method identifies possible argument slots and begins drafting later values before their serialized positions are reached. These drafts remain provisional. When a candidate becomes rele-vant, SchemaFill packs it with the required structural text after the current output prefix and lets the target accept or correct the resulting sequence in the same order as ordinary autoregressive decoding. We call the authoritative output path the committed stream and the provisional value paths specula-tive branches ; the implementation refers to them as MAIN and SIDE, respectively. The full schema always remains in the target prompt, and the target still determines the realized tools, fields, order, 4Under review as a conference paper at ICLR 2027 
+
+Figure 3: Target-KV cache lifecycle in SchemaFill. The public prefix and verified rows occupy a shared arena, while attention masks restrict branches to valid context and their own candidate paths. One target pass verifies branch scratch rows. Accepted rows extend their cache paths; rejected suffixes are discarded. Only verified tokens on the committed branch become output; a side-branch value must be verified again under the actual output prefix before it can be committed. and values. Forecasting changes only where draft computation is spent, while target verification determines every emitted token. Figure 3 previews the target-KV paths, and Algorithm 1 summa-rizes the complete forecast–draft–verify loop. The following subsections explain the forecast, slot drafting and verification, cross-call packing, and target-KV management. 4.2 SLOT -P ARALLEL SPECULATIVE DECODING 
+
+During initialization, candidate key prefixes are verified and an admissible MAIN path is selected by accepted key-prefix length, then total accepted tokens and forecast order. For each branch b,
+
+ab counts matching proposal tokens, cb is the first target correction ( ϵ if none), and K′ 
+
+> b
+
+contains its target-cache rows. Trimming bounds a draft to a candidate value literal; it does not accept that literal. The stopping test uses only verified MAIN tokens, including closing text. 
+
+Metadata-Guided Tool and Slot Forecasting. A forecasted slot s = ( j, t, f ) specifies a possible call position j, candidate tool t ∈ T , and field f from its public schema. The slot’s type and optionality guide drafting, but neither the forecasted call nor field is a commitment. Given the request and dialogue context, our default runtime forms a lexical query and ranks the available tools with BM25 (Robertson & Zaragoza, 2009). Let q denote the tokenized request and context, and let 
+
+dt denote the tokenized public metadata of tool t (its name, description, and schema field names and descriptions). The ranking is 
+
+π = rank t∈T BM25( q, d t), (3) where tools with equal scores keep their original catalog order. We cycle this ranked list and truncate it to the first B = 3 call groups, 
+
+FB = prefix B (cycle( π)) , (4) then expand each forecasted tool into slots in rendered-schema key order, recording its declared type and requiredness. The scheduler activates these slots near the current committed position. If verified structure rules out a forecast slot, the scheduler retires it; an unused producer group may be rebound when its tool matches a verified call header. Forecasts allocate draft computation, while the target determines the realized tools, fields, and values (Algorithm 1, lines 2–4). 
+
+SIDE speculative drafting. For an active slot si = ( ji, t i, f i), let Hi contain its call-position hint, tool/field prefix, and branch-private draft history. We instantiate the drafter Dϕ with EAGLE-3 (Li et al., 2025). It produces a provisional value from the common prompt and this local context, 
+
+ˆvi = Dϕ(P ⊕ Hi) , (5) 5Under review as a conference paper at ICLR 2027 
+
+Algorithm 1 SchemaFill: slot-parallel speculative decoding 
+
+Require: Request x, context c, public tool catalog T , forecast budget B; target fθ , drafter Dϕ
+
+Ensure: Target-verified structured output y 
+
+> 1:
+
+P ← BuildPrompt( x, c, T ) 
+
+> 2:
+
+π ← RankMetadata( x, c, T ); G ← ForecastGroups( π, B ) 
+
+> 3:
+
+S ← ExpandSlots( G) 
+
+> 4:
+
+(y, K, MAIN , {Hi}) ← InitVerify θ (P, S) ▷ verified MAIN prefix, provisional SIDE states  
+
+> 5:
+
+while ¬ Stop( y) do  
+
+> 6:
+
+A ← { MAIN } ∪ ActiveSIDE(MAIN , S) 
+
+> 7:
+
+L ← PreparedSIDE( S) ▷ snapshot before this round  
+
+> 8:
+
+HMAIN ← y 
+
+> 9:
+
+for all b ∈ A in parallel do  
+
+> 10:
+
+Rb ← TrimToLiteralBoundary( Dϕ(P ⊕ Hb))  
+
+> 11:
+
+end for  
+
+> 12:
+
+Z ← PackMAIN( y, R MAIN , L, S) ▷ proposes structural text  
+
+> 13:
+
+B ← { (MAIN , Z )} ∪ { (i, R i) : i ∈ A \ { MAIN }}  
+
+> 14:
+
+(ab, c b, K ′
+
+> b
+
+)b∈B ← VerifyTree θ (B, K ) 
+
+> 15:
+
+y ← y ⊕ Z1: aMAIN ⊕ cMAIN  
+
+> 16:
+
+for all i ∈ A \ { MAIN } do  
+
+> 17:
+
+Hi ← Hi ⊕ (Ri)1: ai ⊕ ci ▷ SIDE remains provisional  
+
+> 18:
+
+end for  
+
+> 19:
+
+K ← RetainAcceptedRows( K, {K′
+
+> b
+
+, a b}b∈B ) ▷ discard rejected scratch rows  
+
+> 20:
+
+(MAIN , S) ← AlignForecast(MAIN , S, y ) 
+
+> 21:
+
+end while  
+
+> 22:
+
+return y
+
+so branches share the public prompt, while the attention mask excludes every other branch’s private history Hℓ from branch i for ℓ̸ = i. MAIN continues along the committed stream. The target checks 
+
+ˆvi under the local context P ⊕ Hi; accepted tokens and corrections advance only that provisional SIDE branch. On a local mismatch, the rejected suffix is discarded, while the locally accepted prefix and correction remain provisional. A packed MAIN proposal is checked separately under the actual prefix P ⊕Ct. These paths can share one target tree forward, but a SIDE value completed during that forward can enter a packed MAIN proposal only in a later round. Local acceptance never appends text to the response (Algorithm 1, lines 6–10 and 14–17). 
+
+Cross-call packing. When the committed stream reaches a field for which a SIDE branch has prepared a completed or partial value, the packer places that value after the actual MAIN prefix. It also proposes the intervening tool names, field keys, punctuation, and closing text, so that one proposal can continue across fields and tool-call boundaries. If Ct is the target-verified MAIN prefix, ˆvi is a prepared SIDE value, and Si is a proposed structural bridge, the packed suffix is 
+
+Zt = S0 ⊕ ˆv1 ⊕ S1 ⊕ · · · ⊕ ˆvk ⊕ Sk.
+
+The target checks Zt as one causal MAIN path after P ⊕ Ct: each token attends to earlier proposed tokens on that path, including across field and call boundaries, but never to a SIDE branch’s pri-vate history. For greedy target decoding, Equation 2 accepts only the longest prefix matching the target’s decisions. At a mismatch, MAIN commits that prefix and the target correction, discarding the remaining packed suffix and its target-KV rows. A prepared SIDE value can remain a private candidate if its forecast slot is still possible, but it can be used only after the realized call and field match; its local KV is never transferred to MAIN, and the value must be checked again under the corrected MAIN prefix (Algorithm 1, lines 12–15). 4.3 KV-C ACHE MANAGEMENT 
+
+Building on tree-based speculative verification (Miao et al., 2024), SchemaFill manages the target-KV lifecycle shown in Figure 3. The physical arena is shared by MAIN and SIDE branches, but logical ownership and attention visibility remain branch-specific. The public-prefix region stores the common prompt context; the persistent verified region stores the authoritative target-accepted history accumulated across verification rounds; and the scratch region holds the current batch of 6Under review as a conference paper at ICLR 2027 unverified candidate rows. Free capacity is managed separately from these logical regions so that temporary tree paths can be created without making them part of the committed stream. The lifecycle follows the stages in the figure. (1) Read shared context: each branch attends to the public prefix and verified history with only its visible ancestors and private tokens; shared physical storage does not merge branch histories. (2) Batched target verification: MAIN and active SIDE candidates are placed in one structured verification tree. The MAIN path is causal across its packed fields and calls, while the visibility mask prevents it from attending to private SIDE paths and masks sibling SIDE paths from one another. Candidate rows remain scratch until the target accepts them. (3) Resolve and update branch paths: accepted rows extend only their owning path. A MAIN correction extends the committed output, whereas a SIDE correction remains provisional; rejected suffix rows are discarded. A SIDE value is never grafted directly into MAIN state: when used as a MAIN proposal, it is verified again under the true prefix. This reuse of verified history avoids repeated re-prefill while preserving the target’s serialized acceptance rule. Drafter KV and captured target features remain separate branch-owned state rather than additional authoritative target history. 
+
+# 5 EXPERIMENTS 
+
+5.1 EXPERIMENTAL SETUP 
+
+Datasets. Our Glaive test set consists of 650 examples sampled from the full G LAIVE Function Calling dataset (Glaive AI, 2023). For the Berkeley Function Calling Leaderboard (BFCL) v3 (Patil et al., 2025), we select the three categories most suited to evaluating concurrent tool calling from the 25 categories in the release used here. Our BFCL test set contains all 450 requests from these three categories. Preprocessing normalizes tool definitions and extracts the user request and available preceding context at the selected decision point. The main and appendix comparisons use these fixed test sets; Section 5.4 reports a separate call-count diagnostic. Results characterize the selected examples and categories. 
+
+Task and input. All datasets use the same plain-text instruction template, and all methods share the same base task prompt for each request, containing its prior context and full tool catalog. The target generates one JSON object with a tool calls list; each entry contains a tool name and an arguments object. We use Qwen2.5-7B-Instruct (Yang et al., 2024) as the target model. Ap-pendix A gives the model, training, runtime, and hardware settings. 
+
+Metrics. For request i, let Li count committed output tokens, including values, tool names, keys, punctuation, and target corrections; let Ti be elapsed time in seconds and Vi its actual target verifi-cation calls, including initialization. We report End-to-end throughput as TPS E2E = P 
+
+> i
+
+Li/ P 
+
+> i
+
+Ti
+
+and Acceptance length as AL = P 
+
+> i
+
+Li/ P 
+
+> i
+
+Vi. A shared tree forward counts as one verification even when it advances MAIN and SIDE branches. Timing uses CUDA synchronization at request boundaries and covers input preparation, initialization, drafting, target verification, and stopping. Model loading, CUDA graph construction, and warmup precede measurement; trace serialization follows it. Failed requests retain their tokens, target calls, and elapsed time in pooled metrics. 5.2 MAIN RESULTS 
+
+We compare decoding methods that represent different sources of acceleration. Autoregressive de-coding (Leviathan et al., 2023) provides the target’s one-token reference rate, while EAGLE-3 (Li et al., 2025) measures learned token-tree speculation along the emitted prefix without SchemaFill’s slot forecasting or cross-call packing. ToolSpec (Xia et al., 2026) represents schema-aware accel-eration based on proposed and retrieved continuations. Parallel Fill follows the skeleton-then-fill idea (Ning et al., 2024), independently generating slot values with the target given an AR-derived call/field skeleton; its throughput measures filling and reconstruction with this skeleton supplied, and AL is not applicable. SchemaFill prepares argument slots from public tool metadata and veri-fies slot candidates together with structural text across calls. Table 1 summarizes matched requests under the same target decoding policy; all methods use temperature 0. Results for AR, EAGLE-3, ToolSpec, and SchemaFill at target temperature 1 appear in Appendix C.5. The component studies in Sections 5.3 and 5.4 use temperature 0.7Under review as a conference paper at ICLR 2027 Table 1: End-to-end results on the Glaive (Glaive AI, 2023) and BFCL v3 (Patil et al., 2025) test sets with Qwen2.5-7B-Instruct. All methods use temperature 0. Acceptance length (AL) is committed tokens per target verification call; E2E TPS is committed tokens per second, shown as mean ±
+
+sample standard deviation over three launches. Speedup is the TPS ratio to AR within each dataset. Dataset Method AL E2E TPS Speedup AR agreement (%) GLAIVE 
+
+AR 1.00 91 .21 ± 0.18 1.00 × 100.00 EAGLE-3 (Li et al., 2025) 3.24 225 .04 ± 0.91 2.47 × 100.00 ToolSpec (Xia et al., 2026) 2.64 194 .47 ± 1.04 2.13 × 100.00 Parallel Fill — 219 .79 ± 0.72 2.41 × 82.62 
+
+SchemaFill 6.21 340 .60 ± 2.96 3.73 × 100.00 BFCL v3 AR 1.00 92 .68 ± 0.14 1.00 × 100.00 EAGLE-3 2.84 200 .99 ± 0.99 2.17 × 100.00 ToolSpec 3.27 241 .06 ± 1.05 2.60 × 100.00 Parallel Fill — 233 .35 ± 0.18 2.52 × 62.44 
+
+SchemaFill 6.42 375 .71 ± 3.66 4.05 × 100.00 Table 2: Cumulative ablation on the BFCL test set. Each stage retains all mechanisms from the preceding stage. A is the EAGLE-3 baseline. B uses SchemaFill’s schema-guided MAIN path to forecast tool and slot positions and concatenate structural text with drafted values, without SIDE branches. C adds SIDE drafting of future slot values. D adds cross-call packing of prepared val-ues and intervening structural text into one target-verification proposal, yielding full SchemaFill. Speedup is the TPS ratio to the EAGLE-3 baseline (A). Stage Configuration Accept Length E2E TPS Speedup A EAGLE-3 2.84 200 .99 1.00 ×
+
+B A + schema-guided MAIN path 4.57 297 .61 1.48 ×
+
+C B + SIDE speculative drafting 5.48 330 .46 1.64 ×
+
+D C + cross-call packing (full SchemaFill) 6.42 375 .71 1.87 ×
+
+SchemaFill achieves the highest throughput on both datasets: 340 .60 ± 2.96 TPS on G LAIVE and 
+
+375 .71 ± 3.66 TPS on BFCL. These correspond to 3.73 × and 4.05 × speedups over AR, 1.51 ×
+
+and 1.87 × over EAGLE-3, and 1.75 × and 1.56 × over ToolSpec. The Glaive test requests average 1.00 reference call and 1.93 top-level argument fields; BFCL averages 2.96 calls and 7.46 fields. Appendix C.1 gives the counting scope. On single-call Glaive requests, SchemaFill can prepare argument values within a call; on BFCL, it can also prepare later calls and verify candidates across call boundaries. Combining prepared values with structural text yields 2.35 × and 1.96 × ToolSpec’s AL, respectively, reducing target verification frequency on both workloads. 
+
+Additional Experiments. We report a BFCL runtime breakdown including BM25 forecasting but excluding request initialization (Appendix C.3), KV-cache overhead (Appendix C.2), and run-to-run variance (Appendix C.4). Temperature-one results and slot-order diagnostics appear in Appen-dices C.5 and C.6, respectively; cross-target evaluations on Qwen3 (Yang et al., 2025), Mistral (Jiang et al., 2023), and Hermes (Teknium et al., 2024) appear in Appendix D. 5.3 ABLATION STUDY 
+
+We use four cumulative stages in Table 2. Stage A is the EAGLE-3 baseline. Stage B uses SchemaFill’s schema-guided MAIN path, including tool and slot forecasting and structural/slot con-catenation, without SIDE branches. Stage C enables SIDE speculative drafting for future slots. Stage D enables cross-call packing, which combines prepared candidates and intervening structural text into one proposal for target verification under the current MAIN prefix. Stages B–D share the same SchemaFill runtime. Relative to EAGLE-3, Stage B raises TPS by 48.07% and AL by 61.18%. This comparison mea-sures the combined effect of SchemaFill’s MAIN runtime, metadata-guided forecasting, and struc-8Under review as a conference paper at ICLR 2027 tural/slot concatenation. Within the shared runtime, enabling SIDE drafting in Stage C changes TPS by +11.04% and AL by +19.95% by preparing later values before MAIN reaches them. Cross-call packing in Stage D changes TPS by +13.69% and AL by +17.07% over Stage C. This final compar-ison isolates the benefit of proposing prepared values and structural bridges across call boundaries in one target verification. 5.4 SCALING WITH CALL COUNT 
+
+Table 3: Separate BFCL v3 call-count diagnos-tic (100 requests/group), using B = C. AL is committed tokens per verification; E2E TPS is tokens/s; Nodes/Verify is pooled tree size. All requests and initialization are included. Ref. Calls (C)Accept Length E2E TPS Nodes/ Verify 1 5.14 265 .95 23 .43 
+
+2 7.98 438 .62 35 .76 
+
+3 8.06 443 .54 39 .29 
+
+4 7.54 410 .72 42 .71 
+
+We study how SchemaFill’s performance varies with task size, measured by reference call count. For this separate diagnostic, we randomly sample 100 natural requests from the broader BFCL v3 release (Patil et al., 2025) for each count from one to four (400 requests in total). All groups use the common target prompt. In this count-informed diagnostic, SchemaFill receives the reference call count C to set its forecast budget B = C, with other production settings unchanged. The groups are independently sampled rather than paired pre-fixes. We measure mean verification-tree size as 
+
+N = P
+
+> r
+
+PVr 
+
+> v=1
+
+Nr,v / P 
+
+> r
+
+Vr , where Vr counts actual target verification calls, including initialization, and Nr,v counts distinct candidate-token nodes processed in that call. MAIN and SIDE nodes count whether accepted or rejected; shared nodes count once per verification, and prompt prefill rows are excluded. 1Init. 3 5 12 18 27 Verification round (rescaled) 040 80 120 160 Mean tree nodes / verification    
+
+> 61.8 R15 92.0 R17 127.3 R21 152.0 R27
+> Compressed
+> Reference calls ( B=C)1 call 2 calls 3 calls 4 calls
+
+Figure 4: Target-verification workload during SchemaFill decoding. Candidate-node counts peak at slot initialization and drop sharply in subsequent rounds. Curves average requests reaching each round in the Table 3 diagnos-tic, excluding prompt tokens. Rounds 6–11 are compressed; endpoint labels mark the last rounds with at least 10 contributing requests. Figure 4 shows how SchemaFill prepares more slots as the number of tasks within a request in-creases. With B = C, mean initialization-tree size grows from 61.78 nodes at one call to 151.98 at four. These additional nodes initialize more speculative slot contexts together, allowing their candidate values to be generated concurrently in the early decoding rounds. Slot preparation is therefore concentrated at the beginning of genera-tion, so candidates can become available early for packing. The curves drop sharply after initializa-tion, with subsequent rounds using much smaller verification trees. Once slot candidates are ready, further accelera-tion depends on their quality: the target must ac-cept them under the committed prefix to increase AL. Table 3 shows that performance reaches its peak around two to three calls, with 438.62– 443.54 TPS and AL 7.98–8.06, up from 265.95 TPS and AL 5.14 at one call. At four calls, mean verification-tree size grows to 42.71 nodes, while AL drops to 7.54 and throughput to 410.72 TPS. This pattern is consistent with slot-drafter quality limiting further acceptance gains despite the early preparation of more slot candidates. 
+
+# 6 CONCLUSION 
+
+SchemaFill uses tool schemas to draft future argument values concurrently and packs candidates across fields and calls for verification under the actual output prefix. On the Glaive and BFCL test sets, it achieves 3.73 × and 4.05 × end-to-end throughput over AR, respectively, outperforming EAGLE-3 and ToolSpec. Its central insight is that tool-call structure enables parallel speculation without assuming independent arguments, since the target verifies every token before commitment. 9Under review as a conference paper at ICLR 2027 
+
+# REFERENCES 
+
+Tianle Cai, Yuhong Li, Zhengyang Geng, Hongwu Peng, Jason D Lee, Deming Chen, and Tri Dao. Medusa: Simple llm inference acceleration framework with multiple decoding heads. arXiv preprint arXiv:2401.10774 , 2024. Charlie Chen, Sebastian Borgeaud, Geoffrey Irving, Jean-Baptiste Lespiau, Laurent Sifre, and John Jumper. Accelerating large language model decoding with speculative sampling. arXiv preprint arXiv:2302.01318 , 2023. Zhi-Kai Chen, Jun-Peng Jiang, Han-Jia Ye, and De-Chuan Zhan. Hawk: Leveraging spatial context for faster autoregressive text-to-image generation. arXiv preprint arXiv:2510.25739 , 2025. URL 
+
+https://arxiv.org/abs/2510.25739v1 .Zhi-Kai Chen, Jun-Jie Tao, Wei-Xiang Mao, De-Chuan Zhan, and Han-Jia Ye. ResiSpec: En-hancing multi-candidate speculative sampling via residual distribution shaping. arXiv preprint arXiv:2608.24411 , 2026a. URL https://arxiv.org/abs/2608.24411 .Zhi-Kai Chen, Xu-Xiang Zhong, Song-Yan Li, De-Chuan Zhan, and Han-Jia Ye. PeakBench: Benchmarking resource-aware tool invocation in LLM agents. arXiv preprint arXiv:2608.24509 ,2026b. URL https://arxiv.org/abs/2608.24509 .Yixin Dong, Charlie F Ruan, Yaxing Cai, Ziyi Xu, Yilong Zhao, Ruihang Lai, and Tianqi Chen. Xgrammar: Flexible and efficient structured generation engine for large language models. Pro-ceedings of Machine Learning and Systems , 7, 2025. Bradley Efron. Bootstrap methods: Another look at the jackknife. The Annals of Statistics , 7 (1):1–26, 1979. doi: 10.1214/aos/1176344552. URL https://doi.org/10.1214/aos/ 1176344552 .Yichao Fu, Peter Bailis, Ion Stoica, and Hao Zhang. Break the sequential dependency of llm infer-ence using lookahead decoding. In Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pp. 14060–14079, 2024. URL https://proceedings.mlr.press/v235/fu24a.html .Saibo Geng, Martin Josifoski, Maxime Peyrard, and Robert West. Grammar-constrained decoding for structured nlp tasks without finetuning. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pp. 10932–10952, 2023. Saibo Geng, Hudson Cooper, Michał Moskal, Samuel Jenkins, Julian Berman, Nathan Ranchin, Robert West, Eric Horvitz, and Harsha Nori. Jsonschemabench: A rigorous benchmark of struc-tured outputs for language models. arXiv preprint arXiv:2501.10868 , 2025. Glaive AI. Glaive function calling dataset. Hugging Face dataset, 2023. URL https:// huggingface.co/datasets/glaiveai/glaive-function-calling .Albert Q. Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel, Guillaume Lample, Lucile Saulnier, et al. Mistral 7b. arXiv preprint arXiv:2310.06825 , 2023. Yaniv Leviathan, Matan Kalman, and Yossi Matias. Fast inference from transformers via speculative decoding. In International conference on machine learning , pp. 19274–19286. PMLR, 2023. Minghao Li, Yingxiu Zhao, Bowen Yu, Feifan Song, Hangyu Li, Haiyang Yu, Zhoujun Li, Fei Huang, and Yongbin Li. Api-bank: A comprehensive benchmark for tool-augmented llms. In 
+
+Proceedings of the 2023 conference on empirical methods in natural language processing , pp. 3102–3116, 2023. Yuhui Li, Fangyun Wei, Chao Zhang, and Hongyang Zhang. Eagle: Speculative sampling requires rethinking feature uncertainty. arXiv preprint arXiv:2401.15077 , 2024. 10 Under review as a conference paper at ICLR 2027 Yuhui Li, Fangyun Wei, Chao Zhang, and Hongyang Zhang. EAGLE-3: Scaling up in-ference acceleration of large language models via training-time test. In D. Belgrave, C. Zhang, H. Lin, R. Pascanu, P. Koniusz, M. Ghassemi, and N. Chen (eds.), Ad-vances in Neural Information Processing Systems , volume 38, Main Conference, pp. 136737–136756. Curran Associates, Inc., 2025. doi: 10.52202/085713-4562. URL 
+
+https://proceedings.neurips.cc/paper_files/paper/2025/file/ c7b5a35ea98b62512a869c19ea7b03cb-Paper-Conference.pdf .Weiwen Liu, Xu Huang, Xingshan Zeng, Xinlong Hao, Shuai Yu, Dexun Li, Shuai Wang, Weinan Gan, Zhengying Liu, Yuanqing Yu, Zezhong Wang, Yuxian Wang, Wu Ning, Yutai Hou, Bin Wang, Chuhan Wu, Xinzhi Wang, Yong Liu, Yasheng Wang, Duyu Tang, Dandan Tu, Lifeng Shang, Xin Jiang, Ruiming Tang, Defu Lian, Qun Liu, and Enhong Chen. ToolACE: Win-ning the points of LLM function calling. In Y. Yue, A. Garg, N. Peng, F. Sha, and R. Yu (eds.), International Conference on Learning Representations , volume 2025, pp. 41359–41381, 2025. URL https://proceedings.iclr.cc/paper_files/paper/2025/file/ 663865ea167425c6c562cb0b6bcf76c7-Paper-Conference.pdf .Zuxin Liu, Thai Hoang, Jianguo Zhang, Ming Zhu, Tian Lan, Shirley Kokane, Juntao Tan, Weiran Yao, Zhiwei Liu, Yihao Feng, et al. Apigen: Automated pipeline for generating verifiable and diverse function-calling datasets. Advances in Neural Information Processing Systems , 37:54463– 54482, 2024. Xupeng Miao, Gabriele Oliaro, Zhihao Zhang, Xinhao Cheng, Zeyu Wang, Zhengxin Zhang, Rae Ying Yee Wong, Alan Zhu, Lijie Yang, Xiaoxiang Shi, et al. Specinfer: Accelerating large lan-guage model serving with tree-based speculative inference and verification. In Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3 , pp. 932–949, 2024. Mistral AI. Model card for Mistral-7B-Instruct-v0.3. Hugging Face model card, 2024. URL 
+
+https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3 .Xuefei Ning, Zinan Lin, Zixuan Zhou, Zifu Wang, Huazhong Yang, and Yu Wang. Skeleton-of-thought: Prompting llms for efficient parallel genera-tion. In International Conference on Learning Representations , 2024. URL 
+
+https://proceedings.iclr.cc/paper_files/paper/2024/hash/ 03d7e13f0092405804f3a381ade8f3f0-Abstract-Conference.html .Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban Desmaison, Andreas Kopf, Ed-ward Yang, Zachary DeVito, Martin Raison, Alykhan Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, and Soumith Chintala. PyTorch: An imperative style, high-performance deep learning library. In Advances in Neural Information Processing Systems ,volume 32, 2019. URL https://proceedings.neurips.cc/paper_files/paper/ 2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html .Shishir G. Patil, Tianjun Zhang, Xin Wang, and Joseph E. Gonzalez. Gorilla: Large language model connected with massive apis. In Advances in Neural Information Processing Systems , volume 37, 2024. Shishir G Patil, Huanzhi Mao, Fanjia Yan, Charlie Cheng-Jie Ji, Vishnu Suresh, Ion Stoica, and Joseph E Gonzalez. The berkeley function calling leaderboard (bfcl): From tool use to agen-tic evaluation of large language models. In Forty-second International Conference on Machine Learning , 2025. Yujia Qin, Shihao Liang, Yining Ye, Kunlun Zhu, Lan Yan, Yaxi Lu, Yankai Lin, Xin Cong, Xiangru Tang, Bill Qian, Sihan Zhao, Lauren Hong, Runchu Tian, Ruobing Xie, Jie Zhou, Mark Gerstein, Dahai Li, Zhiyuan Liu, and Maosong Sun. Toolllm: Facilitating large language models to master 16000+ real-world apis. In International Conference on Learning Representations , 2024. Stephen Robertson and Hugo Zaragoza. The probabilistic relevance framework: BM25 and beyond. 
+
+Foundations and Trends in Information Retrieval , 3(4):333–389, 2009. doi: 10.1561/1500000019. URL https://doi.org/10.1561/1500000019 .11 Under review as a conference paper at ICLR 2027 Timo Schick, Jane Dwivedi-Yu, Roberto Dessi, Roberta Raileanu, Maria Lomeli, Eric Hambro, Luke Zettlemoyer, Nicola Cancedda, and Thomas Scialom. Toolformer: Language models can teach themselves to use tools. Advances in neural information processing systems , 36:68539– 68551, 2023. Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng Liu. Roformer: En-hanced transformer with rotary position embedding. Neurocomputing , 568:127063, 2024. Qiaoyu Tang, Ziliang Deng, Hongyu Lin, Xianpei Han, Qiao Liang, Boxi Cao, and Le Sun. Toolal-paca: Generalized tool learning for language models with 3000 simulated cases. arXiv preprint arXiv:2306.05301 , 2023. Ryan Teknium, Jeffrey Quesnelle, and Chen Guang. Hermes 3 technical report, 2024. Brandon T Willard and R´ emi Louf. Efficient guided generation for large language models. arXiv preprint arXiv:2307.09702 , 2023. Edwin B. Wilson. Probable inference, the law of succession, and statistical inference. Journal of the American Statistical Association , 22(158):209–212, 1927. doi: 10.1080/01621459.1927. 10502953. URL https://doi.org/10.1080/01621459.1927.10502953 .Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Remi Louf, Morgan Funtowicz, Joe Davison, Sam Shleifer, Patrick von Platen, Clara Ma, Yacine Jernite, Julien Plu, Canwen Xu, Teven Le Scao, Sylvain Gugger, Mariama Drame, Quentin Lhoest, and Alexander Rush. Transformers: State-of-the-art natural language processing. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations , pp. 38–45. Association for Computational Lin-guistics, 2020. doi: 10.18653/v1/2020.emnlp-demos.6. URL https://aclanthology. org/2020.emnlp-demos.6/ .Heming Xia, Yongqi Li, Cunxiao Du, Mingbo Song, and Wenjie Li. Toolspec: Accelerating tool calling via schema-aware and retrieval-augmented speculative decoding. arXiv preprint arXiv:2604.13519 , 2026. An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Haoran Wei, et al. Qwen2.5 technical report. arXiv preprint arXiv:2412.15115 , 2024. An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. React: Synergizing reasoning and acting in language models. In International Conference on Learning Representations , 2023. URL https://arxiv.org/abs/2210.03629 .Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody Hao Yu, Shiyi Cao, Christos Kozyrakis, Ion Stoica, Joseph E. Gonzalez, Clark Bar-rett, and Ying Sheng. SGLang: Efficient execution of structured language model programs. In Advances in Neural Information Processing Systems , volume 37, 2024. URL https://proceedings.neurips.cc/paper_files/paper/2024/ hash/724be4472168f31ba1c9ac630f15dec8-Abstract-Conference.html .12 Under review as a conference paper at ICLR 2027 
+
+# A IMPLEMENTATION DETAILS 
+
+Target and drafter. The main experiments use Qwen2.5-7B-Instruct (Yang et al., 2024), temper-ature 0 (greedy decoding), repetition penalty 1.0, BF16 target weights and computation, and FP32 target logits. RoPE (Su et al., 2024) frequency and sine/cosine computations use FP32, with BF16 rounding preserved in rotary application. Reduced-precision BF16 reduction is disabled within tar-get forwards. EAGLE-3 and our method share the same locally trained EAGLE-3 head (Li et al., 2025): epoch 6, a 14,136-token draft vocabulary, and target hidden-state indices [2 , 14 , 25] . In the temperature-one experiments in Appendices C.5 and D, all four methods use target temperature 1,while learned drafters retain temperature 0. The drafter was trained on fresh target-generated contin-uations from separate public tool-calling requests drawn from BFCL and additional public corpora including Glaive, API-Bank, ToolACE, and ToolAlpaca (Glaive AI, 2023; Li et al., 2023; Liu et al., 2025; Tang et al., 2023). Training uses 11,517 positive-mask records constructed from 9,216 public requests, six epochs, learning rate 8 × 10 −5, batch size four with two accumulation steps, and two rollout horizons with loss decay 0.8.
+
+Runtime configuration. The production runtime uses a three-call forecast budget. Candidate tools are ranked by BM25 lexical relevance: the query contains the request and dialogue context, and each tool document contains its name, description, and schema field metadata; ties retain catalog order, and the ranked list is cycled to allow repeated calls. The scheduler admits the current forecast group and the next group, and can rebind an unused matching producer after observed call-order drift. It uses the hint Select the second request. only inside the corresponding branch prefix. Multiple active branches share a segmented draft tree with branch-isolated attention; a single active branch uses the standard segmented drafting path. The committed stream and speculative branches share one target tree verification. Target KV allocation capacity, exact prompt-tokenization prefixes, and exact public prompt KV prefixes are reused when valid. Initialization combines causal attention for uncached prompt tokens with masked MAIN/SIDE tree attention in one target forward. Cached prompt features are retained, and branch visibility remains isolated. The measured draft budget is k = 3 , committed-stream depth 2, branch depth 1, and total draft tokens 8.
+
+Hardware and measurement. Experiments run on one NVIDIA RTX PRO 6000 Blackwell Workstation GPU (96 GB), using PyTorch 2.11.0 (Paszke et al., 2019), CUDA 13.0, Transform-ers 5.5.4 (Wolf et al., 2020), and batch size one. GPU timing runs are serialized. All methods share SDPA, fused/ordered normalization, exact-shape CUDA graphs, and the target numerical set-tings. AR, EAGLE-3, and ToolSpec use matching prompts and target settings from same-machine evaluations. Model load, graph setup, warmup, and trace serialization are excluded from E2E time. 
+
+# B SPECULATIVE -S AMPLING CONSISTENCY IN THE TOOL -C ALL SETTING 
+
+The target next-token distribution pθ (· | P, u ) is defined at every prefix u of the serialized tool-call response. Tool names, field keys, values, punctuation, and closing tokens are all members of the same token sequence. Forecasted slots, SIDE values, and structural bridges are proposals; they do not restrict the target vocabulary or determine the realized call layout. 
+
+Greedy consistency at temperature zero. Fix a prompt P and a deterministic tie-breaking rule for gθ . Assume that every MAIN verification evaluates the same conditional target logits as serial AR decoding at the same token prefix, that the verification tree masks SIDE histories from MAIN, and that only the matching MAIN prefix and the target’s first correction are committed. Both decoders use the same stopping rule and, if needed, the same finite length cap. Under these assumptions, SchemaFill emits exactly the greedy AR token sequence. 
+
+Proof. Induct on the length of the committed prefix m. Initially m is empty, hence agrees with the AR output. Suppose m agrees with AR and let z = ( z1, . . . , z n) be any packed MAIN pro-posal, including possible tokens from future slots or calls. By Equation 2, each accepted zi equals 
+
+gθ (P, m ∥z<i ). Therefore appending the accepted prefix follows AR token by token. If r⋆ < n ,the next committed token is gθ (P, m ∥z≤r⋆ ), which is precisely AR’s next token; the remaining pro-posal is discarded. If r⋆ = n, the entire accepted proposal is an AR prefix and the next round starts from that prefix. SIDE acceptance cannot alter this argument because a SIDE token is never com-13 Under review as a conference paper at ICLR 2027 mitted without a fresh MAIN verification under the actual prefix. The induction continues through proposed closing tokens and ends at the common stopping condition. □
+
+Distributional consistency under exact speculative sampling. We apply the standard speculative-sampling rule (Leviathan et al., 2023; Chen et al., 2023) to the serialized tool-call set-ting. The following result concerns distributional consistency under a stochastic target policy. At any MAIN prefix u, let pu(v) = pθ (v | P, u ) be the target next-token distribution at the selected temperature. Conditional on the proposal state available before the next acceptance decision, let 
+
+qu(v) be the distribution of the next proposed MAIN token. This state may include public meta-data and provisional SIDE values, but must not change pu; the acceptance draw must be fresh and independent of proposal randomness. A fixed proposed structural or slot token corresponds to a point-mass qu. For a proposed token v with qu(v) > 0, use the speculative-sampling acceptance probability 
+
+αu(v) = min 
+
+
+
+1, pu(v)
+
+qu(v)
+
+
+
+. (6) On rejection, draw a correction from the residual distribution 
+
+ρu(w) = pu(w) − min {pu(w), q u(w)}
+
+1 − P 
+
+> v∈V
+
+min {pu(v), q u(v)} , (7) whenever its denominator is positive. If the denominator is zero, rejection has probability zero and ρu is not used. The accepted token or residual correction is committed; after a rejection, all later tokens in that proposal are discarded. After a fully accepted proposal, decoding resumes at the next target position. Under exact target conditionals and a common stopping rule with almost-sure termination or a common finite length cap, this rule produces the same distribution of stopped tool-call responses as serial sampling from pθ .
+
+Proof. Fix u and the pre-decision proposal state. The probability of proposing and accepting w is 
+
+qu(w)αu(w) = min {pu(w), q u(w)}. The rejection probability is Ru = 1 −P 
+
+> v
+
+min {pu(v), q u(v)}.For Ru > 0, the probability that a rejection emits w is Ruρu(w) = pu(w) − min {pu(w), q u(w)}.Hence the total probability of the next committed token is pu(w). When Ru = 0 , the accepted-token term alone equals pu(w) for every w. This calculation applies again at each new MAIN prefix, including prefixes that cross field or call boundaries: the target conditional is always evaluated under the full serialized prefix, while a SIDE value remains a proposal until checked on MAIN. By induction on output position, every finite committed prefix has the same probability as under serial target sampling. Applying the same deterministic stopping rule to these prefixes gives the same distribution of complete responses. □
+
+The greedy result assumes identical target conditionals at each prefix under exact arithmetic. The stochastic extension additionally uses the acceptance and residual-correction rules above. 14 Under review as a conference paper at ICLR 2027 
+
+# C ADDITIONAL MEASUREMENT DETAILS 
+
+C.1 EVALUATION SETS AND REFERENCE WORKLOAD COUNTS 
+
+The evaluation uses the Glaive650 and BFCL450 test sets described in Section 5. Glaive is sampled by source conversation, then by eligible decision point, from 27,278 automatically eligible decisions in 20,670 conversations after structural checks and removal of training/development overlaps. The resulting 650 requests contain 650 reference calls and 1,255 top-level argument fields. BFCL con-tains all 50 executable-parallel, 200 parallel, and 200 parallel-multiple requests in the three selected source categories, totaling 1,333 reference calls and 3,356 fields. Executable-parallel references are parsed from the raw ground-truth call expressions. For the other categories, field counts use the first official allowed argument value, omitting fields whose representative value denotes absence. Refer-ences are stored separately from the inference inputs and used only for offline workload statistics. C.2 PER -R EQUEST KV-C ACHE OVERHEAD 
+
+Table 4: SchemaFill’s per-request effective KV-cache overhead with an EAGLE-3 drafter, BF16 weights, and batch size one. KV-cache growth is relative to greedy AR with the same target-KV layout. The model-and-cache comparison holds target and drafter weights fixed and measures the memory increase due to extra KV. Target model KV-cache increase Model-and-cache increase from extra KV Qwen2.5-7B-Instruct +24 .65% +0 .28% 
+
+Across BFCL450, effective KV averages 182.93 MiB for AR and 228.02 MiB for SchemaFill. Effective KV counts retained target rows and drafter KV, using the same expanded target layout; reserved spare capacity is excluded. The separate reusable public-prefix snapshot averages 100.68 MiB of process-level storage. Target and drafter peaks are measured separately, so the effective-KV sum is a conservative upper bound. C.3 BFCL R UNTIME TIME BREAKDOWN 
+
+Table 5: SchemaFill time breakdown on the BFCL test set. Percentages use the sum of the four profiled phases. Phase Total (s) Mean (ms/request) Share (%) BM25 tool forecast 0.032 0.070 0.027 EAGLE-3 drafting 21.14 46.98 18.28 Target verification 86.94 193.19 75.17 Other generation 7.54 16.76 6.52 Total 115.65 256.99 100.00 We profiled all BFCL test requests with the production configuration of Table 1. BM25 time covers lexical ranking of public tool metadata during forecast preparation. Drafting covers EAGLE-3 candi-date generation; target verification covers the cached shared-tree verifier, including tree construction and result evaluation. The remaining generation time covers scheduling, candidate packing, accep-tance, KV updates, and stopping. Timed draft and verification calls use CUDA synchronization at their boundaries, so the four rows partition the profiled time. Prompt construction, tokenization, scheduler initialization, target prefill, model loading, graph setup, and warmup are excluded from this breakdown. The instrumented run took 129.23 seconds end to end, compared with 127.51 seconds in the cor-responding uninstrumented launch; Table 1 uses uninstrumented throughput. BM25 scoring is by-passed when only one tool is available. 15 Under review as a conference paper at ICLR 2027 C.4 RUN -TO -R UN VARIANCE 
+
+For the repeated launches in Table 1, sample variance uses denominator n − 1 = 2 . TPS vari-ances for Glaive/BFCL are: AR 0.03 /0.02 , EAGLE-3 0.82 /0.97 , ToolSpec 1.07 /1.10 , SchemaFill 
+
+8.78 /13 .40 . SchemaFill’s output-token and target-call counts are identical across its three runs on each dataset, giving AL variance 0.00 . In Table 2, A and D reuse the three-launch means from Ta-ble 1; B and C each use one BFCL450 launch. All other refreshed experiments use one launch per configuration. C.5 EXPERIMENTS AT TEMPERATURE ONE 
+
+We evaluate AR, EAGLE-3, ToolSpec, and SchemaFill at target temperature 1 on the same fixed cohorts of 650 Glaive and 450 BFCL requests. Our ToolSpec adapter retains its candidate construc-tion and uses categorical target draws to select accepted tree paths and supply corrections. Table 6 reports the results. Table 6: End-to-end results on Glaive650 and BFCL450 at target temperature 1, with one run per method and dataset. Learned drafters use temperature 0. Speedup is the TPS ratio to AR at target temperature 1.Dataset Method Accept Length E2E TPS Speedup GLAIVE 
+
+AR 1.00 91 .01 1.00 ×
+
+EAGLE-3 (Li et al., 2025) 3.12 203 .27 2.23 ×
+
+ToolSpec (Xia et al., 2026) 2.62 190 .64 2.09 ×
+
+SchemaFill 5.99 326 .13 3.58 ×
+
+BFCL v3 AR 1.00 92 .22 1.00 ×
+
+EAGLE-3 2.75 188 .13 2.04 ×
+
+ToolSpec 3.28 238 .57 2.59 ×
+
+SchemaFill 6.16 356 .61 3.87 ×
+
+At temperature 1, SchemaFill achieves speedups of 3.58 × on Glaive and 3.87 × on BFCL over AR at the same temperature. C.6 SLOT -O RDER DIAGNOSTIC MODEL 
+
+The BFCL450 slot-order diagnostic in Section 3.3 analyzes 450 responses. A source- and call-count-adjusted response-level logistic model associates each additional parameter with 1.25 × the odds of at least one AR deviation (95% interval: 1.14–1.38, estimated by request-level bootstrap resampling (Efron, 1979)). This descriptive diagnostic uses AR-selected layouts and characterizes candidate behavior, rather than held-out end-to-end performance. 
+
+# D CROSS -T ARGET EVALUATION 
+
+We additionally evaluate Qwen3-8B (Yang et al., 2025), Mistral-7B-Instruct-v0.3 (Jiang et al., 2023; Mistral AI, 2024), and Hermes-3-Llama-3.1-8B (Teknium et al., 2024) on the 450-request BFCL cohort used in Appendix C.5. Mistral and the Llama-based Hermes provide non-Qwen targets. Each target has its own EAGLE-3 head, shared by EAGLE-3 and SchemaFill. The heads use target hidden-state indices [2 , 18 , 33] for Qwen3, and [2 , 16 , 29] for Mistral and Hermes. Training uses fresh target-generated continuations from separate public requests. The Mistral head was continued for four epochs from its epoch-two weights with a reset optimizer; the other new heads ran for six consecutive epochs. Hermes uses 11,609 positive-mask training records and 553 development records, with a 15,611-token draft vocabulary. Qwen3 uses its non-thinking chat template; Mistral and Hermes use their native chat templates; Qwen2.5 uses the plain-text task prompt. All four decoders receive identical prompt tokens within each target. All targets use the Table 1 base settings: forecast budget three, k = 3 , MAIN depth two, SIDE depth one, and total draft budget eight. All four methods are evaluated at target temperatures 0
+
+16 Under review as a conference paper at ICLR 2027 and 1, using greedy and stochastic target decoding, respectively; learned drafters retain tempera-ture 0. The optimized backends enable CUDA graphs, ordered fused normalization, and expanded rotary/KV execution; SchemaFill also uses shared target-prefix reuse, hybrid prompt attention, and multi-branch tree drafting. Each drafter retains its training-time rotary configuration. Table 7 re-ports one full launch per method, target, and temperature, including request initialization and failed attempts. Model loading and one-time graph setup are outside request time. These single-run mea-surements are separate from the repeated-run estimates in Table 1. Table 7: Cross-target evaluation on BFCL450 at target temperatures 0 and 1. TPS is end-to-end throughput, and AL includes initialization. Speedup is the TPS ratio to AR at the corresponding temperature. Model Method Temperature = 0 Temperature = 1 
+
+TPS AL Speedup TPS AL Speedup Qwen2.5-7B AR 92.51 1.00 1.00 × 92.22 1.00 1.00 ×
+
+EAGLE-3 199.89 2.84 2.16 × 188.13 2.75 2.04 ×
+
+ToolSpec 239.87 3.27 2.59 × 238.57 3.28 2.59 ×
+
+SchemaFill 371.48 6.42 4.02 × 356.61 6.16 3.87 ×
+
+Qwen3-8B AR 79.78 1.00 1.00 × 79.33 1.00 1.00 ×
+
+EAGLE-3 178.43 2.77 2.24 × 174.45 2.77 2.20 ×
+
+ToolSpec 212.05 3.35 2.66 × 209.24 3.34 2.64 ×
+
+SchemaFill 306.36 6.04 3.84 × 299.98 6.00 3.78 ×
+
+Mistral-7B AR 86.83 1.00 1.00 × 86.64 1.00 1.00 ×
+
+EAGLE-3 230.72 3.32 2.66 × 227.80 3.32 2.63 ×
+
+ToolSpec 228.58 3.30 2.63 × 231.13 3.37 2.67 ×
+
+SchemaFill 328.24 5.98 3.78 × 309.59 5.59 3.57 ×
+
+Hermes-3-8B AR 83.50 1.00 1.00 × 83.23 1.00 1.00 ×
+
+EAGLE-3 203.51 3.04 2.44 × 196.91 3.01 2.37 ×
+
+ToolSpec 231.66 3.38 2.77 × 229.31 3.40 2.76 ×
+
+SchemaFill 337.42 6.33 4.04 × 307.82 5.81 3.70 ×
+
+Across the four targets, SchemaFill achieves 1.44 ×–1.55 × ToolSpec’s throughput at temperature 
+
+0. At temperature 1, its throughput is 1.36 ×–1.90 × that of EAGLE-3 and 3.57 ×–3.87 × that of AR. These measurements use a separately trained drafter for each target and the same public-input forecasting and packed-verification procedure. 17

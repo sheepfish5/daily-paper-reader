@@ -1,0 +1,820 @@
+LLBPE: Linked-List Based
+GPU-Parallel BPE Tokenizer
+Aditya Kovilur
+aditya373@icloud.com
+Texas A&M University
+College Station, TX, USA
+Varun Chandra Shekar
+vcs@tamu.edu
+Texas A&M University
+College Station, TX, USA
+Ariful Azad
+ariful@tamu.edu
+Texas A&M University
+College Station, TX, USA
+Abstract—Every LLM inference begins with tokenization,
+which converts raw input bytes into the discrete token sequence
+the model consumes. For text, this step is often implemented using
+Byte Pair Encoding (BPE), an algorithm originally introduced for
+data compression. BPE has traditionally run on the CPU with
+extensive optimization, but recent work has moved it to the GPU
+for higher throughput. We show that these GPU implementations
+are bottlenecked not by computation but by data movement.
+We develop LLBPE that represents the token sequence as an
+array-based linked list so that each merge reduces to a constant-
+time pointer update. Furthermore, LLBPE fuses rank lookup,
+minimum selection, and merging into a single kernel to eliminate
+redundant hash map queries. LLBPE achieves up to 5.2× higher
+throughput than the best existing GPU implementation and
+24.6× over optimized CPU implementations, at the cost of minor
+discrepancies in tokenized output.
+Index Terms—Tokenization, Natural Language Processing,
+High Performance Computing, Parallel Processing
+I. INTRODUCTION
+Large Language Models (LLMs) sit at the center of con-
+temporary machine learning, and their end-to-end inference
+pipelines have received extensive optimization. Every such
+pipeline begins with the same step. Raw input is split into
+discrete units called tokens before the model can process it.
+Although tokenization is not the dominant runtime cost of an
+individual forward pass, it is executed on every request, and
+its overhead accumulates significantly in high-volume serving
+environments. Accelerating tokenization is therefore critical
+for maximizing overall pipeline throughput.
+Given its central role in natural language processing, var-
+ious tokenization schemes have been developed, including
+WordPiece [1], SentencePiece [2], and Unigram [3]. Among
+these, Byte-Pair Encoding (BPE) [4], [5] has emerged as the
+standard for modern LLMs, powering the GPT family [6] and
+leading open-weight models such as Llama [7]. Consequently,
+accelerating BPE through GPU parallelism is of high practical
+importance.
+BPE tokenization has traditionally relied on highly opti-
+mized CPU implementations, such as OpenAI’s tiktoken [8]
+and Hugging Face Tokenizers [9]. However, CPU-based ap-
+proaches are fundamentally constrained by host core counts
+and memory transfers. Recent efforts have sought to offload
+BPE to the GPU. BlockBPE [10] parallelizes merge passes
+within CUDA thread blocks, while GPUTOK [11] maps exact
+BPE merge rules directly to GPU hardware. Nevertheless, both
+methods maintain a flat array as their underlying sequence
+representation, severely limiting their performance scalability.
+The primary performance bottleneck in current GPU algo-
+rithms lies in excessive data movement. In a flat array, merging
+two adjacent tokens requires closing the resulting gap, either
+by shifting all downstream elements (as in BlockBPE) or by
+copying the sequence to an auxiliary buffer (as in GPUTOK).
+Consequently, each merge incurs an O(N) memory overhead
+relative to sequence length (N). On a GPU, these global
+memory writes are far more expensive than the hash map
+lookups and rank comparisons that constitute the actual work
+of BPE.
+We address this with Linked-List BPE (LLBPE), a parallel
+BPE algorithm that represents the token sequence as an array-
+based linked list rather than a flat array. In this setting, a
+merge becomes a constant-time pointer update touching only
+the two tokens being merged, leaving every other position
+untouched. We further fuse rank lookup, minimum selection,
+and merging into a single kernel so that each hash map value
+is retrieved once and reused. On our set of parameters, LLBPE
+achieves a peak throughput of 370 MB/s, a 5.2× improvement
+over GPUTOK at 71.3 MB/s, while introducing only minor
+discrepancies along thread-block boundaries.
+This trade-off suits a growing class of deployments.
+As LLM serving diversifies into low-latency and high-
+volume configurations alongside deep reasoning workloads,
+throughput-sensitive settings increasingly prioritize faster pro-
+cessing at every pipeline stage over exact output fidelity. The
+same applies under heavy request loads, where sustaining
+throughput matters more than maximizing model accuracy.
+We summarize our main contributions as follows:
+• Bottleneck Analysis: We identify global data movement
+in flat-array token representations as the primary effi-
+ciency bottleneck in existing GPU BPE implementations.
+• LLBPE Algorithm: We propose an array-based linked-
+list representation that reduces per-merge data movement
+from O(N) to O(1), and fuse candidate selection and
+merging into a single unified GPU kernel.
+• Empirical Evaluation: We evaluate LLBPE against
+CPU baselines (tiktoken, Hugging Face Tokenizers) and
+GPU implementations (BlockBPE, GPUTOK). LLBPE
+arXiv:2610.04951v1  [cs.PF]  4 Oct 2026
+
+
+achieves peak speedups of 5.2× over prior GPU methods
+and 24.6× over CPU-based implementations.
+• Implementation: LLBPE is publicly available here. The
+setup is mentioned in the Artifact Description section in
+the appendix.
+II. BACKGROUND
+A. Byte Pair Encoding
+Byte Pair Encoding (BPE) was introduced by Gage [4] as
+a data compression algorithm. Given an input byte sequence,
+BPE repeatedly finds the most frequent adjacent pair of bytes,
+replaces every occurrence of that pair with a single unused
+byte, and records the substitution in a lookup table. This pro-
+cess repeats until no pair occurs more than once. The original
+sequence can be recovered by replaying the substitutions in
+reverse order.
+As an example, consider the input string aaabdaaabac.
+The pair aa is the most frequent, so it is replaced by an
+unused symbol Z, yielding ZabdZabac with the table entry
+Z→aa. Next, the pair ab is most frequent. Replacing ab with
+Y produces ZYdZYac with the additional entry Y →ab. The
+process continues until no pair appears more than once.
+Sennrich et al. [5] adapted BPE for subword tokenization in
+neural machine translation. It has since become the dominant
+tokenization method in large language models including GPT-
+4 [12] and LLaMA [13].
+B. Training and Encoding Phases
+The use of BPE in LLMs typically involves two phases. In
+an offline training phase, a fixed-size vocabulary of merge
+rules is learned from a training corpus. Starting from a
+character-level (or byte-level) vocabulary, the algorithm repeat-
+edly counts all adjacent token pairs across the corpus, merges
+the most frequent pair into a new token, and appends the rule
+to an ordered merge table. This repeats for a predetermined
+number of merges (e.g., 50,257 tokens for GPT-2 or 100,256
+for GPT-4’s cl100k_base vocabulary). The goal of this
+training phase is to learn an ordered merge table that can be
+used to tokenize arbitrary text at inference time.
+In the encoding (inference) phase, the tokenizer does not
+re-count frequencies of new input strings. Instead, it splits the
+input into bytes and iteratively scans for adjacent pairs that
+appear in the learned merge table. At each step, the pair with
+the lowest index (highest priority) in the ordered merge table is
+merged, regardless of how many times it occurs in the current
+input. This process repeats until no adjacent pair in the current
+sequence matches any entry in the merge table. Because every
+single byte is always a valid token in the vocabulary, BPE
+guarantees that any input can be encoded. This paper focuses
+exclusively on parallelizing the BPE encoding phase on the
+GPU, taking a pre-trained merge table as a fixed input.
+C. Pre tokenization
+Modern tokenizers such as OpenAI’s tiktoken and Hug-
+gingFace Tokenizers also apply a regex-based pre-tokenization
+step before BPE merging. This step splits the input at word
+boundaries, whitespace, and punctuation using patterns such
+as GPT-2’s splitting regex, ensuring that merges do not cross
+word boundaries. Pre-tokenization typically accounts for a
+substantial fraction of total tokenization time and is one of
+the key challenges in moving BPE to the GPU, since regex
+evaluation involves backtracking and branching logic that
+resists parallelization.
+III. RELATED WORK
+A. Tokenization Methods
+Subword tokenization is a prerequisite for all modern LLMs,
+and three methods dominate in practice. BPE is the most
+widely used tokenization method in modern LLMs. It is used
+throughout the GPT family [6]. Recent open-weight models
+such as Llama 3 [7] also replaced the SentencePiece-BPE
+scheme of Llama 1/2 with a larger, tiktoken-style byte-level
+BPE vocabulary.
+WordPiece is used by BERT-family models [14]. Unlike
+BPE, WordPiece performs a left-to-right greedy longest-match
+search against a learned vocabulary, consuming the longest
+recognized token at each position before advancing. It does
+not use a global merge priority and does not consider pairs at
+arbitrary positions in the string.
+SentencePiece is a tokenization framework that supports
+both BPE and Unigram Language Model [15] backends.
+They use a single Viterbi (dynamic programming) pass to
+find the segmentation that maximizes the probability of the
+token distribution. The entire algorithm runs as one dynamic
+programming pass over the corpus, without a merging step at
+each iteration. Models such as T5 [3] and ALBERT [16] use
+SentencePiece with the Unigram backend.
+B. CPU-Based Implementations
+Several optimized CPU implementations of BPE encoding
+exist in the literature. HuggingFace Tokenizers offers a Rust-
+based library supporting BPE, WordPiece, and Unigram back-
+ends with Python bindings. OpenAI’s tiktoken optimizes BPE
+encoding in Rust. fastBPE [17] provides a multithreaded C++
+implementation with memory-mapped I/O.
+C. GPU-Accelerated Tokenization
+Several recent efforts have targeted GPU acceleration of
+tokenization. The RAPIDS cuDF library [18] provides a GPU-
+based subword tokenizer for WordPiece in BERT pipelines.
+BlockBPE [10] proposes a parallel BPE implementation that
+replaces regex-based pre-tokenization with byte-level splitting
+to enable intra-block parallelism on the GPU GPUTOK [11]
+builds on similar ideas to implement GPT-2’s exact merge
+rules on the GPU.
+IV. METHOD
+A. Pre Tokenization
+Before applying BPE merges, the input text is split into pre-
+tokens such as words and numbers. Pre-tokenization enforces
+the semantic rules of the input language, thereby preserving
+contextual information. For example, a number such as 1000
+
+
+Fig. 1: An overview of LLBPE within a thread block. These operations are performed independently in eack block.
+should always be tokenized as a single unit rather than split
+into 10 and 00. Analogous rules govern punctuation, con-
+tractions, and similar constructs. Without this step, the string
+sample word could produce tokens such as samp, lewo,
+rd, merging the unrelated characters le and wo across a word
+boundary and introducing spurious context. Modern tokenizers
+implement pre-tokenization by lexing the input stream with a
+set of regular expressions that greedily form the longest valid
+pre-tokens.
+BlockBPE removes pre-tokenization entirely to maximize
+GPU performance, at the cost of small deviations in tokeniza-
+tion output. Our implementation retains pre-tokenization but
+overlaps it with file I/O by processing the input as a stream,
+so that pre-tokenized spans are ready for GPU processing as
+soon as they are read from disk.
+We implement pre-tokenization as a single linear scan over
+the input using a pre-computed trie that encodes the tokenizer’s
+regular expressions using the Knuth–Morris–Pratt (KMP) al-
+gorithm [19]. In this approach, at each node, a valid input
+advances to a child node, while a mismatch follows a pre-
+computed failure link that falls back to the longest previously
+matched suffix. This ensures that every byte is visited at most
+a constant number of times. The time complexity of the scan
+is O(N + P), where N is the length of the input and P is
+the maximum depth of the trie. In practice N ≫P, so the
+cost reduces to O(N), which is the same asymptotic cost as
+simply copying the input into an array. The pre-tokenization
+overhead is therefore amortized over the cost of populating
+the token buffer that is subsequently transferred to the GPU.
+B. Batching and Thread Mapping
+We implement BPE on the GPU by partitioning the input
+text into batches. Each batch contains BATCH_SIZE (number
+of) substrings, and each substring is of length N = SEQ_LEN
+initial tokens (each token is a byte after pre-tokenization and
+before the first iteration of BPE). Hence, BATCH_SIZE ×
+SEQ_LEN is equal to the total number of bytes processed in
+one GPU kernel launch.
+We assign each batch to its own thread block of N threads.
+As a result, each thread is responsible for exactly one token
+at any given point during execution. Since block scheduling is
+handled by the CUDA scheduler, our algorithm centers around
+how each batch is processed within a thread block.
+Since each thread handles exactly one token and we employ
+no thread coarsening (in contrast to BlockBPE), sequence
+length and batch size are not independent:
+SEQ_LEN × BATCH_SIZE = MAX_THREADS,
+(1)
+where MAX_THREADS is the hardware limit on the number
+of threads that the GPU can spawn concurrently. Due to the
+limitation of tokenizing an input of MAX_THREADS bytes at a
+time, for an input larger than that, we launch the GPU kernel
+multiple times. For example, if MAX_THREADS = 200,000
+and the input text is of SIZE = 2,100,000 Bytes, we
+launch the GPU kernel ceil(SIZE / MAX_THREADS) =
+11 times.
+C. Overview of the Algorithm
+The core of BPE encoding is a loop that repeatedly identifies
+the highest-priority adjacent token pair and merges it into a
+single token. In a flat array representation, each merge requires
+shifting all subsequent elements to close the gap. Such data
+shifting is expensive on the GPU, where global memory writes
+are costly. We instead emulate a linked list on the GPU, where
+each token stores indices to its successor.
+Hence, a merge reduces to updating a constant number of
+index entries in this linked list. Each merge iteration consists
+of three steps, illustrated in Figure 1.
+Step 1: Rank evaluation. For each adjacent pair in the
+current sequence, look up its merge rank in the pre-trained
+table. This step takes O(N) time, where N is the number of
+active tokens.
+Step 2: Minimum selection. Find the pair with the lowest
+rank (highest priority). This can be performed via linear scan
+or tree-based reduction, both effectively O(N) in the number
+of active tokens.
+Step 3: Merge. Replace the selected pair with a single
+merged token and update the sequence.
+The key difference between our approach and prior GPU
+implementations lies in Step 3. BlockBPE stores tokens in
+
+
+Algorithm 1 BPE Merge Iteration
+Input: thread index i, arrays tokens[], nextToken[], merge hash map H, shared variable minRP
+▷Phase 1: Rank lookup
+1: if nextToken[i] = −1 then
+2:
+return
+▷inactive thread
+3: end if
+4: j ←nextToken[i]
+5: value ←H.lookup(tokens[i], tokens[j])
+6: candidate ←(value & 0xFFFFFFFF00000000) ∨i
+▷rank (high), position (low)
+▷Phase 2: Atomic minimum selection
+7: old ←minRP
+8: while candidate < old do
+9:
+prev ←ATOMICCAS(minRP, old, candidate)
+10:
+if prev = old then
+11:
+break
+12:
+end if
+13:
+old ←prev
+14: end while
+▷Phase 3: Merge
+15: SYNCTHREADS()
+16: mergePos ←minRP & 0xFFFFFFFF
+▷Lower 32 bits of minRP stores the position
+17: if i = mergePos then
+18:
+tokens[i] ←value & 0xFFFFFFFF
+▷Lower 32 bits of value stores merged token ID
+19:
+nextToken[i] ←nextToken[j]
+▷skip consumed node with j = nextToken[i] from Phase 1
+20:
+nextToken[j] ←−1
+▷mark as deleted
+21: end if
+a flat array and shifts all elements after the merge position
+left by one, making Step 3 O(N). GPUTOK uses a double-
+buffered array, copying all N elements into a second buffer
+in every iteration, which is also O(N). In LLBPE’s linked-
+list representation, Step 3 is O(1) because exactly one thread
+updates the merged token’s value and redirects its successor
+pointer to skip the consumed neighbor.
+D. Data Structures
+LLBPE relies on two GPU-resident data structures: a hash
+map encoding the pre-trained merge table and a pair of parallel
+arrays representing the token sequence as a linked list.
+Merge Tables. We store the merge table as a GPU-resident
+hash map using cuCollections, passed as a parameter to the
+merge kernel. Each entry of the hash map encodes a token
+pair and its merge rule in two 64-bit integers:
+1) Key (64-bit unsigned integer): The upper 32 bits store
+tokeni and the lower 32 bits store tokeni+1, packing an
+adjacent pair into a single 64-bit lookup key.
+2) Value (64-bit unsigned integer): The upper 32 bits store
+the merge rank and the lower 32 bits store the resulting
+merged token ID.
+This value layout, also used by GPUTOK, has a useful
+property. Because the rank occupies the upper bits, a numeric
+minimum over raw 64-bit values is equivalent to selecting
+the lowest rank. The minimum simultaneously yields both the
+winning rank and the corresponding merged token ID in a
+single comparison, with no additional lookup required. Since
+all ranks in the merge table are distinct, ties cannot occur.
+Token Sequence. The token sequence is represented as a
+linked list using two parallel arrays:
+• tokens[i]: the ID of the i-th token in the current
+sequence.
+• nextToken[i]: the index of the successor of position
+i in the tokens array. A value of −1 indicates a deleted
+node (consumed by a merge) or the end of a pre-token
+boundary.
+Each thread owns exactly one position in the linked list,
+accessing only its corresponding entries in the tokens and
+next arrays. This one-to-one mapping eliminates memory
+access conflicts between threads and ensures coalesced reads
+when thread indices are contiguous. A merge operation up-
+dates at most three entries, leaving all other array positions
+untouched.
+E. The Merge Iteration
+Each merge iteration identifies the adjacent token pair with
+the lowest merge rank, merges it into a single token, and
+updates the linked list accordingly. Algorithm 1 shows the
+complete iteration, executed by every thread in parallel. Rank
+lookup, minimum selection, and the merge itself are fused into
+
+
+(a)
+(b)
+Fig. 2: An illustration of the merge process
+a single kernel so that the hash map value retrieved in Phase 1
+can be reused in Phase 3 without a second query.
+Phase 1: Rank lookup (lines 1–6). A thread is active
+in a given iteration if nextToken[i]̸ = −1, meaning a
+prior merge has not consumed its token and it has a valid
+successor to form a pair with. Each active thread looks up
+its adjacent pair (tokens[i], tokens[j]) in the hash map,
+where j = nextToken[i], and caches the returned 64-bit
+value. The thread then constructs a candidate word by masking
+off the lower 32 bits of the value and substituting its own
+position i, leaving the rank in place in the upper 32 bits.
+In principle, only two pairs change between iterations (the
+pair formed by the newly merged token and its successor,
+and the pair formed by the predecessor and the newly merged
+token), so unchanged pairs could skip this lookup. As an
+optimization, all active threads perform the lookup during
+initialization. On subsequent iterations, only the threads whose
+pairs were modified by the previous merge repeat it, while
+the rest reuse their cached values. This reduces the number
+of hash map queries per iteration from O(N) to O(1) after
+initialization.
+Phase 2: Atomic minimum selection (lines 7–14). Every
+active thread attempts to insert its candidate into the shared-
+memory variable minRP using an atomic compare-and-swap
+(CAS) loop. Because the rank occupies the upper 32 bits,
+a numeric comparison on the packed word is equivalent to
+comparing by rank and breaking ties by position. Since all
+merge ranks are distinct, the final value of minRP uniquely
+identifies both the winning rank and the merge position.
+Note that our reduction is asymptotically similar to the tree-
+based reduction used in GPUTOK which has O(N) time com-
+plexity. However, we found that the tree-based approach in-
+troduces multiple synchronization barriers per iteration, which
+makes it expensive in practice. By contrast, our flat atomic
+approach avoids inter-thread synchronization entirely, relying
+instead on atomic operations that are efficiently serialized by
+the hardware.
+Phase 3: Merge (lines 15–21). After a barrier synchro-
+nization, every thread reads the winning position from the
+lower 32 bits of minRP. The thread whose position matches
+performs the merge. In the merging phase, the thread extracts
+the merged token ID from the lower 32 bits of its cached hash
+map value, writes it to tokens[i], redirects nextToken[i]
+past the consumed neighbor j, and sets nextToken[j] ←−1
+to mark j as deleted. Both j and the cached value are per-
+thread registers held since Phase 1, so no additional memory
+TABLE I: Sizes of datasets
+Dataset
+Size
+War and Peace
+3.2 MB
+Tom Sawyer
+420 KB
+Huckleberry Finn
+600 KB
+reads or hash map queries are needed.
+Figure 2 illustrates the merging process with an example.
+If the pair "h", "i" has the highest merge priority, the two
+tokens merge to form "hi" and thread #2 becomes inactive
+for all subsequent iterations. Only the pairs {"w", "hi"}
+and {"hi", "c"} require new rank lookups in the following
+iteration (Figure 2b).
+Block-boundary handling. We restrict merging within each
+thread block because cross-block merges require expensive
+inter-block synchronization through global memory barriers,
+which significantly reduces tokenization throughput. Conse-
+quently, pairs that straddle a block boundary are never merged,
+which can yield tokenizations that differ from a strictly serial
+implementation. Section V-B quantifies how often this occurs
+and its effect on tokenization quality.
+V. EXPERIMENTS
+A. Experimental Settings
+a) Dataset: We evaluate the tokenizer on several corpora
+drawn from Tolstoy’s War and Peace[20], Mark Twain’s Tom
+Sawyer [21], and Huckleberry Finn [22]. The sizes of all these
+datasets are discussed in Table I.
+b) Platform: All experiments were run on a GPU node
+of the Perlmutter supercomputer at NERSC. Specifically, we
+used an NVIDIA A100 GPU with 80GB of memory, paired
+with an AMD EPYC 7763 CPU (64 cores, 256GB DDR4
+DRAM). Perlmutter uses a PCIe 4.0 interconnect for the CPU-
+GPU data transfer with a bidirectional bandwidth of 64GBps.
+The A100 supports approximately 200K concurrently resident
+threads, which upper-bounds the product of sequence length
+and batch size in our experiments.
+c) Configuration: We use CUDA 12.9 and gcc-native
+12.3 for compilation. We also use cmake 3.30.4 for compiling
+cuCollections with the corresponding version of CUDA. We
+use the GPT-2 [23] tokenization vocabulary and merge table
+for all baselines and LLBPE.
+d) Baselines: We compare against tiktoken and Hug-
+gingFace. These are CPU-based implementations; hence, we
+run them on the AMD EPYC 7763 CPU as mentioned
+above. BlockBPE and GPUTOK are GPU implementations
+and are tested on NVIDIA A100. As there is no publicly
+available implementation of the original BlockBPE paper, we
+use the BlockBPE implementation from GPUTOK. Tiktoken,
+HuggingFace, and BlockBPE are Rust implementations with
+Python interfaces. GPUTOK and LLBPE are C++ implemen-
+tations.
+B. Tokenization Quality
+Since our aim is not to improve tokenization accuracy, we
+instead evaluate how closely our tokenizer’s output matches
+
+
+Fig. 3: Comparison of similarity scores for LLBPE and
+HuggingFace outputs.
+that of the trusted HuggingFace BPE tokenizer, which we
+adopt as the reference. The goal is to show that LLBPE
+tokenization matches closely with the HuggingFace BPE tok-
+enizer.
+Following the methodology of BlockBPE, we quantify the
+similarity between two tokenizers’ outputs by computing the
+normalized Levenshtein distance between our output and that
+of HuggingFace. For each input string si, the similarity score
+is defined as:
+sim(si) = 1 −dL
+ tHF
+i , tLL
+i
+
+|si|
+,
+(2)
+where dL(tHF
+i , tLL
+i ) is the Levenshtein distance [24] between
+the HuggingFace tokenization tHF
+i
+and the LLBPE tokenization
+tLL
+i
+for string si, and |si| denotes the number of tokens in si.
+Here, the Levenshtein distance measures the minimum number
+of single-token insertions, deletions, and substitutions required
+to transform one token sequence into the other, providing
+a standard measure of edit-based dissimilarity between two
+sequences. A similarity score of 1 indicates that the two
+tokenizations are identical, while lower values indicate a
+greater number of edits needed to reconcile the two outputs.
+The final similarity is reported as the mean of sim(si) over
+all chunks in the corpus.
+Figure 3 shows that LLBPE is comparable to HuggingFace
+BPE, with similarity scores close to 99% for Tom Sawyer and
+Huckleberry Finn, and 96% for War and Peace. We note that
+these differences do not indicate inferior accuracy on the part
+of LLBPE. They simply mean that LLBPE generates slightly
+different tokens than HuggingFace does.
+The reason for these differences is that token pairs lying at
+block boundaries are not compared across blocks when evalu-
+ating merge rank in order to ensure that the algorithm operates
+strictly within a block for high performance. Consequently,
+certain merges are missed whenever a boundary token pair has
+the highest merge priority, introducing a discrepancy between
+the algorithm’s output and the ground-truth tokenization. This
+does not cause any data loss, as it merely leaves some tokens
+split at the block boundary.
+Fig. 4: Peak throughput comparison of LLBPE with
+tiktoken, HuggingFace, BlockBPE and GPUTOK over
+varying sequence lengths.
+Figure 3 also reveals that similarity improves with a higher
+sequence length. This is expected because a higher sequence
+length results in a smaller batch size for a fixed thread budget.
+This corresponds to fewer blocks on the GPU and conse-
+quently fewer block boundaries, reducing the opportunities for
+merges to be missed at those boundaries.
+C. Tokenization Throughput
+We define throughput as the number of bytes a tokenizer
+processes per unit time, reported in MB/s. Formally, given a
+corpus of total size B bytes and a measured runtime t (in
+seconds), throughput is computed as
+Throughput (MB/s) =
+B
+106 × t,
+(3)
+where B denotes the total number of bytes in the corpus and
+t denotes the runtime of the program.
+We compare LLBPE with two widely used CPU baselines,
+tiktoken and Hugging Face, and two recently developed GPU
+BPE implementations, BlockBPE and GPUTOK. As discussed
+previously, the product of batch size and sequence length
+equals the maximum number of threads in LLBPE. Conse-
+quently, as sequence length increases, batch size decreases
+proportionally. Figure 4 presents the throughput results across
+various sequence lengths.
+All reported numbers in Figure 4 correspond to the merge
+kernel, which does not include the file I/O required for reading
+the corpus. The GPU-based baselines skip pre-tokenization,
+hence the results shown are a direct comparison between the
+merge kernels. However, the CPU-based baselines run pre-
+tokenization as the first step on a string buffer passed as input
+after the corpus is read. Since we perform pre-tokenization on
+a streamed input, we were unable to show a direct comparison
+of the effect of pre-tokenization on the end to end execution
+time with the CPU-based baselines.
+a) Overall throughput: Figure 4 shows that the GPU
+tokenizers, LLBPE, BlockBPE, and GPUTOK, consistently
+
+
+perform much better than the highly-optimized CPU tokeniz-
+ers from OpenAI and HuggingFace, across all batch sizes and
+sequence lengths. This is not surprising, given the massive
+parallelization available on the GPU compared to multicore
+CPUs. Between the CPU baselines, tiktoken achieves higher
+throughput than HuggingFace across all experiments. Be-
+tween the two GPU baselines, GPUTOK slightly outperforms
+BlockBPE. However, across all experiments, LLBPE performs
+significantly better than both GPUTOK and BlockBPE. In the
+best case (sequence length 128), LLBPE achieves a throughput
+of 370 MB/s, which is 7× faster than GPUTOK and ∼20×
+faster than tiktoken. In the worst case (sequence length 1024),
+LLBPE achieves 38.7 MB/s, which is 2× faster than GPUTOK
+and ∼2.5× faster than tiktoken. Hence, LLBPE performs the
+best overall across all configurations explored in this paper.
+b) Throughput with respect to Sequence length: Sweep-
+ing across various sequence lengths, we notice much higher
+throughput values for lower sequence lengths and higher batch
+sizes. The difference between the throughputs at sequence
+lengths 128 and 1024 is an order of magnitude, and this can be
+attributed to the warp scheduling having a lower overhead for
+shorter sequence lengths. The most expensive step of LLBPE
+is the global memory access for merge ranks, which triggers
+a warp scheduler to hide the latency caused by it. A shorter
+sequence length corresponds to a smaller block size, i.e. a
+sequence length of 128 would correspond to 128 threads in
+each GPU block. Consequently, it has a direct impact on the
+number of warps within a block. Therefore, the shorter the
+sequence length, the fewer the warps within a GPU, which
+leads to easier latency-hiding scheduling between warps. This
+is because block scheduling takes precedence once all warps
+are idle, which happens sooner if there are fewer warps.
+VI. CONCLUSION
+We presented LLBPE, a GPU-accelerated BPE tokenizer
+that achieves a peak throughput of 370 MB/s (with our con-
+figuration), a 5.2× improvement over the next best baseline,
+GPUTOK, at 71.3 MB/s. The performance gain follows from
+a single design principle. Because BPE encoding involves
+only hash map lookups and rank comparisons, its cost on the
+GPU is dominated by data movement rather than computation.
+LLBPE minimizes this movement by representing the token
+sequence as an array-based linked list, reducing each merge
+from an O(N) array shift to an O(1) pointer update. Addi-
+tionally, LLBPE fuses rank lookup, minimum selection, and
+merging into a single kernel so that hash map values retrieved
+once are reused without re-querying global memory.
+Although tokenization is not the dominant cost of LLM
+inference, it is performed on every input and at high frequency
+in serving pipelines. Accelerating it on the GPU also keeps
+token sequences resident in device memory, avoiding host-to-
+device transfers in workloads where the downstream model
+already runs on the GPU.
+LLBPE has one notable limitation. Merges are confined to
+thread block boundaries, so pairs straddling adjacent blocks
+are never merged. This introduces minor discrepancies relative
+to the reference HuggingFace tokenizer output, and in this
+work, we do not study the impact of this difference in the
+downstream tasks of LLMs. Extending LLBPE to resolve
+cross-block merges without sacrificing throughput, for exam-
+ple through a lightweight boundary fix-up pass, is a natural
+direction for future work.
+ACKNOWLEDGMENTS
+This research was funded in part by DOE grants DE-
+SC0022098 and DE-SC0023349 and by NSF grants PPoSS
+CCF 2316233 and OAC-2339607. Claude AI was utilized for
+grammar enhancement.
+REFERENCES
+[1] Y. Wu, M. Schuster, Z. Chen, Q. V. Le, M. Norouzi, W. Macherey,
+M. Krikun, Y. Cao, Q. Gao, K. Macherey, J. Klingner, A. Shah,
+M. Johnson, X. Liu, Łukasz Kaiser, S. Gouws, Y. Kato, T. Kudo,
+H. Kazawa, K. Stevens, G. Kurian, N. Patil, W. Wang, C. Young,
+J. Smith, J. Riesa, A. Rudnick, O. Vinyals, G. Corrado, M. Hughes,
+and J. Dean, “Google’s Neural Machine Translation System: Bridging
+the Gap between Human and Machine Translation,” 2016. [Online].
+Available: https://arxiv.org/abs/1609.08144
+[2] T. Kudo and J. Richardson, “SentencePiece: A simple and language
+independent subword tokenizer and detokenizer for Neural Text
+Processing,” in Proceedings of the 2018 Conference on Empirical
+Methods in Natural Language Processing: System Demonstrations,
+E. Blanco and W. Lu, Eds.
+Brussels, Belgium: Association for
+Computational Linguistics, Nov. 2018, pp. 66–71. [Online]. Available:
+https://aclanthology.org/D18-2012/
+[3] C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena,
+Y. Zhou, W. Li, and P. J. Liu, “Exploring the Limits of Transfer
+Learning with a Unified Text-to-Text Transformer,” pp. 1–53, oct 2019.
+[Online]. Available: http://arxiv.org/abs/1910.10683
+[4] P. Gage, “A new algorithm for data compression,” The C Users Journal,
+vol. 12, no. 2, pp. 23–38, 1994.
+[5] R. Sennrich, B. Haddow, and A. Birch, “Neural Machine Translation of
+Rare Words with Subword Units,” in Proceedings of the 54th Annual
+Meeting of the Association for Computational Linguistics (Volume 1:
+Long Papers).
+Association for Computational Linguistics, 2016, pp.
+1715–1725.
+[6] T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal,
+A.
+Neelakantan,
+P.
+Shyam,
+G.
+Sastry,
+A.
+Askell,
+S.
+Agarwal,
+A. Herbert-Voss, G. Krueger, T. Henighan, R. Child, A. Ramesh,
+D. Ziegler, J. Wu, C. Winter, C. Hesse, M. Chen, E. Sigler,
+M. Litwin, S. Gray, B. Chess, J. Clark, C. Berner, S. McCandlish,
+A. Radford, I. Sutskever, and D. Amodei, “Language models are
+few-shot learners,” in Advances in Neural Information Processing
+Systems, H. Larochelle, M. Ranzato, R. Hadsell, M. Balcan, and
+H. Lin, Eds., vol. 33.
+Curran Associates, Inc., 2020, pp. 1877–
+1901. [Online]. Available: https://proceedings.neurips.cc/paper files/
+paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf
+[7] Llama Team, AI @ Meta, “The Llama 3 Herd of Models,” 2024.
+[Online]. Available: https://arxiv.org/abs/2407.21783
+[8] OpenAI, “tiktoken,” 2025. [Online]. Available: https://github.com/
+openai/tiktoken
+[9] A. Moi and N. Patry, “HuggingFace’s Tokenizers,” 2025. [Online].
+Available: https://github.com/huggingface/tokenizers
+[10] A. You, “BlockBPE: Parallel BPE Tokenization,” 2025. [Online].
+Available: https://arxiv.org/abs/2507.11941
+[11] V. G. Kadamba and K. Jaisankar, “GPUTOK: GPU Accelerated
+Byte Level BPE Tokenization,” 2026. [Online]. Available: https:
+//arxiv.org/abs/2603.02597
+[12] OpenAI, “GPT-4 Technical Report,” arXiv preprint arXiv:2303.08774,
+2023.
+[13] H. Touvron, T. Lavril, G. Izacard, X. Martinet, M.-A. Lachaux,
+T. Lacroix, B. Rozi`ere, N. Goyal, E. Hambro, F. Azhar et al.,
+“Llama: Open and efficient foundation language models,” arXiv preprint
+arXiv:2302.13971, 2023.
+
+
+[14] J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova, “BERT: Pre-training
+of Deep Bidirectional Transformers for Language Understanding,” in
+Proceedings of the 2019 Conference of the North American Chapter of
+the Association for Computational Linguistics (NAACL-HLT), 2019.
+[15] T.
+Kudo,
+“Subword
+Regularization:
+Improving
+Neural
+Network
+Translation
+Models
+with
+Multiple
+Subword
+Candidates,”
+2018.
+[Online]. Available: https://arxiv.org/abs/1804.10959
+[16] Z.
+Lan,
+M.
+Chen,
+S.
+Goodman,
+K.
+Gimpel,
+P.
+Sharma,
+and
+R. Soricut, “ALBERT: A Lite BERT for Self-supervised Learning
+of
+Language
+Representations,”
+2020.
+[Online].
+Available:
+https:
+//arxiv.org/abs/1909.11942
+[17] R. Sennrich, B. Haddow, and A. Birch, “fastBPE,” 2019. [Online].
+Available: https://github.com/glample/fastBPE
+[18] RAPIDS
+Development
+Team,
+“RAPIDS
+cuDF:
+GPU
+DataFrame
+library,” 2024. [Online]. Available: https://github.com/rapidsai/cudf
+[19] D. E. Knuth, J. H. Morris, Jr., and V. R. Pratt, “Fast Pattern Matching
+in Strings,” SIAM Journal on Computing, vol. 6, no. 2, pp. 323–350,
+1977. [Online]. Available: https://doi.org/10.1137/0206024
+[20] L. Tolstoy, War and Peace.
+Project Gutenberg, 1869.
+[21] M. Twain, The Adventures of Tom Sawyer.
+Project Gutenberg, 1876.
+[22] ——, Adventures of Huckleberry Finn.
+Project Gutenberg, 1884.
+[23] OpenAI.
+[Online].
+Available:
+https://github.com/openai/gpt-2/blob/
+master/download model.py
+[24] V. I. Levenshtein, “Binary codes capable of correcting deletions, inser-
+tions, and reversals,” in Soviet physics doklady, vol. 10, no. 8, 1966, pp.
+707–710.
+APPENDIX
+a) Abstract: This artifact contains the implementation for
+LLBPE in C++. We provide instructions on generating results
+for Figures 3, 4.
+b) Artifact Description: : The code for LLBPE can be
+found here. The testing was done on an NVIDIA A100 GPU
+on NERSC’s Perlmutter on an interactive GPU node. The setup
+instructions for our platform are mentioned below and can also
+be found in README.md in the root directory.
+Note: The project can be compiled using the script in
+scripts/build.sh. The executable generated by running
+the build script is present in build/ and can be run with the
+following arguments: .
+./build/LLBPE <input-file> \
+<output-file|stdout> <mode(SEQ|BATCH)> \
+<mode-value>
+1) input-file: File address of the corpus to tokenize
+2) output-file: File address to store the tokenized output
+3) mode: SEQ/BATCH to specify which parameter is fixed
+a) SEQ: sequence length
+b) BATCH: batch size
+4) mode-value: Value of the parameter specified in ¡mode¿
+c) Modules: These commands and versions are specific
+to the platform on which we run our tests.
+module load cuda # CUDA 12.9
+module load gcc-native/12.3
+module unload cray-mpich
+module load mpich
+d) Build: The commands provided below are included in
+the build script:
+mkdir -p build
+cd ./build
+cmake ..
+make
